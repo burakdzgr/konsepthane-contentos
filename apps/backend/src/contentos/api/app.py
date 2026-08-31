@@ -1,12 +1,16 @@
 """FastAPI application factory."""
 
+from functools import partial
+
 from fastapi import FastAPI
 
 from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
+from contentos.api.routes.health import router as health_router
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.db.session import create_database_engine, create_session_factory
+from contentos.queue.redis import create_redis_client
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Engine creation is lazy: no database connection happens until first use.
     engine = create_database_engine(resolved_settings)
     app.state.db_session_factory = create_session_factory(engine)
+    app.state.redis_client_factory = partial(create_redis_client, resolved_settings)
+    app.include_router(health_router)
     # RequestContextMiddleware must stay outermost so the request ID context and
     # X-Request-ID header also cover envelope responses for unhandled errors.
     app.add_middleware(RequestContextMiddleware)

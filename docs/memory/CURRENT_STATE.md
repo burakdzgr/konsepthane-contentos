@@ -8,8 +8,8 @@ PHASE 1 - Repository foundation started
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
-engine/session, Alembic migration, and Redis/Celery queue foundation are
-implemented. No editorial business logic exists yet.
+engine/session, Alembic migration, Redis/Celery queue, and health-endpoint
+foundation are implemented. No editorial business logic exists yet.
 
 ## Repository
 
@@ -66,6 +66,11 @@ main
 - worker entrypoint added with explicit settings/logging/signal setup and no import-time side effects
 - worker signals bind task_id and propagated request_id to logs and clear context per task
 - queue foundation verified end-to-end against an ephemeral Dockerized Redis, then torn down
+- `/health/live` added: process liveness only, returning safe status/service/version
+- `/health/ready` added: bounded postgres SELECT 1, pgvector-extension, and Redis PING checks
+- readiness returns 200/ready or 503/not_ready with safe per-component states, outside the error envelope
+- readiness failures log one safe structured event (component, error class, request_id); no URL/secret leaks
+- health endpoints verified against ephemeral Dockerized pgvector PostgreSQL and Redis, then torn down
 
 ## Current documentation structure
 
@@ -83,7 +88,7 @@ main
 
 Repository foundation: complete
 
-Backend: application factory, typed settings, structured logging, request context, API error contract, and database engine/session foundation complete
+Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, and liveness/readiness endpoints complete
 
 Frontend/control panel: not started
 
@@ -105,10 +110,9 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No application tables, domain/queue tasks, Celery Beat, health endpoint, admin application,
-Docker Compose, CI, pre-commit configuration, or editorial business logic exists yet.
-Backend tests use mocks and offline Alembic rendering; none require a running PostgreSQL
-or Redis.
+No application tables, domain/queue tasks, Celery Beat, admin application, Docker Compose,
+CI, pre-commit configuration, or editorial business logic exists yet. Backend tests use
+mocks and offline Alembic rendering; none require a running PostgreSQL or Redis.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
