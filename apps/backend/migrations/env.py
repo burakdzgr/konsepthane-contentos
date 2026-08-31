@@ -1,0 +1,43 @@
+"""Alembic environment bound to ContentOS settings and metadata.
+
+The database URL always comes from the typed ContentOS settings
+(CONTENTOS_DATABASE_URL) and must never be logged or printed here.
+"""
+
+from alembic import context
+
+from contentos.core.config import Settings
+from contentos.db.base import Base
+from contentos.db.session import create_database_engine
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    """Render migration SQL without opening a database connection."""
+    context.configure(
+        url=Settings().database_url.get_secret_value(),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations through the standard ContentOS engine factory."""
+    engine = create_database_engine(Settings())
+    try:
+        with engine.connect() as connection:
+            context.configure(connection=connection, target_metadata=target_metadata)
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        engine.dispose()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

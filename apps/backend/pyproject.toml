@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Internal editorial operating system backend for Konsepthane."
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "alembic",
   "fastapi",
+  "pgvector",
   "psycopg[binary,pool]",
   "pydantic-settings",
   "sqlalchemy",
