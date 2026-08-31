@@ -1,0 +1,64 @@
+.git/
+.gitignore
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python caches, environments, and builds
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Node caches and builds
+node_modules/
+.pnpm-store/
+.next/
+out/
+.turbo/
+.swc/
+.parcel-cache/
+*.tsbuildinfo
+
+# Tests, reports, and logs
+coverage/
+playwright-report/
+blob-report/
+test-results/
+junit.xml
+logs/
+*.log
+*.pid
+*.sock
+
+# Local tooling and runtime data
+.idea/
+.vscode/
+.local/
+.runtime/
+.docker-data/
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+Desktop.ini

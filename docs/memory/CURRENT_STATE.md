@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 0 - Architecture baseline complete; implementation not authorized
+PHASE 1 - Repository foundation started
 
 No application code has been implemented yet.
 
@@ -36,6 +36,10 @@ main
 - ADR 0002 accepted: core technology stack
 - ADR 0003 accepted: versioned authenticated Publishing API boundary
 - ADR 0004 accepted: mandatory human review before any launch-time publishing
+- Phase 1 repository hygiene and workspace configuration completed
+- Python 3.12 runtime pin added
+- Node.js 24 LTS and pnpm 12.1.0 pins added
+- pnpm workspace prepared for `apps/admin` without scaffolding the application
 
 ## Current documentation structure
 
@@ -50,6 +54,8 @@ main
 - docs/adr/README.md
 
 ## Current implementation status
+
+Repository foundation: first task complete
 
 Backend: not started
 
@@ -71,28 +77,32 @@ Analytics integration: not started
 
 ## Important current constraint
 
-Do NOT start implementation until explicitly authorized.
+Phase 1 implementation is authorized only one task at a time.
 
-Phase 0 documentation describes intended architecture; it is not evidence that
-backend, frontend, infrastructure, integrations, or controls exist.
+No backend package, admin application, dependency installation, Docker Compose,
+CI, pre-commit configuration, or application code exists yet.
+
+ContentOS is a private single-operator control panel. Application-level users,
+authentication, authorization, roles, and RBAC are outside the Phase 1 design;
+access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Review and approve the Phase 0 baseline, then define a separately authorized
-implementation plan with acceptance criteria and sequencing before scaffolding.
+Await explicit authorization for the next atomic Phase 1 task: creating the
+backend Python package manifest and package foundation.
 
 Before implementing the affected integrations, resolve:
 
-- Publishing API contract, authentication method, and production owner
+- Publishing API contract, service authentication method, and production owner
 - initial source allowlist, crawl permissions, and retention rules
 - scoring, QA, cost, and budget thresholds
 - Pinterest account/API access and distribution policy
 - analytics data sources and content-identity mapping
-- roles and named authority for human approval
+- owner approval audit semantics for the future editorial workflow
 
 ## Known blockers
 
-No blocker remains for completing the Phase 0 architecture baseline.
+No blocker currently prevents the next Phase 1 foundation task.
 
 The integration and governance inputs listed above are intentionally unresolved
 and will block their respective implementation or launch work, not this phase.
