@@ -4,12 +4,14 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 1 - Foundation COMPLETE
+PHASE 2 - Research/Discovery foundation - STARTED (Task 1 complete)
 
-Phase 1 closed after full verification: the first real GitHub Actions run of
-`ci.yml` on `main` passed, both local quality gates (default and `-Compose`)
-pass, and a fresh temporary clone was bootstrapped and tested successfully.
-The next phase is Phase 2: research/discovery foundation (not started).
+Phase 1 foundation is complete and verified (first real CI run passed, both
+local quality gates pass, fresh-clone bootstrap verified).
+
+Phase 2 Task 1 delivered the research/discovery domain design only:
+`docs/PHASE2_RESEARCH_DISCOVERY.md` plus ADRs 0005-0007. No Phase 2 runtime
+code, models, migrations, endpoints, tasks, or dependencies exist yet.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -110,6 +112,13 @@ main
 - root README.md added documenting tools, bootstrap, stack, gates, migrations, CI, and boundaries
 - fresh-clone verification passed: bootstrap, backend tests, and admin tests in a temporary clone
 - Phase 1 foundation declared complete with no known blockers
+- Phase 2 research/discovery design documented: Source Registry, DiscoveryItem, FetchSnapshot,
+  NormalizedDocument, DuplicateDecision, ResearchEvidence with per-entity lifecycles
+- ADR 0005 accepted: Source Registry is the sole admission gate for research intake
+- ADR 0006 accepted: fetch snapshots are immutable and append-only
+- ADR 0007 accepted: research evidence carries non-bypassable provenance
+- crawler safety boundary, idempotency keys, module dependency model, future table and
+  Celery job plans, and the atomic Phase 2 implementation order are documented
 
 ## Current documentation structure
 
@@ -118,10 +127,11 @@ main
 - docs/ARCHITECTURE.md
 - docs/WORKFLOW.md
 - docs/EDITORIAL_POLICY.md
+- docs/PHASE2_RESEARCH_DISCOVERY.md
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
-- docs/adr/README.md
+- docs/adr/README.md (ADRs 0001-0007)
 
 ## Current implementation status
 
@@ -161,8 +171,13 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 1 is complete. Await explicit authorization to start Phase 2
-(research/discovery foundation).
+Phase 2 Task 2 (awaiting explicit authorization): implement the Source
+Registry persistence foundation only — `Source` model + kind/lifecycle/trust
+enums in a new `contentos/sources` package, Alembic migration
+`0002_create_sources`, uniqueness on `slug` and (`kind`, `base_url`), a
+repository/service with idempotent registration and audited lifecycle
+transitions, unit tests plus ephemeral-Postgres migration verification. No
+API endpoints, admin UI, Celery, or discovery logic in Task 2.
 
 Before implementing the affected integrations, resolve:
 
