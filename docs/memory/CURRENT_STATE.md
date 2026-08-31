@@ -6,8 +6,9 @@ Last updated: 2026-08-31
 
 PHASE 1 - Repository foundation started
 
-A minimal Python backend package and FastAPI application factory are implemented.
-No editorial business logic or infrastructure integration exists yet.
+A minimal Python backend package, FastAPI application factory, and typed settings
+foundation are implemented. No editorial business logic or infrastructure integration
+exists yet.
 
 ## Repository
 
@@ -44,6 +45,9 @@ main
 - Python `contentos` package created with a src layout and generated `uv.lock`
 - minimal `create_app()` FastAPI application factory implemented
 - initial backend unit test, Ruff, and mypy configuration validated
+- typed Pydantic settings added with the `CONTENTOS_` environment prefix
+- local, test, and production environments are validated explicitly
+- FastAPI metadata and API documentation exposure are settings-driven
 
 ## Current documentation structure
 
@@ -61,7 +65,7 @@ main
 
 Repository foundation: complete
 
-Backend: minimal package and FastAPI application factory complete
+Backend: minimal package, FastAPI application factory, and typed settings complete
 
 Frontend/control panel: not started
 
@@ -83,9 +87,8 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No database, Redis, Celery, settings, logging, error handling, health endpoint,
-admin application, Docker Compose, CI, pre-commit configuration, or editorial
-business logic exists yet.
+No database, Redis, Celery, logging, error handling, health endpoint, admin application,
+Docker Compose, CI, pre-commit configuration, or editorial business logic exists yet.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;

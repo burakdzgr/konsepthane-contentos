@@ -5,6 +5,7 @@ description = "Internal editorial operating system backend for Konsepthane."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi",
+  "pydantic-settings",
   "uvicorn[standard]",
 ]
 
