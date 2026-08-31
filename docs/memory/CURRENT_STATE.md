@@ -1,18 +1,19 @@
 ﻿# Konsepthane ContentOS - Current State
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-8 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-9 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-8 delivered the research/discovery design, Source Registry, shared URL
+Tasks 1-9 delivered the research/discovery design, Source Registry, shared URL
 canonicalization, DiscoveryItem admission, the safe FetchClient boundary,
 defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
-persistence. Normalization and Phase 2 orchestration do not exist yet.
+persistence. The immutable NormalizedDocument persistence boundary now exists;
+payload retrieval, extraction, duplicate decisions, and Phase 2 orchestration do not.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -206,6 +207,24 @@ main
 - no payload-store backend, Celery orchestration, feed/sitemap retrofit, normalization,
   endpoint, or admin work was added
 - Task 8 verified: 380 backend tests and the full root quality gate passed
+- `contentos.normalization` now owns immutable `NormalizedDocument` persistence,
+  an append/read-only repository, and explicit `record_success`/`record_failure` services
+- migration `0005_create_normalized_documents` adds the FetchSnapshot `ON DELETE RESTRICT`
+  provenance link, frozen status/failure checks, extractor identity uniqueness, JSONB
+  derived structures, fingerprint fields, indexes, and append-only trigger
+- extractor identity is (`fetch_snapshot_id`, `extractor_name`, `extractor_version`):
+  exact identical retries return the existing row; conflicting retries raise a typed
+  conflict; new extractor names or versions append and coexist
+- success requires non-empty exact extractor output and SHA-256 fingerprint v1 over its
+  exact UTF-8 bytes; the persistence layer performs no case, punctuation, or language
+  transformation; failure rows require a broad stable failure code and contain no fake content
+- both successful and failed normalization records require a successful FetchSnapshot with
+  `raw_payload_ref`, body hash, and body size; fetch failures remain at the snapshot layer
+- real ephemeral pgvector PostgreSQL verification passed: empty upgrade to 0005, successful
+  and failed recording, retry/conflict/versioning behavior, raw UPDATE/DELETE rejection,
+  downgrade to 0004 with source/discovery/fetch/pgvector survival, and re-upgrade
+- Task 9 verified: 409 backend tests and the full root quality gate passed; no extraction,
+  raw-payload reader/backend, duplicate engine, endpoint, worker task, or UI was added
 
 ## Current documentation structure
 
@@ -228,14 +247,15 @@ Backend: application factory, typed settings, structured logging, request contex
 
 Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
-Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem, and
-immutable FetchSnapshot tables complete; schema head `0004`
+Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
+immutable FetchSnapshot, and immutable NormalizedDocument tables complete;
+schema head `0005`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
 Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
-bounded sitemap-index traversal, and immutable FetchSnapshot persistence complete;
-normalization not started
+bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
+NormalizedDocument persistence contract complete; payload retrieval and extraction not started
 
 AI integration: not started
 
@@ -249,9 +269,9 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No normalized-document, duplicate, or research-evidence persistence; domain/queue
-tasks; Celery Beat; admin business screens; pre-commit configuration; or editorial
-business logic exists yet. No production raw-payload storage backend exists. Backend
+No extraction pipeline, raw-payload reader/backend, duplicate or research-evidence
+persistence, domain/queue tasks, Celery Beat, admin business screens, pre-commit
+configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -262,12 +282,12 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 9 (awaiting explicit authorization): implement the immutable
-**NormalizedDocument persistence foundation** only: migration `0005`, model,
-status/failure and extractor-provenance contracts, append/read repository, and
-transactional recording tests keyed by (`fetch_snapshot_id`, `extractor_name`,
-`extractor_version`). Do not implement extraction yet; raw-payload retrieval has
-no backend/reader contract, so an executable normalization pipeline would be premature.
+Phase 2 Task 10 (awaiting explicit authorization): define the provider-neutral,
+immutable **raw-payload store/reader contract** only. Specify opaque reference,
+bounded byte streaming, expected SHA-256/size verification, typed not-found/integrity/
+transport errors, and test-double conformance. Do not choose R2/S3/filesystem/BYTEA,
+wire FetchClient, or implement extraction in that task; the contract must precede a
+production adapter and executable normalization pipeline.
 
 Before implementing the affected integrations, resolve:
 

@@ -89,6 +89,7 @@ def test_no_engine_is_created_at_import_time() -> None:
 def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.discovery.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
+    import contentos.normalization.models  # noqa: F401
     import contentos.sources.models  # noqa: F401
 
     assert set(Base.metadata.tables) == {
@@ -96,6 +97,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "source_lifecycle_events",
         "discovery_items",
         "fetch_snapshots",
+        "normalized_documents",
     }
 
 
