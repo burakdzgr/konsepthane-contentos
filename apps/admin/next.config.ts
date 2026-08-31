@@ -12,6 +12,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Standalone output keeps the runtime container minimal: only traced files,
+  // no full node_modules. It is opt-in (set by apps/admin/Dockerfile) because
+  // the tracing step needs symlinks, which Windows hosts block with EPERM.
+  output: process.env.NEXT_OUTPUT_STANDALONE === "1" ? "standalone" : undefined,
   outputFileTracingRoot: path.join(__dirname, "../.."),
   async headers() {
     return [

@@ -1,0 +1,17 @@
+# Build-context ignore for apps/admin/Dockerfile (fully overrides the root
+# .dockerignore for this build). Nested node_modules must be excluded so the
+# host's symlinked installs never overwrite the in-container install.
+.git/
+**/node_modules/
+**/.next/
+**/.venv/
+**/__pycache__/
+apps/backend/
+docs/
+scripts/
+migrations/
+.env
+.env.*
+!.env.example
+*.log
+**/tsconfig.tsbuildinfo

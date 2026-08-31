@@ -129,6 +129,37 @@ services:
     stop_grace_period: 30s
     networks: [contentos]
 
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    image: contentos-admin:dev
+    environment:
+      NODE_ENV: production
+      # Container-internal URL on purpose (service DNS, not 127.0.0.1); the
+      # browser never receives this value - it stays server-side in Next.js.
+      CONTENTOS_INTERNAL_API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:${CONTENTOS_ADMIN_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # /api/health reflects the Next.js process only; no curl in the image,
+      # so use Node's built-in fetch.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [contentos]
+
 networks:
   contentos: {}
 

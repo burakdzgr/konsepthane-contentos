@@ -6,7 +6,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 Write-Host "== ContentOS bootstrap =="
 
-foreach ($tool in @("docker", "uv")) {
+foreach ($tool in @("docker", "uv", "node", "corepack")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         throw "Required tool '$tool' was not found on PATH."
     }
@@ -26,6 +26,14 @@ Push-Location (Join-Path $repoRoot "apps\backend")
 try {
     uv sync --all-groups
     if ($LASTEXITCODE -ne 0) { throw "uv sync failed." }
+} finally {
+    Pop-Location
+}
+
+Push-Location $repoRoot
+try {
+    corepack pnpm install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw "pnpm install failed." }
 } finally {
     Pop-Location
 }

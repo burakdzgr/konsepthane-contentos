@@ -73,7 +73,7 @@ main
 - readiness failures log one safe structured event (component, error class, request_id); no URL/secret leaks
 - health endpoints verified against ephemeral Dockerized pgvector PostgreSQL and Redis, then torn down
 - multi-stage backend Dockerfile added: uv frozen install, no dev deps, non-root `contentos` user
-- root `compose.yaml` added: postgres (pgvector), redis, one-shot migrate, api, worker
+- root `compose.yaml` added: postgres (pgvector), redis, one-shot migrate, api, worker, admin
 - compose ordering: healthy postgres/redis -> migrate completes -> api/worker start
 - all Compose host ports bind 127.0.0.1 only; postgres uses a named volume; Redis stays volatile
 - `.env.example` documents safe development-only defaults with `CONTENTOS_` variables
@@ -88,6 +88,12 @@ main
 - root page replaced with a truthful, per-request Foundation Status page (live/ready via server)
 - unreachable/malformed backend renders Unavailable/Unknown; component failures are never invented
 - admin-process-only `GET /api/health` added, independent of FastAPI/Postgres/Redis
+- admin Dockerfile added: Node 24, corepack pnpm 11.15.1 frozen install, standalone output, non-root
+- standalone output is opt-in via NEXT_OUTPUT_STANDALONE (Windows hosts cannot symlink-trace)
+- `admin` Compose service added on 127.0.0.1:3000 with a Node-fetch /api/health healthcheck
+- containerized admin reaches the API at http://api:8000 server-side; browser HTML verified leak-free
+- smoke script now checks backend health, admin health, and truthful admin status rendering
+- full six-service Compose stack verified end-to-end, then torn down
 
 ## Current documentation structure
 
@@ -107,7 +113,7 @@ Repository foundation: complete
 
 Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, and liveness/readiness endpoints complete
 
-Frontend/control panel: Next.js foundation with server-side backend client and truthful Foundation Status page; no business screens yet
+Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
 Database: engine/session foundation and Alembic + pgvector migration infrastructure complete; no application models or tables yet
 
