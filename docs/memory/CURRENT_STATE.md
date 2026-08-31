@@ -8,9 +8,9 @@ PHASE 1 - Repository foundation started
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
-engine/session, Alembic migration, Redis/Celery queue, health-endpoint, and
-local Docker/Compose foundation are implemented. No editorial business logic
-exists yet.
+engine/session, Alembic migration, Redis/Celery queue, health-endpoint, local
+Docker/Compose, and Next.js admin foundation are implemented. No editorial
+business logic exists yet.
 
 ## Repository
 
@@ -42,7 +42,7 @@ main
 - ADR 0004 accepted: mandatory human review before any launch-time publishing
 - Phase 1 repository hygiene and workspace configuration completed
 - Python 3.12 runtime pin added
-- Node.js 24 LTS and pnpm 12.1.0 pins added
+- Node.js 24 LTS and pnpm 11.15.1 pins added
 - pnpm workspace prepared for `apps/admin` without scaffolding the application
 - Python `contentos` package created with a src layout and generated `uv.lock`
 - minimal `create_app()` FastAPI application factory implemented
@@ -79,6 +79,11 @@ main
 - `.env.example` documents safe development-only defaults with `CONTENTOS_` variables
 - `scripts/bootstrap.ps1` and `scripts/smoke.ps1` added for local setup and stack verification
 - full Compose stack verified (live/ready 200, pgvector, alembic head, worker connected), then removed
+- Next.js 15 App Router admin scaffolded in `apps/admin` (TypeScript strict, plain CSS, pnpm workspace)
+- admin runtime deps limited to next/react/react-dom/zod; ESLint, Prettier, Vitest, Testing Library for dev
+- Zod server-only env module added; internal API URL never exposed via public build-time variables
+- admin is noindex/nofollow with security headers; truthful static foundation page and safe error boundary
+- pnpm build-script allowlist (esbuild, unrs-resolver) recorded in pnpm-workspace.yaml
 
 ## Current documentation structure
 
@@ -98,7 +103,7 @@ Repository foundation: complete
 
 Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, and liveness/readiness endpoints complete
 
-Frontend/control panel: not started
+Frontend/control panel: Next.js foundation scaffolded; no business screens or live backend status view yet
 
 Database: engine/session foundation and Alembic + pgvector migration infrastructure complete; no application models or tables yet
 
@@ -118,10 +123,11 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No application tables, domain/queue tasks, Celery Beat, admin application, CI,
+No application tables, domain/queue tasks, Celery Beat, admin business screens, CI,
 pre-commit configuration, or editorial business logic exists yet. Backend tests use
 mocks and offline Alembic rendering; none require a running PostgreSQL or Redis.
 Docker Compose covers local development only; production deployment does not exist.
+The admin app has no login, authentication, users, roles, or RBAC by design.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
