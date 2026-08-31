@@ -7,8 +7,8 @@ Last updated: 2026-08-31
 PHASE 1 - Repository foundation started
 
 A minimal Python backend package, FastAPI application factory, typed settings,
-structured logging, request-correlation, and API error-envelope foundation are
-implemented. No editorial business logic or infrastructure integration exists yet.
+structured logging, request-correlation, API error-envelope, and SQLAlchemy
+engine/session foundation are implemented. No editorial business logic exists yet.
 
 ## Repository
 
@@ -54,6 +54,9 @@ main
 - stable JSON error envelope added with request_id and deterministic status-to-code mapping
 - validation errors return sanitized 422 details that never echo rejected input
 - unhandled exceptions return an opaque 500 envelope and are logged once with exception info
+- SQLAlchemy 2.x + Psycopg 3 engine/session foundation added under `contentos.db`
+- database settings added as validated `CONTENTOS_`-prefixed SecretStr URL with pool bounds
+- lazy per-app engine, explicit-commit session scope, and replaceable FastAPI session dependency
 
 ## Current documentation structure
 
@@ -71,11 +74,11 @@ main
 
 Repository foundation: complete
 
-Backend: application factory, typed settings, structured logging, request context, and API error contract complete
+Backend: application factory, typed settings, structured logging, request context, API error contract, and database engine/session foundation complete
 
 Frontend/control panel: not started
 
-Database: not started
+Database: engine/session foundation only; no models, migrations, or real-database integration yet
 
 Queue/workers: not started
 
@@ -93,8 +96,9 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No database, Redis, Celery, health endpoint, admin application, Docker Compose, CI,
-pre-commit configuration, or editorial business logic exists yet.
+No Alembic migrations, pgvector setup, application tables, Redis, Celery, health endpoint,
+admin application, Docker Compose, CI, pre-commit configuration, or editorial business
+logic exists yet. Database unit tests use mocks; none require a running PostgreSQL.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;

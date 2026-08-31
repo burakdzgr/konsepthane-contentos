@@ -6,6 +6,7 @@ from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
+from contentos.db.session import create_database_engine, create_session_factory
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,6 +25,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=openapi_url,
     )
     install_error_handling(app)
+    # Engine creation is lazy: no database connection happens until first use.
+    engine = create_database_engine(resolved_settings)
+    app.state.db_session_factory = create_session_factory(engine)
     # RequestContextMiddleware must stay outermost so the request ID context and
     # X-Request-ID header also cover envelope responses for unhandled errors.
     app.add_middleware(RequestContextMiddleware)

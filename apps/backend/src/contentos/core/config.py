@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from contentos import __version__
@@ -42,3 +42,17 @@ class Settings(BaseSettings):
     application_version: str = Field(default=__version__, min_length=1)
     log_level: LogLevel = LogLevel.INFO
     api_docs_enabled: bool = True
+    # ContentOS-owned database only; never point this at a Konsepthane database.
+    database_url: SecretStr = SecretStr(
+        "postgresql+psycopg://contentos:contentos@localhost:5432/contentos"
+    )
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_pool_timeout_seconds: int = Field(default=30, ge=1, le=300)
+    db_connect_timeout_seconds: int = Field(default=10, ge=1, le=60)
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_psycopg_postgresql_url(cls, value: SecretStr) -> SecretStr:
+        if not value.get_secret_value().startswith("postgresql+psycopg://"):
+            raise ValueError("database_url must use the postgresql+psycopg:// scheme")
+        return value
