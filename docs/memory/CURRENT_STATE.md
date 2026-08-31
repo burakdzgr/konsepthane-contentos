@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 0 - Project foundation and memory setup
+PHASE 0 - Architecture baseline complete; implementation not authorized
 
 No application code has been implemented yet.
 
@@ -27,6 +27,15 @@ main
 - project documentation directories created
 - AGENTS.md memory protocol created
 - persistent memory structure created
+- product purpose, scope, and system boundaries documented
+- architecture baseline and 21 bounded modules documented
+- editorial state machine and publication gates documented
+- editorial, sourcing, copyright, media, and human-review policy documented
+- initial project glossary documented
+- ADR 0001 accepted: ContentOS is a separate system
+- ADR 0002 accepted: core technology stack
+- ADR 0003 accepted: versioned authenticated Publishing API boundary
+- ADR 0004 accepted: mandatory human review before any launch-time publishing
 
 ## Current documentation structure
 
@@ -62,26 +71,28 @@ Analytics integration: not started
 
 ## Important current constraint
 
-Do NOT start implementation yet.
+Do NOT start implementation until explicitly authorized.
 
-The project's product scope, architecture and major architectural decisions
-must first be documented.
+Phase 0 documentation describes intended architecture; it is not evidence that
+backend, frontend, infrastructure, integrations, or controls exist.
 
 ## Next immediate task
 
-Initialize Codebase Memory for this repository and verify that the coding
-agents can access the MCP integration correctly.
+Review and approve the Phase 0 baseline, then define a separately authorized
+implementation plan with acceptance criteria and sequencing before scaffolding.
 
-After that:
+Before implementing the affected integrations, resolve:
 
-- establish baseline project documentation
-- create initial ADRs
-- prepare the master implementation prompt
-- begin Phase 0 architecture work
+- Publishing API contract, authentication method, and production owner
+- initial source allowlist, crawl permissions, and retention rules
+- scoring, QA, cost, and budget thresholds
+- Pinterest account/API access and distribution policy
+- analytics data sources and content-identity mapping
+- roles and named authority for human approval
 
 ## Known blockers
 
-None currently.
+No blocker remains for completing the Phase 0 architecture baseline.
 
-External production credentials and final APIs are intentionally not required
-during the architecture/foundation phase.
+The integration and governance inputs listed above are intentionally unresolved
+and will block their respective implementation or launch work, not this phase.
