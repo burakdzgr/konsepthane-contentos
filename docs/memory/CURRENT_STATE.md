@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-2 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-3 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -129,6 +129,14 @@ main
 - source base-URL normalization implemented for registration identity only (no network I/O)
 - Source Registry verified against ephemeral pgvector PostgreSQL including a
   downgrade-to-0001/re-upgrade cycle; pgvector survived throughout
+- shared URL canonicalization boundary added at `contentos.core.urls` (network-free,
+  stdlib-only) with frozen v1 rules and `URL_CANONICALIZATION_VERSION = 1`
+- v1 tracking-parameter policy: `utm_` prefix plus gclid/fbclid/msclkid, case-insensitive
+- `canonical_url_hash` added: unsalted SHA-256 lowercase hex of the canonical URL's UTF-8
+- canonical URL != safe-to-fetch URL: no DNS/SSRF/robots here; that stays in the future
+  fetch boundary
+- `contentos.sources.urls` registration identity semantics intentionally unchanged and
+  kept independent of the shared canonicalizer
 
 ## Current documentation structure
 
@@ -181,16 +189,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 3 (awaiting explicit authorization): implement the shared URL
-canonicalization boundary from the design (§9) — a pure, network-free module
-(lowercase scheme/host, fragment stripping, tracking-parameter removal,
-port/trailing-slash normalization, sorted query parameters, versioned
-behavior) with exhaustive unit tests. No models, migrations, or fetching.
-Rationale: the design's implementation order places canonicalization before
-DiscoveryItem persistence because discovery rows store `canonical_url` and
-`url_hash`. The minimal source listing/registration API endpoints (design
-order item 2 remainder) are deferred to the admin-visibility task; the
-lifecycle service half of that item shipped in Task 2.
+Phase 2 Task 4 (awaiting explicit authorization): implement the DiscoveryItem
+persistence foundation per the design (§2, order item 4) — `DiscoveryItem`
+model in a new `contentos/discovery` package with admission lifecycle
+(`DISCOVERED`/`ACCEPTED`/`REJECTED`/`FETCHED`/`FETCH_FAILED`), coded
+rejection reasons, `canonical_url` + `url_hash` +
+`url_canonicalization_version` produced via `contentos.core.urls`, uniqueness
+on (`source_id`, `url_hash`), migration `0003_create_discovery_items`, an
+admission service supporting the `manual` discovery method first (idempotent
+rediscovery), tests, and ephemeral-Postgres migration verification. No
+feed/sitemap parsing, fetching, or Celery in Task 4. The minimal source API
+endpoints remain deferred to the admin-visibility task.
 
 Before implementing the affected integrations, resolve:
 
