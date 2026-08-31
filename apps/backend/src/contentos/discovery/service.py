@@ -127,6 +127,32 @@ class DiscoveryService:
             metadata=None,
         )
 
+    def require_sitemap_source(self, source_id: uuid.UUID) -> Source:
+        """Return an active sitemap source configured for sitemap discovery."""
+        source = self._require_active_source(source_id)
+        if (
+            source.kind is not SourceKind.SITEMAP
+            or source.discovery_strategy is not DiscoveryStrategy.SITEMAP
+        ):
+            raise SourceNotEligibleForDiscoveryError(
+                f"source '{source.slug}' is not a sitemap configured for sitemap discovery"
+            )
+        return source
+
+    def discover_sitemap(self, source_id: uuid.UUID, url: str) -> DiscoveryAdmission:
+        """Idempotently admit one untrusted candidate from a sitemap."""
+        source = self.require_sitemap_source(source_id)
+        return self._admit(
+            source,
+            url,
+            method=DiscoveryMethod.SITEMAP,
+            title_hint=None,
+            snippet_hint=None,
+            locale=None,
+            external_published_at=None,
+            metadata=None,
+        )
+
     def _require_active_source(self, source_id: uuid.UUID) -> Source:
         source = self._sources.get_by_id(source_id)
         if source is None:

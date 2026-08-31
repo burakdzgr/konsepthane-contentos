@@ -4,15 +4,14 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-6 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-7 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-5 delivered the research/discovery design, Source Registry, shared URL
-canonicalization, DiscoveryItem admission, and the safe FetchClient boundary.
-Task 6 adds defensive RSS/Atom feed discovery through FetchClient and
-DiscoveryService. Sitemap discovery, FetchSnapshot persistence, and Phase 2
+Tasks 1-7 delivered the research/discovery design, Source Registry, shared URL
+canonicalization, DiscoveryItem admission, the safe FetchClient boundary, and
+defensive RSS/Atom plus sitemap discovery. FetchSnapshot persistence and Phase 2
 orchestration do not exist yet.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
@@ -174,6 +173,19 @@ main
 - feed candidates use `DiscoveryMethod.FEED` and the shared DiscoveryService admission path
 - repeated feeds and canonical URL variants are idempotent; lifecycle and stored hints are preserved
 - Task 6 verified offline: 302 backend tests and the full root quality gate passed
+- `contentos.discovery.sitemap` added with bounded URL-set and recursive sitemap-index traversal
+- only ACTIVE `sitemap` sources with `discovery_strategy=sitemap` are eligible
+- every root/child document uses FetchClient; XML parsing accepts application/xml or text/xml only
+- DTD/entity declarations are rejected; byte, element, per-document URL (5,000),
+  index-entry (50), depth (3), document (50), total URL (5,000), and URL-length
+  limits are centralized and enforced
+- child sitemap locations and redirect final URLs must be same-origin with the final root
+  sitemap URL; locations must be absolute, and cycles/duplicates are skipped before fetching
+- sitemap `lastmod` is validated for warnings but is not stored as `external_published_at`
+  because modification time is not publication time
+- explicit gzip sitemap representations are unsupported; no XML/compression dependency was added
+- sitemap candidates use `DiscoveryMethod.SITEMAP` and shared idempotent DiscoveryService admission
+- Task 7 verified offline: 352 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -200,7 +212,8 @@ Database: engine/session, Alembic + pgvector, Source Registry, and DiscoveryItem
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
-Research discovery: Source Registry, manual/feed admission, and safe FetchClient complete; sitemap not started
+Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient, and
+bounded sitemap-index traversal complete; FetchSnapshot persistence not started
 
 AI integration: not started
 
@@ -227,10 +240,10 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 7 (awaiting explicit authorization): implement the **sitemap
-discovery strategy** through the existing FetchClient and DiscoveryService
-boundaries, with defensive XML parsing and sitemap-specific limits. Do not add
-FetchSnapshot persistence or Celery in Task 7; FetchSnapshot persistence follows.
+Phase 2 Task 8 (awaiting explicit authorization): implement immutable,
+append-only **FetchSnapshot persistence** for accepted DiscoveryItems using the
+existing FetchClient result contract. Include migration/model/repository/service
+tests, but do not add Celery orchestration, normalization, or crawler scheduling.
 
 Before implementing the affected integrations, resolve:
 
