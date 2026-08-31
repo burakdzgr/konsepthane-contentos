@@ -94,6 +94,9 @@ main
 - containerized admin reaches the API at http://api:8000 server-side; browser HTML verified leak-free
 - smoke script now checks backend health, admin health, and truthful admin status rendering
 - full six-service Compose stack verified end-to-end, then torn down
+- `scripts/check.ps1` added as the canonical non-destructive local quality gate
+- default gate runs toolchain, backend (uv frozen), admin (pnpm frozen), and repository checks
+- `-Compose` additionally builds/starts the stack, runs smoke.ps1, and always tears down in finally
 
 ## Current documentation structure
 
