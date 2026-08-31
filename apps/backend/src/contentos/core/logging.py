@@ -93,6 +93,7 @@ def configure_logging(settings: Settings, *, stream: TextIO | None = None) -> No
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _application_context_processor(settings),
         add_request_context,
+        structlog.processors.format_exc_info,
         redact_sensitive_keys,
     ]
     renderer: Processor

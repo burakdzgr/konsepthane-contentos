@@ -7,8 +7,8 @@ Last updated: 2026-08-31
 PHASE 1 - Repository foundation started
 
 A minimal Python backend package, FastAPI application factory, typed settings,
-structured logging, and request-correlation foundation are implemented. No editorial
-business logic or infrastructure integration exists yet.
+structured logging, request-correlation, and API error-envelope foundation are
+implemented. No editorial business logic or infrastructure integration exists yet.
 
 ## Repository
 
@@ -51,6 +51,9 @@ main
 - structured JSON/runtime and local console logging configured through the app factory
 - deterministic sensitive-key redaction added for structured log fields
 - request IDs are validated or generated, context-bound, returned, access-logged, and cleared
+- stable JSON error envelope added with request_id and deterministic status-to-code mapping
+- validation errors return sanitized 422 details that never echo rejected input
+- unhandled exceptions return an opaque 500 envelope and are logged once with exception info
 
 ## Current documentation structure
 
@@ -68,7 +71,7 @@ main
 
 Repository foundation: complete
 
-Backend: application factory, typed settings, structured logging, and request context complete
+Backend: application factory, typed settings, structured logging, request context, and API error contract complete
 
 Frontend/control panel: not started
 
@@ -90,8 +93,8 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No database, Redis, Celery, error-envelope handling, health endpoint, admin application,
-Docker Compose, CI, pre-commit configuration, or editorial business logic exists yet.
+No database, Redis, Celery, health endpoint, admin application, Docker Compose, CI,
+pre-commit configuration, or editorial business logic exists yet.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;

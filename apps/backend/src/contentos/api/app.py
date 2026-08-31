@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
@@ -22,5 +23,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=redoc_url,
         openapi_url=openapi_url,
     )
+    install_error_handling(app)
+    # RequestContextMiddleware must stay outermost so the request ID context and
+    # X-Request-ID header also cover envelope responses for unhandled errors.
     app.add_middleware(RequestContextMiddleware)
     return app
