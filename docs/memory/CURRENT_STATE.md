@@ -4,17 +4,18 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-10 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-11 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-10 delivered the research/discovery design, Source Registry, shared URL
+Tasks 1-11 delivered the research/discovery design, Source Registry, shared URL
 canonicalization, DiscoveryItem admission, the safe FetchClient boundary,
 defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
 persistence. The immutable NormalizedDocument persistence boundary now exists;
-the provider-neutral raw-payload contract now supports bounded verified reads.
-No production payload backend, extraction, duplicate decisions, or orchestration exists.
+the provider-neutral raw-payload contract supports bounded verified reads, and
+the first executable HTML/text normalization pipeline is complete. No production
+payload backend, duplicate decisions, or orchestration exists.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -242,6 +243,27 @@ main
 - Task 10 added no schema, migration, dependency, FetchSnapshot, normalization, endpoint,
   Celery, frontend, production storage, or extraction changes
 - Task 10 verified: 456 backend tests and the full root quality gate passed
+- `contentos.normalization.pipeline` now executes the verified FetchSnapshot ->
+  RawPayloadReader -> extractor -> immutable NormalizedDocument path without committing
+- payload bytes are read only through `read_verified_payload`; hash/size violations raise
+  typed pipeline integrity errors and persist no misleading normalization record
+- frozen versioned extractor contracts added with stable `html-basic/1` and `text-basic/1`
+  identities; media selection supports text/html, application/xhtml+xml, and text/plain
+- the stdlib HTML parser provides bounded visible text, heading/section, safe-link,
+  explicit author/language/date, selected meta/OpenGraph, and summarized JSON-LD extraction
+  without scripts, resources, external entities, browser execution, or network access
+- charset policy is deterministic: response charset, then HTML meta charset for HTML,
+  then strict UTF-8; supported legacy codecs are allowlisted and machine locale is unused
+- clean text preserves case, Turkish characters, punctuation, and meaningful block breaks;
+  extraction never rewrites, summarizes, transliterates, or applies NLP
+- parser, clean-text, heading, section, link, anchor, metadata, and JSON-LD limits are
+  centralized; expected failures map to the existing Task 9 failure-code vocabulary
+- extraction success/failure persists only through `NormalizationService`, preserving
+  exact retry idempotency and typed conflicts for changed output under the same version
+- no parser dependency was added; `pyproject.toml` and `uv.lock` remain unchanged
+- synthetic end-to-end coverage proves Source -> DiscoveryItem -> stored payload ->
+  FetchSnapshot -> verified extraction -> NormalizedDocument provenance without network I/O
+- Task 11 verified: 487 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -272,8 +294,8 @@ Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain
 
 Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
-NormalizedDocument persistence plus provider-neutral raw-payload contracts complete;
-no production payload adapter or extraction pipeline exists
+NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
+bounded HTML/text normalization complete; no production payload adapter exists
 
 AI integration: not started
 
@@ -287,7 +309,7 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No extraction pipeline, production raw-payload backend, duplicate or research-evidence
+No production raw-payload backend, duplicate or research-evidence
 persistence, domain/queue tasks, Celery Beat, admin business screens, pre-commit
 configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
@@ -300,13 +322,13 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 11 (awaiting explicit authorization): implement the first executable,
-bounded **normalization/extractor pipeline**. It must load one eligible FetchSnapshot
-through an injected `RawPayloadReader`, verify exact bytes with `read_verified_payload`
-and the existing fetch-size limit, dispatch through a versioned extractor contract,
-then call `NormalizationService.record_success` or `record_failure` idempotently.
-Keep storage provider-neutral and worker-independent; add no production payload backend,
-Celery task, endpoint, duplicate engine, AI, or publishing integration.
+Phase 2 Task 12 (awaiting explicit authorization): add append-only
+`DuplicateDecision` persistence and a deterministic engine v1 over the available
+pre-AI signals: canonical/request/final URL equality, raw body hash, normalized
+content hash, bounded normalized-title similarity, and bounded lexical similarity.
+Persist the engine version, configured thresholds snapshot, computed signals, and
+matched normalized-document references for every decision. Add no embeddings,
+pgvector vector column, provider integration, AI, Celery task, endpoint, or UI.
 
 Before implementing the affected integrations, resolve:
 
