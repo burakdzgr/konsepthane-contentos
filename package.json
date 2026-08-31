@@ -1,9 +1,9 @@
 {
   "name": "konsepthane-contentos",
   "private": true,
-  "packageManager": "pnpm@12.1.0",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
     "node": "24.x",
-    "pnpm": "12.1.x"
+    "pnpm": "11.15.x"
   }
 }
