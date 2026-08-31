@@ -1,0 +1,1 @@
+"""ContentOS Celery worker foundation."""

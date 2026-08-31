@@ -5,10 +5,12 @@ description = "Internal editorial operating system backend for Konsepthane."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "alembic",
+  "celery[redis]",
   "fastapi",
   "pgvector",
   "psycopg[binary,pool]",
   "pydantic-settings",
+  "redis",
   "sqlalchemy",
   "structlog",
   "uvicorn[standard]",
@@ -45,3 +47,7 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true

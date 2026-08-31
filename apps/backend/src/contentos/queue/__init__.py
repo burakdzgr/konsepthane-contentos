@@ -1,0 +1,1 @@
+"""ContentOS queue foundation."""
