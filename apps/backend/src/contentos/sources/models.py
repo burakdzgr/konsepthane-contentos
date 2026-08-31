@@ -2,14 +2,11 @@
 
 import uuid
 from datetime import datetime
-from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -19,10 +16,11 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from contentos.db.base import Base
+from contentos.db.types import JSON_DICT
+from contentos.db.types import string_enum as _string_enum
 from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
@@ -31,22 +29,6 @@ from contentos.sources.enums import (
     SourceLifecycleState,
     TrustTier,
 )
-
-# JSONB on PostgreSQL; plain JSON elsewhere so unit tests can run on SQLite.
-JSON_DICT = JSON().with_variant(JSONB(), "postgresql")
-
-
-def _string_enum(enum_cls: type[StrEnum], constraint_name: str, length: int) -> Enum:
-    """VARCHAR-backed enum persisting member VALUES with a named CHECK constraint."""
-    return Enum(
-        enum_cls,
-        name=constraint_name,
-        native_enum=False,
-        create_constraint=True,
-        length=length,
-        values_callable=lambda cls: [member.value for member in cls],
-        validate_strings=True,
-    )
 
 
 class Source(Base):

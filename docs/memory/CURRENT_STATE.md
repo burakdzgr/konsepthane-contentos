@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-3 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-4 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -137,6 +137,18 @@ main
   fetch boundary
 - `contentos.sources.urls` registration identity semantics intentionally unchanged and
   kept independent of the shared canonicalizer
+- `contentos.discovery` package added: DiscoveryItem model, enums, repository, service
+- migration `0003_create_discovery_items` added; uniqueness on (source_id, url_hash)
+- discovery rows persist discovered_url, canonical_url, url_hash, and canonicalization
+  version 1 via `contentos.core.urls`; hints are stored as untrusted, never overwritten
+- manual admission requires an ACTIVE source (PAUSED/DISABLED/BLOCKED all refuse)
+- rediscovery is idempotent: returns the existing row and touches only `last_seen_at`;
+  lifecycle, rejection, fetch state, and hints are preserved; REJECTED is terminal
+- discovery lifecycle: DISCOVERED->ACCEPTED/REJECTED, ACCEPTED->FETCHED/FETCH_FAILED,
+  FETCH_FAILED->ACCEPTED only via explicit reasoned re-queue; no audit table by design
+- shared persistence helpers promoted to `contentos.db.types` (string_enum, JSON_DICT)
+- discovery verified against ephemeral pgvector PostgreSQL including a
+  downgrade-to-0002/re-upgrade cycle; sources rows and pgvector survived
 
 ## Current documentation structure
 
@@ -189,17 +201,18 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 4 (awaiting explicit authorization): implement the DiscoveryItem
-persistence foundation per the design (§2, order item 4) — `DiscoveryItem`
-model in a new `contentos/discovery` package with admission lifecycle
-(`DISCOVERED`/`ACCEPTED`/`REJECTED`/`FETCHED`/`FETCH_FAILED`), coded
-rejection reasons, `canonical_url` + `url_hash` +
-`url_canonicalization_version` produced via `contentos.core.urls`, uniqueness
-on (`source_id`, `url_hash`), migration `0003_create_discovery_items`, an
-admission service supporting the `manual` discovery method first (idempotent
-rediscovery), tests, and ephemeral-Postgres migration verification. No
-feed/sitemap parsing, fetching, or Celery in Task 4. The minimal source API
-endpoints remain deferred to the admin-visibility task.
+Phase 2 Task 5 (awaiting explicit authorization): per the design's
+implementation order, the next items are feed (RSS/Atom) then sitemap
+discovery strategies (order item 5) followed by the safe HTTP fetch client
+(order item 6). Both feed and sitemap discovery require HTTP access, so the
+recommended Task 5 is the **safe HTTP fetch client boundary** (design §8) as
+a pure, worker-independent component: scheme allowlist, robots.txt handling,
+identified user agent, per-host limits, bounded timeouts/body size/redirects,
+MIME allowlist, SSRF guard (resolve-then-validate every address, pinned-IP
+connection against DNS rebinding), retry classification — with unit tests and
+no Celery, no persistence, no FetchSnapshot model yet. Feed/sitemap discovery
+strategies then build on it. The minimal source API endpoints remain deferred
+to the admin-visibility task.
 
 Before implementing the affected integrations, resolve:
 
