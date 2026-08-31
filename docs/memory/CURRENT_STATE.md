@@ -4,16 +4,17 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-9 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-10 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-9 delivered the research/discovery design, Source Registry, shared URL
+Tasks 1-10 delivered the research/discovery design, Source Registry, shared URL
 canonicalization, DiscoveryItem admission, the safe FetchClient boundary,
 defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
 persistence. The immutable NormalizedDocument persistence boundary now exists;
-payload retrieval, extraction, duplicate decisions, and Phase 2 orchestration do not.
+the provider-neutral raw-payload contract now supports bounded verified reads.
+No production payload backend, extraction, duplicate decisions, or orchestration exists.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -225,6 +226,22 @@ main
   downgrade to 0004 with source/discovery/fetch/pgvector survival, and re-upgrade
 - Task 9 verified: 409 backend tests and the full root quality gate passed; no extraction,
   raw-payload reader/backend, duplicate engine, endpoint, worker task, or UI was added
+- `contentos.payloads` now defines frozen opaque `RawPayloadRef` and `StoredPayload`
+  value objects plus separate synchronous `RawPayloadStore`/`RawPayloadReader` protocols
+- payload writes are byte-exact and content-addressed: SHA-256 and size are computed before
+  storage, optional expected provenance is verified first, identical puts are idempotent,
+  and conflicting bytes cannot overwrite an existing reference
+- `read_verified_payload` requires a caller-supplied maximum, counts and hashes actual
+  streamed bytes, and returns bytes only after exact expected size and SHA-256 verification
+- stable payload errors cover invalid references/metadata, missing objects, size limits,
+  integrity failures, immutable conflicts, and sanitized backend failures
+- `InMemoryRawPayloadStore` is explicitly process-local DEV/TEST infrastructure only;
+  it uses deterministic `memory:sha256:<hex>` references and is not a production default
+- the existing `CONTENTOS_FETCH_MAX_BODY_BYTES` setting remains the composition-time read
+  limit, avoiding a second drifting configuration value; no configuration change was needed
+- Task 10 added no schema, migration, dependency, FetchSnapshot, normalization, endpoint,
+  Celery, frontend, production storage, or extraction changes
+- Task 10 verified: 456 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -255,7 +272,8 @@ Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain
 
 Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
-NormalizedDocument persistence contract complete; payload retrieval and extraction not started
+NormalizedDocument persistence plus provider-neutral raw-payload contracts complete;
+no production payload adapter or extraction pipeline exists
 
 AI integration: not started
 
@@ -269,7 +287,7 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No extraction pipeline, raw-payload reader/backend, duplicate or research-evidence
+No extraction pipeline, production raw-payload backend, duplicate or research-evidence
 persistence, domain/queue tasks, Celery Beat, admin business screens, pre-commit
 configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
@@ -282,12 +300,13 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 10 (awaiting explicit authorization): define the provider-neutral,
-immutable **raw-payload store/reader contract** only. Specify opaque reference,
-bounded byte streaming, expected SHA-256/size verification, typed not-found/integrity/
-transport errors, and test-double conformance. Do not choose R2/S3/filesystem/BYTEA,
-wire FetchClient, or implement extraction in that task; the contract must precede a
-production adapter and executable normalization pipeline.
+Phase 2 Task 11 (awaiting explicit authorization): implement the first executable,
+bounded **normalization/extractor pipeline**. It must load one eligible FetchSnapshot
+through an injected `RawPayloadReader`, verify exact bytes with `read_verified_payload`
+and the existing fetch-size limit, dispatch through a versioned extractor contract,
+then call `NormalizationService.record_success` or `record_failure` idempotently.
+Keep storage provider-neutral and worker-independent; add no production payload backend,
+Celery task, endpoint, duplicate engine, AI, or publishing integration.
 
 Before implementing the affected integrations, resolve:
 
