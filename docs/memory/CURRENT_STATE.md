@@ -4,7 +4,12 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 1 - Repository foundation started
+PHASE 1 - Foundation COMPLETE
+
+Phase 1 closed after full verification: the first real GitHub Actions run of
+`ci.yml` on `main` passed, both local quality gates (default and `-Compose`)
+pass, and a fresh temporary clone was bootstrapped and tested successfully.
+The next phase is Phase 2: research/discovery foundation (not started).
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -101,6 +106,10 @@ main
 - CI uses SHA-pinned first-party actions, frozen installs, contents:read only, and no secrets
 - CI integration job migrates and readiness-checks against pgvector PostgreSQL and Redis service containers
 - CI compose-smoke reuses scripts/smoke.ps1 via pwsh and always tears the stack down
+- first real GitHub Actions run of `ci` on `main` completed successfully
+- root README.md added documenting tools, bootstrap, stack, gates, migrations, CI, and boundaries
+- fresh-clone verification passed: bootstrap, backend tests, and admin tests in a temporary clone
+- Phase 1 foundation declared complete with no known blockers
 
 ## Current documentation structure
 
@@ -152,7 +161,8 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Await explicit authorization for the next atomic Phase 1 backend-foundation task.
+Phase 1 is complete. Await explicit authorization to start Phase 2
+(research/discovery foundation).
 
 Before implementing the affected integrations, resolve:
 
@@ -165,7 +175,7 @@ Before implementing the affected integrations, resolve:
 
 ## Known blockers
 
-No blocker currently prevents the next Phase 1 foundation task.
+No known blockers. Phase 1 closed cleanly.
 
 The integration and governance inputs listed above are intentionally unresolved
 and will block their respective implementation or launch work, not this phase.
