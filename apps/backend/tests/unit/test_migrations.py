@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0006"]
+    assert script.get_heads() == ["0007"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -66,6 +66,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0004").down_revision == "0003"
     assert script.get_revision("0005").down_revision == "0004"
     assert script.get_revision("0006").down_revision == "0005"
+    assert script.get_revision("0007").down_revision == "0006"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -96,6 +97,17 @@ def test_duplicate_decision_migration_contains_identity_and_append_only_protecti
     assert "CREATE TRIGGER trg_duplicate_decisions_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON duplicate_decisions" in sql
     assert "ON DELETE RESTRICT" in sql
+
+
+def test_research_evidence_migration_contains_provenance_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0006:0007")
+
+    assert "CREATE TABLE research_evidence" in sql
+    assert "uq_research_evidence_document_extractor_key" in sql
+    assert "ck_research_evidence_excerpt_consistency" in sql
+    assert "CREATE TRIGGER trg_research_evidence_append_only" in sql
+    assert "BEFORE UPDATE OR DELETE ON research_evidence" in sql
+    assert sql.count("ON DELETE RESTRICT") == 3
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

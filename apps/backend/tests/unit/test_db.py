@@ -91,6 +91,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.duplicates.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
     import contentos.normalization.models  # noqa: F401
+    import contentos.research.models  # noqa: F401
     import contentos.sources.models  # noqa: F401
 
     assert set(Base.metadata.tables) == {
@@ -100,6 +101,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "duplicate_decisions",
         "fetch_snapshots",
         "normalized_documents",
+        "research_evidence",
     }
 
 

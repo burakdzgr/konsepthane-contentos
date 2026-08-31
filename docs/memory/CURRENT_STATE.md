@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-12 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-13 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -299,6 +299,41 @@ main
 - Task 12 added no dependency, embedding/vector column, AI, Celery task, endpoint,
   frontend, evidence extraction, publishing integration, or production access
 - Task 12 verified: 512 backend tests and the full root quality gate passed
+- `contentos.research` now owns the immutable `ResearchEvidence` primitive with an
+  append/read-only repository, centralized validation, and the caller-committed
+  `record_evidence` service (started by Codex, audited and verified unchanged)
+- migration `0007_create_research_evidence` adds RESTRICT provenance FKs to
+  normalized_documents, fetch_snapshots, and sources, frozen enum CHECKs, evidence-key
+  format/version checks, excerpt-consistency checks, unique
+  (`normalized_document_id`, `extractor_name`, `extractor_version`, `evidence_key`)
+  identity, JSONB metadata bounds, useful indexes, and the append-only trigger
+- provenance is derived internally through NormalizedDocument -> FetchSnapshot ->
+  DiscoveryItem -> Source; callers cannot supply source_url/fetched_at/snapshot/source
+- excerpt contract frozen: offset version 1, zero-based start-inclusive end-exclusive
+  Python code-point offsets into exact clean_text; the persisted excerpt must equal the
+  exact slice with no fuzzy/whitespace/case fallback (Turkish/emoji/multiline verified)
+- VERIFIED means exact structural excerpt grounding only, never semantic entailment;
+  quotes and VERIFIED status require an excerpt; excerpt-less structured-metadata
+  evidence requires a bounded non-executable source_locator and stays UNVERIFIED
+- evidence identity is deterministic: evidence_key v1 = SHA-256 over the canonical
+  UTF-8 JSON tuple (type, statement, excerpt_start, excerpt_end); no timestamps or
+  randomness; exact retries return the stored row, changed content under the same
+  identity raises a typed conflict, and extractor versions coexist
+- copyright bounds centralized: excerpt <= 750 chars, statement <= 2000, bounded
+  extractor/locator/licensing/confidence fields, bounded metadata depth/items; full
+  clean_text and raw payloads are never copied into evidence
+- optional confidence is Decimal 0..1 with a mandatory recorded basis; licensing is
+  never inferred (operator note only); extraction methods are machine/human, no AI
+- SAVEPOINT-based race recovery keeps the caller's outer transaction intact on
+  uniqueness races; raw SQLAlchemy errors never escape the service contract
+- real ephemeral pgvector PostgreSQL verification passed: empty upgrade to `0007`,
+  full chain creation, derived provenance/evidence-key checks, exact-retry idempotency,
+  wrong-excerpt rejection, extractor v2 coexistence, catalog FK/check/unique/index/
+  trigger objects, raw UPDATE/DELETE rejection, downgrade to `0006` with prior data and
+  pgvector survival, and successful re-upgrade; temporary resources were removed
+- Task 13 added no AI, embeddings, Evidence Pack, Celery task, endpoint, frontend,
+  dependency, or lockfile change
+- Task 13 verified: 542 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -322,8 +357,8 @@ Backend: application factory, typed settings, structured logging, request contex
 Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
-immutable FetchSnapshot, immutable NormalizedDocument, and immutable
-DuplicateDecision tables complete; schema head `0006`
+immutable FetchSnapshot, immutable NormalizedDocument, immutable
+DuplicateDecision, and immutable ResearchEvidence tables complete; schema head `0007`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
@@ -331,7 +366,9 @@ Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchCl
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
 NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
 bounded HTML/text normalization plus deterministic local duplicate decisions complete;
-no production payload adapter or production inventory comparison exists
+the immutable ResearchEvidence primitive with exact excerpt provenance is complete;
+no production payload adapter, production inventory comparison, or automatic
+evidence extractor exists
 
 AI integration: not started
 
@@ -345,8 +382,8 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No production raw-payload backend, research-evidence persistence, domain/queue
-tasks, Celery Beat, admin business screens, pre-commit
+No production raw-payload backend, automatic evidence extraction, Evidence Pack,
+domain/queue tasks, Celery Beat, admin business screens, pre-commit
 configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
@@ -358,13 +395,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 13 (awaiting explicit authorization): add the immutable
-`ResearchEvidence` persistence and deterministic provenance/excerpt foundation.
-Each evidence record must trace to its NormalizedDocument, FetchSnapshot,
-DiscoveryItem, and Source; use validated excerpt boundaries against exact clean text,
-stable evidence/extractor identity, bounded structured claim/context fields, and the
-approved verification statuses. Keep extraction provider-neutral and synchronous;
-add no AI-generated claims, Celery task, endpoint, UI, Evidence Pack, or publishing.
+Phase 2 Task 14 (awaiting explicit authorization): implement the deterministic
+evidence extractor over NormalizedDocument — the concrete producer behind the
+design's future `extract_research_evidence` job. Extract only structurally
+certain items through the existing `ResearchEvidenceService`: structured-metadata
+evidence (publication date, author attribution) as excerpt-less records with
+bounded `source_locator` paths, and optionally exact bounded excerpt evidence
+for deterministic patterns. Use the existing `deterministic-evidence/1` extractor
+identity, MACHINE extraction, UNVERIFIED-by-default semantics, idempotent reruns
+via the frozen evidence key, and no AI, no Celery, no endpoints, no Evidence
+Pack. Celery orchestration of the discover -> fetch -> normalize -> duplicate ->
+extract chain follows as its own task once the extractor exists.
 
 Before implementing the affected integrations, resolve:
 
