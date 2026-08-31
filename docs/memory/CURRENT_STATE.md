@@ -8,8 +8,9 @@ PHASE 1 - Repository foundation started
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
-engine/session, Alembic migration, Redis/Celery queue, and health-endpoint
-foundation are implemented. No editorial business logic exists yet.
+engine/session, Alembic migration, Redis/Celery queue, health-endpoint, and
+local Docker/Compose foundation are implemented. No editorial business logic
+exists yet.
 
 ## Repository
 
@@ -71,6 +72,13 @@ main
 - readiness returns 200/ready or 503/not_ready with safe per-component states, outside the error envelope
 - readiness failures log one safe structured event (component, error class, request_id); no URL/secret leaks
 - health endpoints verified against ephemeral Dockerized pgvector PostgreSQL and Redis, then torn down
+- multi-stage backend Dockerfile added: uv frozen install, no dev deps, non-root `contentos` user
+- root `compose.yaml` added: postgres (pgvector), redis, one-shot migrate, api, worker
+- compose ordering: healthy postgres/redis -> migrate completes -> api/worker start
+- all Compose host ports bind 127.0.0.1 only; postgres uses a named volume; Redis stays volatile
+- `.env.example` documents safe development-only defaults with `CONTENTOS_` variables
+- `scripts/bootstrap.ps1` and `scripts/smoke.ps1` added for local setup and stack verification
+- full Compose stack verified (live/ready 200, pgvector, alembic head, worker connected), then removed
 
 ## Current documentation structure
 
@@ -110,9 +118,10 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No application tables, domain/queue tasks, Celery Beat, admin application, Docker Compose,
-CI, pre-commit configuration, or editorial business logic exists yet. Backend tests use
+No application tables, domain/queue tasks, Celery Beat, admin application, CI,
+pre-commit configuration, or editorial business logic exists yet. Backend tests use
 mocks and offline Alembic rendering; none require a running PostgreSQL or Redis.
+Docker Compose covers local development only; production deployment does not exist.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;

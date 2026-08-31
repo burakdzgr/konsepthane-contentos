@@ -1,0 +1,136 @@
+# ContentOS local development stack. Dedicated to ContentOS only; never point
+# any service at a Konsepthane database. Host ports bind to 127.0.0.1 only.
+
+name: contentos
+
+# Container-internal URLs are constructed here on purpose: host-oriented URLs
+# from .env (127.0.0.1 + host ports) must not leak into containers.
+x-backend-environment: &backend-environment
+  CONTENTOS_ENVIRONMENT: ${CONTENTOS_ENVIRONMENT:-local}
+  CONTENTOS_SERVICE_NAME: ${CONTENTOS_SERVICE_NAME:-Konsepthane ContentOS}
+  CONTENTOS_APPLICATION_VERSION: ${CONTENTOS_APPLICATION_VERSION:-0.1.0}
+  CONTENTOS_LOG_LEVEL: ${CONTENTOS_LOG_LEVEL:-INFO}
+  CONTENTOS_API_DOCS_ENABLED: ${CONTENTOS_API_DOCS_ENABLED:-true}
+  CONTENTOS_DATABASE_URL: postgresql+psycopg://${CONTENTOS_POSTGRES_USER:-contentos}:${CONTENTOS_POSTGRES_PASSWORD:-contentos-dev-password}@postgres:5432/${CONTENTOS_POSTGRES_DB:-contentos}
+  CONTENTOS_DB_POOL_SIZE: ${CONTENTOS_DB_POOL_SIZE:-5}
+  CONTENTOS_DB_POOL_TIMEOUT_SECONDS: ${CONTENTOS_DB_POOL_TIMEOUT_SECONDS:-30}
+  CONTENTOS_DB_CONNECT_TIMEOUT_SECONDS: ${CONTENTOS_DB_CONNECT_TIMEOUT_SECONDS:-10}
+  CONTENTOS_REDIS_BROKER_URL: redis://redis:6379/0
+  CONTENTOS_REDIS_RESULT_URL: redis://redis:6379/1
+  CONTENTOS_CELERY_DEFAULT_QUEUE: ${CONTENTOS_CELERY_DEFAULT_QUEUE:-contentos.default}
+  CONTENTOS_CELERY_TASK_ALWAYS_EAGER: "false"
+  CONTENTOS_CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP: ${CONTENTOS_CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP:-true}
+  CONTENTOS_CELERY_BROKER_CONNECTION_TIMEOUT_SECONDS: ${CONTENTOS_CELERY_BROKER_CONNECTION_TIMEOUT_SECONDS:-10}
+  CONTENTOS_CELERY_RESULT_EXPIRES_SECONDS: ${CONTENTOS_CELERY_RESULT_EXPIRES_SECONDS:-3600}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${CONTENTOS_POSTGRES_USER:-contentos}
+      POSTGRES_PASSWORD: ${CONTENTOS_POSTGRES_PASSWORD:-contentos-dev-password}
+      POSTGRES_DB: ${CONTENTOS_POSTGRES_DB:-contentos}
+    volumes:
+      - contentos-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${CONTENTOS_POSTGRES_HOST_PORT:-55432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${CONTENTOS_POSTGRES_USER:-contentos} -d ${CONTENTOS_POSTGRES_DB:-contentos}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [contentos]
+
+  redis:
+    image: redis:7-alpine
+    # No named volume on purpose: Redis carries only transient broker messages
+    # and short-expiry results, never durable workflow state.
+    ports:
+      - "127.0.0.1:${CONTENTOS_REDIS_HOST_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [contentos]
+
+  migrate:
+    build: apps/backend
+    image: contentos-backend:dev
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [contentos]
+
+  api:
+    image: contentos-backend:dev
+    command:
+      [
+        "uvicorn",
+        "contentos.api.app:create_app",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    environment: *backend-environment
+    ports:
+      - "127.0.0.1:${CONTENTOS_API_HOST_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Liveness on purpose: container health tracks the API process itself,
+      # while dependency readiness stays observable via /health/ready.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [contentos]
+
+  worker:
+    image: contentos-backend:dev
+    command:
+      [
+        "python",
+        "-m",
+        "contentos.worker.main",
+        "worker",
+        "--loglevel=INFO",
+        "-Q",
+        "${CONTENTOS_CELERY_DEFAULT_QUEUE:-contentos.default}",
+      ]
+    environment: *backend-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    networks: [contentos]
+
+networks:
+  contentos: {}
+
+volumes:
+  contentos-postgres-data: {}
