@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     celery_broker_connection_retry_on_startup: bool = True
     celery_broker_connection_timeout_seconds: int = Field(default=10, ge=1, le=60)
     celery_result_expires_seconds: int = Field(default=3600, ge=60, le=86400)
+    fetch_connect_timeout_seconds: int = Field(default=5, ge=1, le=60)
+    fetch_read_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    fetch_max_body_bytes: int = Field(default=5_242_880, ge=1024, le=52_428_800)
+    fetch_max_redirects: int = Field(default=5, ge=0, le=10)
+    fetch_min_host_interval_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
+    fetch_user_agent: str = Field(
+        default="Konsepthane-ContentOS/0.1 (+https://konsepthane.net)", min_length=1
+    )
 
     @field_validator("database_url")
     @classmethod

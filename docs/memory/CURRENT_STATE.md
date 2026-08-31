@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-4 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-5 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -149,6 +149,21 @@ main
 - shared persistence helpers promoted to `contentos.db.types` (string_enum, JSON_DICT)
 - discovery verified against ephemeral pgvector PostgreSQL including a
   downgrade-to-0002/re-upgrade cycle; sources rows and pgvector survived
+- `contentos.fetching` safe HTTP client added (httpx promoted to a runtime dependency)
+- SSRF guard: resolve-then-validate every address via stdlib ipaddress; one unsafe
+  answer fails the host closed; the SSRF gate runs before robots per hop
+- DNS rebinding protection: connections target the validated pinned IP while the Host
+  header and HTTPS `sni_hostname` extension keep TLS verification on the real hostname
+- redirects followed manually with full per-hop revalidation and a bounded hop limit
+- robots.txt evaluated per origin (4xx=allowed, else fail closed as retryable), fetched
+  through the same protections with a bounded TTL in-memory cache
+- streamed bodies with hard byte caps (Content-Length is advisory only), conservative
+  MIME allowlist, allowlisted response headers only, no cookies, trust_env off, TLS never
+  weakened, identified Konsepthane-ContentOS user agent
+- process-local per-host limiter (concurrency 1 + min interval); distributed enforcement
+  deferred to Celery orchestration
+- stable FetchOutcome/RetryClassification contract; typed fetch settings added
+- no FetchSnapshot persistence, no Celery, no feed/sitemap parsing yet
 
 ## Current documentation structure
 
@@ -201,18 +216,15 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 5 (awaiting explicit authorization): per the design's
-implementation order, the next items are feed (RSS/Atom) then sitemap
-discovery strategies (order item 5) followed by the safe HTTP fetch client
-(order item 6). Both feed and sitemap discovery require HTTP access, so the
-recommended Task 5 is the **safe HTTP fetch client boundary** (design §8) as
-a pure, worker-independent component: scheme allowlist, robots.txt handling,
-identified user agent, per-host limits, bounded timeouts/body size/redirects,
-MIME allowlist, SSRF guard (resolve-then-validate every address, pinned-IP
-connection against DNS rebinding), retry classification — with unit tests and
-no Celery, no persistence, no FetchSnapshot model yet. Feed/sitemap discovery
-strategies then build on it. The minimal source API endpoints remain deferred
-to the admin-visibility task.
+Phase 2 Task 6 (awaiting explicit authorization): with the fetch client in
+place, return to the design's order item 5 — the **feed (RSS/Atom) discovery
+strategy**: fetch a source's feed through `contentos.fetching.FetchClient`,
+parse entries defensively (stdlib XML with explicit hardening decisions
+recorded; no new dependency unless a concrete parsing-safety gap demands
+one), and admit entries through `DiscoveryService` (idempotent rediscovery,
+untrusted title/snippet hints, feed `discovery_method`). No sitemap strategy,
+no FetchSnapshot persistence, no Celery in Task 6. Sitemap follows as its own
+task, then FetchSnapshot persistence (order item 7).
 
 Before implementing the affected integrations, resolve:
 

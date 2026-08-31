@@ -209,6 +209,7 @@ dependencies = [
     { name = "alembic" },
     { name = "celery", extra = ["redis"] },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic-settings" },
@@ -220,7 +221,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -231,6 +231,7 @@ requires-dist = [
     { name = "alembic" },
     { name = "celery", extras = ["redis"] },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pgvector" },
     { name = "psycopg", extras = ["binary", "pool"] },
     { name = "pydantic-settings" },
@@ -242,7 +243,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },

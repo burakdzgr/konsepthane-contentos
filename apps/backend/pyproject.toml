@@ -7,6 +7,7 @@ dependencies = [
   "alembic",
   "celery[redis]",
   "fastapi",
+  "httpx",
   "pgvector",
   "psycopg[binary,pool]",
   "pydantic-settings",
@@ -18,7 +19,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "httpx",
   "mypy",
   "pytest",
   "ruff",
