@@ -6,7 +6,8 @@ Last updated: 2026-08-31
 
 PHASE 1 - Repository foundation started
 
-No application code has been implemented yet.
+A minimal Python backend package and FastAPI application factory are implemented.
+No editorial business logic or infrastructure integration exists yet.
 
 ## Repository
 
@@ -40,6 +41,9 @@ main
 - Python 3.12 runtime pin added
 - Node.js 24 LTS and pnpm 12.1.0 pins added
 - pnpm workspace prepared for `apps/admin` without scaffolding the application
+- Python `contentos` package created with a src layout and generated `uv.lock`
+- minimal `create_app()` FastAPI application factory implemented
+- initial backend unit test, Ruff, and mypy configuration validated
 
 ## Current documentation structure
 
@@ -55,9 +59,9 @@ main
 
 ## Current implementation status
 
-Repository foundation: first task complete
+Repository foundation: complete
 
-Backend: not started
+Backend: minimal package and FastAPI application factory complete
 
 Frontend/control panel: not started
 
@@ -79,8 +83,9 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No backend package, admin application, dependency installation, Docker Compose,
-CI, pre-commit configuration, or application code exists yet.
+No database, Redis, Celery, settings, logging, error handling, health endpoint,
+admin application, Docker Compose, CI, pre-commit configuration, or editorial
+business logic exists yet.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
@@ -88,8 +93,7 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Await explicit authorization for the next atomic Phase 1 task: creating the
-backend Python package manifest and package foundation.
+Await explicit authorization for the next atomic Phase 1 backend-foundation task.
 
 Before implementing the affected integrations, resolve:
 
