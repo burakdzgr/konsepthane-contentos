@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-13 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-14 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -334,6 +334,33 @@ main
 - Task 13 added no AI, embeddings, Evidence Pack, Celery task, endpoint, frontend,
   dependency, or lockfile change
 - Task 13 verified: 542 backend tests and the full root quality gate passed
+- `contentos.research.extractor` adds the deterministic v1 evidence extractor: the first
+  executable producer of ResearchEvidence, persisting only through ResearchEvidenceService
+- extractor identity is the existing `deterministic-evidence/1`; behavior changes require
+  a version bump; extraction method is MACHINE
+- v1 emits at most one author and one publication-date OBSERVATION per document, all
+  excerpt-less and UNVERIFIED, with no confidence score and no inferred licensing
+- v1 deliberately produces no exact-excerpt candidates (`MAX_EXACT_EXCERPT_CANDIDATES = 0`):
+  no metadata fact has a structurally certain clean-text span, and weak evidence is not
+  invented to raise counts
+- statements are frozen deterministic Turkish templates; no generative variation
+- structured-metadata allowlist is author/date only: `article:author`,
+  `article:published_time`, and the first JSON-LD `author`/`datePublished` string; unknown
+  keys (description/OpenGraph/canonical/tracking) are ignored, malformed shapes produce
+  warnings and skips rather than failures
+- dedupe priority is the normalized top-level field first (`normalized.author_name`,
+  `normalized.external_published_at`), then article meta, then JSON-LD; exactly one
+  evidence row per fact
+- source_locator values follow the Task 13 bounded non-executable path contract
+  (e.g. `structured_metadata.article:published_time`)
+- reruns are idempotent through the Task 13 evidence key: second runs create zero rows and
+  return the existing evidence; created/existing/skipped/warnings are reported in an
+  immutable extraction result; runs themselves are not persisted
+- extractor limits (candidates per document, metadata value length, JSON-LD summaries
+  inspected) are centralized and within Task 13 persistence limits
+- Task 14 added no migration (head stays `0007`), no AI, no Celery, no EvidencePack,
+  no endpoint, no dependency change
+- Task 14 verified: 565 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -366,9 +393,9 @@ Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchCl
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
 NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
 bounded HTML/text normalization plus deterministic local duplicate decisions complete;
-the immutable ResearchEvidence primitive with exact excerpt provenance is complete;
-no production payload adapter, production inventory comparison, or automatic
-evidence extractor exists
+the immutable ResearchEvidence primitive with exact excerpt provenance and the
+deterministic v1 evidence extractor (author/date metadata evidence) are complete;
+no production payload adapter or production inventory comparison exists
 
 AI integration: not started
 
@@ -382,9 +409,9 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No production raw-payload backend, automatic evidence extraction, Evidence Pack,
-domain/queue tasks, Celery Beat, admin business screens, pre-commit
-configuration, or editorial business logic exists yet. Backend
+No production raw-payload backend, Evidence Pack, domain/queue tasks, Celery Beat,
+admin business screens, pre-commit configuration, or editorial business logic
+exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -395,17 +422,19 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 14 (awaiting explicit authorization): implement the deterministic
-evidence extractor over NormalizedDocument — the concrete producer behind the
-design's future `extract_research_evidence` job. Extract only structurally
-certain items through the existing `ResearchEvidenceService`: structured-metadata
-evidence (publication date, author attribution) as excerpt-less records with
-bounded `source_locator` paths, and optionally exact bounded excerpt evidence
-for deterministic patterns. Use the existing `deterministic-evidence/1` extractor
-identity, MACHINE extraction, UNVERIFIED-by-default semantics, idempotent reruns
-via the frozen evidence key, and no AI, no Celery, no endpoints, no Evidence
-Pack. Celery orchestration of the discover -> fetch -> normalize -> duplicate ->
-extract chain follows as its own task once the extractor exists.
+Phase 2 Task 15 (awaiting explicit authorization): Celery orchestration of the
+research pipeline per the design's job plan (PHASE2_RESEARCH_DISCOVERY.md
+section 13) — idempotent domain jobs `discover_source`, `fetch_discovery_item`,
+`normalize_fetch`, `evaluate_duplicate`, and `extract_research_evidence` on the
+existing Celery foundation. PostgreSQL stays authoritative (queue completion
+never advances domain state), database uniqueness absorbs at-least-once
+delivery, retry classification follows the fetch boundary's retryable/terminal
+contract, and each job schedules the next only after its database write
+commits. No Beat scheduling, no new endpoints/UI, no AI, no Evidence Pack.
+Rationale: every pipeline stage now has an executable producer, so orchestration
+wires existing verified capabilities; the vector-similarity duplicate signal
+(design order item 11) remains a later, independent task, and Evidence Pack is
+explicitly outside Phase 2.
 
 Before implementing the affected integrations, resolve:
 
