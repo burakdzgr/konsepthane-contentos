@@ -1,8 +1,8 @@
 """Fetch transport contracts: outcomes, retry classification, results.
 
-These are in-memory transport results only; FetchSnapshot persistence is a
-separate later task. Raw httpx/socket exceptions are never part of this
-contract.
+These are in-memory transport results. FetchSnapshot persistence maps this
+contract in a separate module. Raw httpx/socket exceptions are never part of
+this contract.
 """
 
 from dataclasses import dataclass, field

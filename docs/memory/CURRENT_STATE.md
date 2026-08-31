@@ -4,15 +4,15 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-7 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-8 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-7 delivered the research/discovery design, Source Registry, shared URL
-canonicalization, DiscoveryItem admission, the safe FetchClient boundary, and
-defensive RSS/Atom plus sitemap discovery. FetchSnapshot persistence and Phase 2
-orchestration do not exist yet.
+Tasks 1-8 delivered the research/discovery design, Source Registry, shared URL
+canonicalization, DiscoveryItem admission, the safe FetchClient boundary,
+defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
+persistence. Normalization and Phase 2 orchestration do not exist yet.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -186,6 +186,26 @@ main
 - explicit gzip sitemap representations are unsupported; no XML/compression dependency was added
 - sitemap candidates use `DiscoveryMethod.SITEMAP` and shared idempotent DiscoveryService admission
 - Task 7 verified offline: 352 backend tests and the full root quality gate passed
+- `contentos.fetching` now owns immutable `FetchSnapshot` persistence via model,
+  append/read-only repository, and transactional recording service
+- migration `0004_create_fetch_snapshots` adds frozen FetchOutcome,
+  RetryClassification, and RobotsDecision CHECK values plus useful history/outcome indexes
+- snapshot rows retain requested/final URLs, status/MIME, fetched time, safe selected
+  headers, redirect chain, duration, retry metadata, stable failure detail, and created time
+- exact FetchResult body bytes are SHA-256 hashed with byte size; PostgreSQL stores only
+  an opaque caller-supplied `raw_payload_ref`, never response bodies
+- any present body, including an empty successful body, requires a non-empty payload reference;
+  body-less failures store null hash, size, and payload reference
+- recording locks an ACCEPTED DiscoveryItem and atomically maps SUCCESS to FETCHED or any
+  non-success outcome to FETCH_FAILED; retries require the existing explicit requeue transition
+- multiple attempts per DiscoveryItem are retained in deterministic history order
+- FetchSnapshot uses `ON DELETE RESTRICT`; a PostgreSQL trigger rejects UPDATE and DELETE,
+  while repository/service APIs expose no mutation or deletion path
+- real ephemeral pgvector PostgreSQL verification passed: empty upgrade to 0004, metadata and
+  service flows, append-only trigger, downgrade to 0003, survival checks, and re-upgrade
+- no payload-store backend, Celery orchestration, feed/sitemap retrofit, normalization,
+  endpoint, or admin work was added
+- Task 8 verified: 380 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -208,12 +228,14 @@ Backend: application factory, typed settings, structured logging, request contex
 
 Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
-Database: engine/session, Alembic + pgvector, Source Registry, and DiscoveryItem tables complete; schema head `0003`
+Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem, and
+immutable FetchSnapshot tables complete; schema head `0004`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
-Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient, and
-bounded sitemap-index traversal complete; FetchSnapshot persistence not started
+Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
+bounded sitemap-index traversal, and immutable FetchSnapshot persistence complete;
+normalization not started
 
 AI integration: not started
 
@@ -227,12 +249,12 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No FetchSnapshot, normalized-document, duplicate, or research-evidence persistence;
-domain/queue tasks; Celery Beat; admin business screens; pre-commit configuration; or
-editorial business logic exists yet. Backend unit tests remain offline and require no
-running PostgreSQL or Redis. Docker Compose covers local development only; production
-deployment does not exist. The admin app has no login, authentication, users, roles,
-or RBAC by design.
+No normalized-document, duplicate, or research-evidence persistence; domain/queue
+tasks; Celery Beat; admin business screens; pre-commit configuration; or editorial
+business logic exists yet. No production raw-payload storage backend exists. Backend
+unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
+covers local development only; production deployment does not exist. The admin app
+has no login, authentication, users, roles, or RBAC by design.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
@@ -240,10 +262,12 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 8 (awaiting explicit authorization): implement immutable,
-append-only **FetchSnapshot persistence** for accepted DiscoveryItems using the
-existing FetchClient result contract. Include migration/model/repository/service
-tests, but do not add Celery orchestration, normalization, or crawler scheduling.
+Phase 2 Task 9 (awaiting explicit authorization): implement the immutable
+**NormalizedDocument persistence foundation** only: migration `0005`, model,
+status/failure and extractor-provenance contracts, append/read repository, and
+transactional recording tests keyed by (`fetch_snapshot_id`, `extractor_name`,
+`extractor_version`). Do not implement extraction yet; raw-payload retrieval has
+no backend/reader contract, so an executable normalization pipeline would be premature.
 
 Before implementing the affected integrations, resolve:
 

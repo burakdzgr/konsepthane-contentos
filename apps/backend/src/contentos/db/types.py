@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # JSONB on PostgreSQL; plain JSON elsewhere so unit tests can run on SQLite.
 JSON_DICT = JSON().with_variant(JSONB(), "postgresql")
+JSON_LIST = JSON().with_variant(JSONB(), "postgresql")
 
 
 def string_enum(enum_cls: type[StrEnum], constraint_name: str, length: int) -> Enum:
