@@ -1,0 +1,224 @@
+# ContentOS CI: mirrors the local quality gate (scripts/check.ps1).
+# No secrets, no deployment, no external systems; frozen installs only.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.7"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+jobs:
+  backend-quality:
+    name: Backend quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Python 3.12
+        # actions/setup-python v5.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: "3.12"
+      - name: Cache uv downloads
+        # actions/cache v4.2.0
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('apps/backend/uv.lock') }}
+      - name: Install uv
+        run: python -m pip install "uv==${UV_VERSION}"
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-groups --frozen
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: mypy
+        run: uv run mypy src
+      - name: pytest
+        run: uv run pytest
+
+  admin-quality:
+    name: Admin quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Enable corepack
+        run: corepack enable
+      - name: Set up Node 24 with pnpm cache
+        # actions/setup-node v4.1.0
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Verify pinned pnpm version
+        run: |
+          version="$(corepack pnpm --version)"
+          echo "pnpm ${version}"
+          test "${version}" = "11.15.1"
+      - name: Install dependencies (frozen)
+        run: corepack pnpm install --frozen-lockfile
+      - name: Format check
+        run: corepack pnpm --filter admin format:check
+      - name: Lint
+        run: corepack pnpm --filter admin lint
+      - name: Typecheck
+        run: corepack pnpm --filter admin typecheck
+      - name: Test
+        run: corepack pnpm --filter admin test
+      - name: Build
+        run: corepack pnpm --filter admin build
+
+  infrastructure-integration:
+    name: Migration and infrastructure integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: contentos_ci
+          POSTGRES_PASSWORD: contentos-ci-password
+          POSTGRES_DB: contentos_ci
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U contentos_ci -d contentos_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      # Temporary CI-only credentials for throwaway service containers.
+      CONTENTOS_ENVIRONMENT: test
+      CONTENTOS_DATABASE_URL: postgresql+psycopg://contentos_ci:contentos-ci-password@localhost:55432/contentos_ci
+      CONTENTOS_REDIS_BROKER_URL: redis://localhost:56379/0
+      CONTENTOS_REDIS_RESULT_URL: redis://localhost:56379/1
+      PGPASSWORD: contentos-ci-password
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Python 3.12
+        # actions/setup-python v5.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: "3.12"
+      - name: Cache uv downloads
+        # actions/cache v4.2.0
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('apps/backend/uv.lock') }}
+      - name: Install uv
+        run: python -m pip install "uv==${UV_VERSION}"
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-groups --frozen
+      - name: Run Alembic migrations
+        run: uv run alembic upgrade head
+      - name: Verify pgvector extension and migration head
+        run: |
+          extension="$(psql -h localhost -p 55432 -U contentos_ci -d contentos_ci -t -A -c "SELECT extname FROM pg_extension WHERE extname='vector';")"
+          echo "extension=${extension}"
+          test "${extension}" = "vector"
+          current="$(psql -h localhost -p 55432 -U contentos_ci -d contentos_ci -t -A -c "SELECT version_num FROM alembic_version;")"
+          head="$(uv run alembic heads | awk '{print $1}')"
+          echo "current=${current} head=${head}"
+          test -n "${current}"
+          test "${current}" = "${head}"
+      - name: Verify Redis responds
+        run: uv run python -c "import redis; assert redis.Redis.from_url('redis://localhost:56379/0').ping()"
+      - name: Verify API liveness and readiness against real infrastructure
+        run: |
+          uv run python - <<'EOF'
+          import asyncio
+
+          import httpx
+
+          from contentos.api.app import create_app
+          from contentos.core.config import Settings
+
+          app = create_app(settings=Settings())
+
+
+          async def main() -> None:
+              transport = httpx.ASGITransport(app=app)
+              async with httpx.AsyncClient(transport=transport, base_url="http://ci") as client:
+                  live = await client.get("/health/live")
+                  ready = await client.get("/health/ready")
+              assert live.status_code == 200, live.status_code
+              assert ready.status_code == 200, ready.text
+              print(ready.json())
+
+
+          asyncio.run(main())
+          EOF
+
+  compose-smoke:
+    name: Compose smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [backend-quality, admin-quality]
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Validate compose configuration
+        run: docker compose config --quiet
+      - name: Build images
+        run: docker compose build
+      - name: Start stack
+        run: docker compose up -d
+      - name: Wait for service health
+        run: |
+          ok=false
+          for attempt in $(seq 1 60); do
+            ok=true
+            for service in postgres redis api admin; do
+              state="$(docker inspect --format '{{.State.Health.Status}}' "contentos-${service}-1" 2>/dev/null || echo missing)"
+              if [ "${state}" != "healthy" ]; then ok=false; fi
+            done
+            if [ "${ok}" = "true" ]; then break; fi
+            sleep 2
+          done
+          docker compose ps
+          [ "${ok}" = "true" ]
+      - name: Run smoke checks
+        run: pwsh -File scripts/smoke.ps1
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v

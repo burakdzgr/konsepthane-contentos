@@ -97,6 +97,10 @@ main
 - `scripts/check.ps1` added as the canonical non-destructive local quality gate
 - default gate runs toolchain, backend (uv frozen), admin (pnpm frozen), and repository checks
 - `-Compose` additionally builds/starts the stack, runs smoke.ps1, and always tears down in finally
+- GitHub Actions CI added (`.github/workflows/ci.yml`): backend, admin, infrastructure, compose-smoke jobs
+- CI uses SHA-pinned first-party actions, frozen installs, contents:read only, and no secrets
+- CI integration job migrates and readiness-checks against pgvector PostgreSQL and Redis service containers
+- CI compose-smoke reuses scripts/smoke.ps1 via pwsh and always tears the stack down
 
 ## Current documentation structure
 
@@ -136,7 +140,7 @@ Analytics integration: not started
 
 Phase 1 implementation is authorized only one task at a time.
 
-No application tables, domain/queue tasks, Celery Beat, admin business screens, CI,
+No application tables, domain/queue tasks, Celery Beat, admin business screens,
 pre-commit configuration, or editorial business logic exists yet. Backend tests use
 mocks and offline Alembic rendering; none require a running PostgreSQL or Redis.
 Docker Compose covers local development only; production deployment does not exist.
