@@ -4,16 +4,16 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-5 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-6 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Task 1 delivered the research/discovery design (`docs/PHASE2_RESEARCH_DISCOVERY.md`,
-ADRs 0005-0007). Task 2 implemented the Source Registry persistence foundation:
-`contentos.sources` (enums, models, repository, service), migration `0002`,
-idempotent registration, and audited lifecycle transitions. No HTTP endpoints,
-admin UI, discovery, crawler, or Celery work exists for Phase 2 yet.
+Tasks 1-5 delivered the research/discovery design, Source Registry, shared URL
+canonicalization, DiscoveryItem admission, and the safe FetchClient boundary.
+Task 6 adds defensive RSS/Atom feed discovery through FetchClient and
+DiscoveryService. Sitemap discovery, FetchSnapshot persistence, and Phase 2
+orchestration do not exist yet.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -163,7 +163,17 @@ main
 - process-local per-host limiter (concurrency 1 + min interval); distributed enforcement
   deferred to Celery orchestration
 - stable FetchOutcome/RetryClassification contract; typed fetch settings added
-- no FetchSnapshot persistence, no Celery, no feed/sitemap parsing yet
+- no FetchSnapshot persistence, Phase 2 Celery orchestration, or sitemap parsing yet
+- `contentos.discovery.feed` added as the first automated discovery strategy
+- only ACTIVE `rss_feed` sources with `discovery_strategy=feed` are eligible
+- feed retrieval uses the existing safe FetchClient; retryable and terminal outcomes remain distinct
+- stdlib ElementTree is used after rejecting DTD/entity declarations, with byte, element,
+  entry, URL, title, and snippet limits; no XML dependency was added
+- RSS 2.x and namespace-aware Atom entries resolve against the final fetched feed URL
+- feed hints are markup-stripped/truncated and dates become timezone-aware UTC or null
+- feed candidates use `DiscoveryMethod.FEED` and the shared DiscoveryService admission path
+- repeated feeds and canonical URL variants are idempotent; lifecycle and stored hints are preserved
+- Task 6 verified offline: 302 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -186,11 +196,11 @@ Backend: application factory, typed settings, structured logging, request contex
 
 Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
-Database: engine/session foundation and Alembic + pgvector migration infrastructure complete; no application models or tables yet
+Database: engine/session, Alembic + pgvector, Source Registry, and DiscoveryItem tables complete; schema head `0003`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
-Crawler: not started
+Research discovery: Source Registry, manual/feed admission, and safe FetchClient complete; sitemap not started
 
 AI integration: not started
 
@@ -202,13 +212,14 @@ Analytics integration: not started
 
 ## Important current constraint
 
-Phase 1 implementation is authorized only one task at a time.
+Phase 2 implementation is authorized only one atomic task at a time.
 
-No application tables, domain/queue tasks, Celery Beat, admin business screens,
-pre-commit configuration, or editorial business logic exists yet. Backend tests use
-mocks and offline Alembic rendering; none require a running PostgreSQL or Redis.
-Docker Compose covers local development only; production deployment does not exist.
-The admin app has no login, authentication, users, roles, or RBAC by design.
+No FetchSnapshot, normalized-document, duplicate, or research-evidence persistence;
+domain/queue tasks; Celery Beat; admin business screens; pre-commit configuration; or
+editorial business logic exists yet. Backend unit tests remain offline and require no
+running PostgreSQL or Redis. Docker Compose covers local development only; production
+deployment does not exist. The admin app has no login, authentication, users, roles,
+or RBAC by design.
 
 ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
@@ -216,15 +227,10 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 6 (awaiting explicit authorization): with the fetch client in
-place, return to the design's order item 5 — the **feed (RSS/Atom) discovery
-strategy**: fetch a source's feed through `contentos.fetching.FetchClient`,
-parse entries defensively (stdlib XML with explicit hardening decisions
-recorded; no new dependency unless a concrete parsing-safety gap demands
-one), and admit entries through `DiscoveryService` (idempotent rediscovery,
-untrusted title/snippet hints, feed `discovery_method`). No sitemap strategy,
-no FetchSnapshot persistence, no Celery in Task 6. Sitemap follows as its own
-task, then FetchSnapshot persistence (order item 7).
+Phase 2 Task 7 (awaiting explicit authorization): implement the **sitemap
+discovery strategy** through the existing FetchClient and DiscoveryService
+boundaries, with defensive XML parsing and sitemap-specific limits. Do not add
+FetchSnapshot persistence or Celery in Task 7; FetchSnapshot persistence follows.
 
 Before implementing the affected integrations, resolve:
 

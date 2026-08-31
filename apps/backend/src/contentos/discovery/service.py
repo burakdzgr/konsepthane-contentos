@@ -1,6 +1,7 @@
 """Discovery service: manual admission, idempotent rediscovery, lifecycle."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,7 +16,8 @@ from contentos.discovery.enums import (
 )
 from contentos.discovery.models import DiscoveryItem
 from contentos.discovery.repository import DiscoveryItemRepository
-from contentos.sources.enums import SourceLifecycleState
+from contentos.sources.enums import DiscoveryStrategy, SourceKind, SourceLifecycleState
+from contentos.sources.models import Source
 from contentos.sources.repository import SourceRepository
 from contentos.sources.service import SourceNotFoundError
 
@@ -40,12 +42,20 @@ class DiscoveryAdmissionConflictError(DiscoveryError):
     """Admission conflicted with existing data and could not be resolved."""
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryAdmission:
+    """The item returned by admission and whether this call created it."""
+
+    item: DiscoveryItem
+    is_new: bool
+
+
 class DiscoveryService:
     """Admission and lifecycle for discovery items.
 
     Flushes but never commits; callers own the transaction. Uniqueness-race
-    recovery in ``discover_manual`` rolls back the failed flush before
-    re-reading the winning row (same convention as source registration).
+    recovery rolls back the failed flush before re-reading the winning row
+    (same convention as source registration).
     """
 
     def __init__(self, session: Session) -> None:
@@ -71,15 +81,75 @@ class DiscoveryService:
         rejection state, fetch state, and stored hints are never touched, and
         a rejected item is never resurrected. No network I/O happens here.
         """
+        source = self._require_active_source(source_id)
+        return self._admit(
+            source,
+            url,
+            method=DiscoveryMethod.MANUAL,
+            title_hint=title_hint,
+            snippet_hint=snippet_hint,
+            locale=locale,
+            external_published_at=external_published_at,
+            metadata=metadata,
+        ).item
+
+    def require_feed_source(self, source_id: uuid.UUID) -> Source:
+        """Return an active RSS-feed source configured for feed discovery."""
+        source = self._require_active_source(source_id)
+        if (
+            source.kind is not SourceKind.RSS_FEED
+            or source.discovery_strategy is not DiscoveryStrategy.FEED
+        ):
+            raise SourceNotEligibleForDiscoveryError(
+                f"source '{source.slug}' is not an RSS feed configured for feed discovery"
+            )
+        return source
+
+    def discover_feed(
+        self,
+        source_id: uuid.UUID,
+        url: str,
+        *,
+        title_hint: str | None = None,
+        snippet_hint: str | None = None,
+        external_published_at: datetime | None = None,
+    ) -> DiscoveryAdmission:
+        """Idempotently admit one untrusted candidate from an RSS/Atom feed."""
+        source = self.require_feed_source(source_id)
+        return self._admit(
+            source,
+            url,
+            method=DiscoveryMethod.FEED,
+            title_hint=title_hint,
+            snippet_hint=snippet_hint,
+            locale=None,
+            external_published_at=external_published_at,
+            metadata=None,
+        )
+
+    def _require_active_source(self, source_id: uuid.UUID) -> Source:
         source = self._sources.get_by_id(source_id)
         if source is None:
             raise SourceNotFoundError(f"no source with id {source_id}")
-        # Design rule: only ACTIVE sources are eligible for discovery; manual
-        # admission gets no exemption for PAUSED/DISABLED/BLOCKED.
         if source.lifecycle_state is not SourceLifecycleState.ACTIVE:
             raise SourceNotEligibleForDiscoveryError(
                 f"source '{source.slug}' is {source.lifecycle_state.value}, not active"
             )
+        return source
+
+    def _admit(
+        self,
+        source: Source,
+        url: str,
+        *,
+        method: DiscoveryMethod,
+        title_hint: str | None,
+        snippet_hint: str | None,
+        locale: str | None,
+        external_published_at: datetime | None,
+        metadata: dict[str, Any] | None,
+    ) -> DiscoveryAdmission:
+        """Shared canonical admission primitive; public methods enforce method rules."""
 
         canonical = canonicalize_url(url)
         url_hash = canonical_url_hash(canonical.url)
@@ -88,7 +158,7 @@ class DiscoveryService:
         if existing is not None:
             existing.last_seen_at = datetime.now(UTC)
             self._session.flush()
-            return existing
+            return DiscoveryAdmission(item=existing, is_new=False)
 
         item = DiscoveryItem(
             source_id=source.id,
@@ -96,7 +166,7 @@ class DiscoveryService:
             canonical_url=canonical.url,
             url_hash=url_hash,
             url_canonicalization_version=canonical.version,
-            discovery_method=DiscoveryMethod.MANUAL,
+            discovery_method=method,
             title_hint=title_hint,
             snippet_hint=snippet_hint,
             locale=locale or source.locale,
@@ -104,16 +174,16 @@ class DiscoveryService:
             metadata_json=metadata or {},
         )
         try:
-            return self._items.add(item)
+            return DiscoveryAdmission(item=self._items.add(item), is_new=True)
         except IntegrityError:
             # Uniqueness race: another writer admitted the same canonical URL
             # first. The database is the final authority.
             self._session.rollback()
-            winner = self._items.get_by_source_and_hash(source_id, url_hash)
+            winner = self._items.get_by_source_and_hash(source.id, url_hash)
             if winner is not None:
                 winner.last_seen_at = datetime.now(UTC)
                 self._session.flush()
-                return winner
+                return DiscoveryAdmission(item=winner, is_new=False)
             raise DiscoveryAdmissionConflictError(
                 "discovery admission conflicts with existing data"
             ) from None

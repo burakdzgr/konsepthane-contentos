@@ -16,7 +16,7 @@ class DiscoveryLifecycleState(StrEnum):
 class DiscoveryMethod(StrEnum):
     """How a candidate was found.
 
-    Only MANUAL is implemented; the rest are persistence placeholders for the
+    MANUAL and FEED are implemented; the rest are persistence placeholders for
     strategies planned by the Phase 2 design.
     """
 
