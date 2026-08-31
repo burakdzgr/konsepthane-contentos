@@ -53,7 +53,11 @@ describe("parseServerEnv", () => {
 
 describe("internal API URL privacy", () => {
   it("is never represented as NEXT_PUBLIC configuration", () => {
-    const inspectedSources = ["../../src/lib/env.ts", "../../next.config.ts"];
+    const inspectedSources = [
+      "../../src/lib/env.ts",
+      "../../src/lib/contentos-api.ts",
+      "../../next.config.ts",
+    ];
 
     for (const relativePath of inspectedSources) {
       const source = readFileSync(

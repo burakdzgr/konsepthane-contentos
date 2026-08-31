@@ -84,6 +84,10 @@ main
 - Zod server-only env module added; internal API URL never exposed via public build-time variables
 - admin is noindex/nofollow with security headers; truthful static foundation page and safe error boundary
 - pnpm build-script allowlist (esbuild, unrs-resolver) recorded in pnpm-workspace.yaml
+- server-only Zod-validated backend client added; browser never calls FastAPI or sees its URL
+- root page replaced with a truthful, per-request Foundation Status page (live/ready via server)
+- unreachable/malformed backend renders Unavailable/Unknown; component failures are never invented
+- admin-process-only `GET /api/health` added, independent of FastAPI/Postgres/Redis
 
 ## Current documentation structure
 
@@ -103,7 +107,7 @@ Repository foundation: complete
 
 Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, and liveness/readiness endpoints complete
 
-Frontend/control panel: Next.js foundation scaffolded; no business screens or live backend status view yet
+Frontend/control panel: Next.js foundation with server-side backend client and truthful Foundation Status page; no business screens yet
 
 Database: engine/session foundation and Alembic + pgvector migration infrastructure complete; no application models or tables yet
 

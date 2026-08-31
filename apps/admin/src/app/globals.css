@@ -72,6 +72,41 @@ body {
   font-size: 0.9375rem;
 }
 
+.status-list,
+.status-meta {
+  margin: 1.25rem 0 0;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.625rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.status-row dt {
+  color: var(--color-text-muted);
+}
+
+.status-row dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.status-value[data-tone="ok"] {
+  color: #1a7f37;
+}
+
+.status-value[data-tone="bad"] {
+  color: #b42318;
+}
+
+.status-value[data-tone="unknown"] {
+  color: var(--color-text-muted);
+}
+
 button {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
