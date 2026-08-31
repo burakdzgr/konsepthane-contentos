@@ -4,14 +4,16 @@ Last updated: 2026-08-31
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - STARTED (Task 1 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-2 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Phase 2 Task 1 delivered the research/discovery domain design only:
-`docs/PHASE2_RESEARCH_DISCOVERY.md` plus ADRs 0005-0007. No Phase 2 runtime
-code, models, migrations, endpoints, tasks, or dependencies exist yet.
+Task 1 delivered the research/discovery design (`docs/PHASE2_RESEARCH_DISCOVERY.md`,
+ADRs 0005-0007). Task 2 implemented the Source Registry persistence foundation:
+`contentos.sources` (enums, models, repository, service), migration `0002`,
+idempotent registration, and audited lifecycle transitions. No HTTP endpoints,
+admin UI, discovery, crawler, or Celery work exists for Phase 2 yet.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -119,6 +121,14 @@ main
 - ADR 0007 accepted: research evidence carries non-bypassable provenance
 - crawler safety boundary, idempotency keys, module dependency model, future table and
   Celery job plans, and the atomic Phase 2 implementation order are documented
+- `contentos.sources` package added: string-valued enums, Source + SourceLifecycleEvent models
+- migration `0002_create_sources` added (uniqueness on slug and kind+base_url; safe downgrade)
+- `register_source` is idempotent with typed conflicts and DB-race recovery; no silent overwrite
+- lifecycle transitions validated per design (BLOCKED exits only to ACTIVE) with append-only
+  audit events ordered by a monotonic bigint identity
+- source base-URL normalization implemented for registration identity only (no network I/O)
+- Source Registry verified against ephemeral pgvector PostgreSQL including a
+  downgrade-to-0001/re-upgrade cycle; pgvector survived throughout
 
 ## Current documentation structure
 
@@ -171,13 +181,16 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 2 (awaiting explicit authorization): implement the Source
-Registry persistence foundation only — `Source` model + kind/lifecycle/trust
-enums in a new `contentos/sources` package, Alembic migration
-`0002_create_sources`, uniqueness on `slug` and (`kind`, `base_url`), a
-repository/service with idempotent registration and audited lifecycle
-transitions, unit tests plus ephemeral-Postgres migration verification. No
-API endpoints, admin UI, Celery, or discovery logic in Task 2.
+Phase 2 Task 3 (awaiting explicit authorization): implement the shared URL
+canonicalization boundary from the design (§9) — a pure, network-free module
+(lowercase scheme/host, fragment stripping, tracking-parameter removal,
+port/trailing-slash normalization, sorted query parameters, versioned
+behavior) with exhaustive unit tests. No models, migrations, or fetching.
+Rationale: the design's implementation order places canonicalization before
+DiscoveryItem persistence because discovery rows store `canonical_url` and
+`url_hash`. The minimal source listing/registration API endpoints (design
+order item 2 remainder) are deferred to the admin-visibility task; the
+lifecycle service half of that item shipped in Task 2.
 
 Before implementing the affected integrations, resolve:
 

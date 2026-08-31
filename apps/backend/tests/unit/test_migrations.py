@@ -52,14 +52,17 @@ def test_alembic_config_points_at_migrations_directory() -> None:
     assert Path(script.dir).resolve() == MIGRATIONS_DIR.resolve()
 
 
-def test_initial_revision_has_expected_metadata() -> None:
+def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0001"]
+    assert script.get_heads() == ["0002"]
 
-    revision = script.get_revision("0001")
-    assert revision.down_revision is None
-    assert "pgvector" in (revision.doc or "").lower()
+    initial = script.get_revision("0001")
+    assert initial.down_revision is None
+    assert "pgvector" in (initial.doc or "").lower()
+
+    sources = script.get_revision("0002")
+    assert sources.down_revision == "0001"
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

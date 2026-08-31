@@ -86,8 +86,10 @@ def test_no_engine_is_created_at_import_time() -> None:
         assert not any(isinstance(value, Engine) for value in vars(module).values())
 
 
-def test_declarative_base_defines_no_tables() -> None:
-    assert Base.metadata.tables == {}
+def test_declarative_base_registers_exactly_the_known_tables() -> None:
+    import contentos.sources.models  # noqa: F401
+
+    assert set(Base.metadata.tables) == {"sources", "source_lifecycle_events"}
 
 
 def test_engine_factory_applies_configured_pooling(monkeypatch: pytest.MonkeyPatch) -> None:

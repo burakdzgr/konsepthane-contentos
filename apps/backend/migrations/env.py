@@ -10,6 +10,9 @@ from contentos.core.config import Settings
 from contentos.db.base import Base
 from contentos.db.session import create_database_engine
 
+# Model modules must be imported so Base.metadata reflects the full schema.
+from contentos.sources import models as _sources_models  # noqa: F401
+
 target_metadata = Base.metadata
 
 
