@@ -4,18 +4,19 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-11 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-12 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
 
-Tasks 1-11 delivered the research/discovery design, Source Registry, shared URL
+Tasks 1-12 delivered the research/discovery design, Source Registry, shared URL
 canonicalization, DiscoveryItem admission, the safe FetchClient boundary,
 defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
 persistence. The immutable NormalizedDocument persistence boundary now exists;
 the provider-neutral raw-payload contract supports bounded verified reads, and
-the first executable HTML/text normalization pipeline is complete. No production
-payload backend, duplicate decisions, or orchestration exists.
+the first executable HTML/text normalization pipeline and deterministic local
+duplicate-decision boundary are complete. No production payload backend or
+domain orchestration exists.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -264,6 +265,40 @@ main
 - synthetic end-to-end coverage proves Source -> DiscoveryItem -> stored payload ->
   FetchSnapshot -> verified extraction -> NormalizedDocument provenance without network I/O
 - Task 11 verified: 487 backend tests and the full root quality gate passed
+- `contentos.duplicates` now owns immutable `DuplicateDecision` persistence,
+  bounded local candidate queries, deterministic similarity signals, engine v1,
+  and the caller-committed `evaluate_and_record` service
+- migration `0006_create_duplicate_decisions` adds the NormalizedDocument
+  `ON DELETE RESTRICT` provenance link, frozen decision CHECK values, unique
+  (`normalized_document_id`, `engine_name`, `engine_version`) identity, bounded
+  JSONB result fields, decision/evaluation-time indexes, and append-only trigger
+- engine identity is `duplicate-engine/1`; exact retries return the stored decision
+  before rescanning the evolving corpus, concurrent differing winners raise a typed
+  conflict, and a new engine version may append and coexist
+- v1 compares successful local ContentOS NormalizedDocuments only; it excludes the
+  target and alternate normalizations of the same FetchSnapshot, prioritizes exact
+  fingerprint/raw/canonical/final-URL candidates, then fills from recent rows, with
+  at most 200 comparisons and 10 persisted matches
+- signal priority is exact normalized fingerprint/raw body -> DUPLICATE; same
+  canonical/final resource with changed content -> UPDATE_EXISTING; title >= 0.92
+  plus lexical >= 0.85 -> DUPLICATE; lexical >= 0.45 or title >= 0.65 with lexical
+  >= 0.25 -> RELATED; otherwise UNIQUE
+- title similarity uses bounded Unicode casefold/whitespace normalization plus
+  stdlib SequenceMatcher; lexical similarity is bounded Unicode token-set Jaccard
+  with no stemming, stopwords, transliteration, dependency, embedding, or AI
+- every decision persists the complete frozen threshold snapshot, aggregate signals,
+  bounded safe provenance matches, and rationale codes; it never stores clean text
+- REJECT remains approved durable vocabulary but v1 never infers it from an eligible
+  low-similarity document; unusable normalization is rejected at service eligibility
+- real ephemeral pgvector PostgreSQL verification passed: empty upgrade to `0006`,
+  local DUPLICATE/UPDATE_EXISTING/RELATED/UNIQUE outcomes, retry/v2 coexistence,
+  catalog objects, raw UPDATE/DELETE rejection, downgrade to `0005` with prior data
+  and pgvector survival, and successful re-upgrade; temporary resources were removed
+- no production Konsepthane inventory lookup exists; future comparison requires an
+  explicit boundary and never direct production database access
+- Task 12 added no dependency, embedding/vector column, AI, Celery task, endpoint,
+  frontend, evidence extraction, publishing integration, or production access
+- Task 12 verified: 512 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -287,15 +322,16 @@ Backend: application factory, typed settings, structured logging, request contex
 Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
 
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
-immutable FetchSnapshot, and immutable NormalizedDocument tables complete;
-schema head `0005`
+immutable FetchSnapshot, immutable NormalizedDocument, and immutable
+DuplicateDecision tables complete; schema head `0006`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
 Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
 NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
-bounded HTML/text normalization complete; no production payload adapter exists
+bounded HTML/text normalization plus deterministic local duplicate decisions complete;
+no production payload adapter or production inventory comparison exists
 
 AI integration: not started
 
@@ -309,8 +345,8 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No production raw-payload backend, duplicate or research-evidence
-persistence, domain/queue tasks, Celery Beat, admin business screens, pre-commit
+No production raw-payload backend, research-evidence persistence, domain/queue
+tasks, Celery Beat, admin business screens, pre-commit
 configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
@@ -322,13 +358,13 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 12 (awaiting explicit authorization): add append-only
-`DuplicateDecision` persistence and a deterministic engine v1 over the available
-pre-AI signals: canonical/request/final URL equality, raw body hash, normalized
-content hash, bounded normalized-title similarity, and bounded lexical similarity.
-Persist the engine version, configured thresholds snapshot, computed signals, and
-matched normalized-document references for every decision. Add no embeddings,
-pgvector vector column, provider integration, AI, Celery task, endpoint, or UI.
+Phase 2 Task 13 (awaiting explicit authorization): add the immutable
+`ResearchEvidence` persistence and deterministic provenance/excerpt foundation.
+Each evidence record must trace to its NormalizedDocument, FetchSnapshot,
+DiscoveryItem, and Source; use validated excerpt boundaries against exact clean text,
+stable evidence/extractor identity, bounded structured claim/context fields, and the
+approved verification statuses. Keep extraction provider-neutral and synchronous;
+add no AI-generated claims, Celery task, endpoint, UI, Evidence Pack, or publishing.
 
 Before implementing the affected integrations, resolve:
 

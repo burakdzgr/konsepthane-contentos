@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0005"]
+    assert script.get_heads() == ["0006"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -65,6 +65,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0003").down_revision == "0002"
     assert script.get_revision("0004").down_revision == "0003"
     assert script.get_revision("0005").down_revision == "0004"
+    assert script.get_revision("0006").down_revision == "0005"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -83,6 +84,17 @@ def test_normalized_document_migration_contains_provenance_and_append_only_prote
     assert "uq_normalized_documents_snapshot_extractor" in sql
     assert "CREATE TRIGGER trg_normalized_documents_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON normalized_documents" in sql
+    assert "ON DELETE RESTRICT" in sql
+
+
+def test_duplicate_decision_migration_contains_identity_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0005:0006")
+
+    assert "CREATE TABLE duplicate_decisions" in sql
+    assert "uq_duplicate_decisions_document_engine" in sql
+    assert "ck_duplicate_decisions_decision" in sql
+    assert "CREATE TRIGGER trg_duplicate_decisions_append_only" in sql
+    assert "BEFORE UPDATE OR DELETE ON duplicate_decisions" in sql
     assert "ON DELETE RESTRICT" in sql
 
 
