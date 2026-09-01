@@ -190,6 +190,13 @@ Inputs live in `opportunity_research_inputs` (§2.2); scores are append-only
 (§3.2). The opportunity row itself is a small relational anchor — not a
 mutable JSON bag.
 
+> *Implementation note (Phase 3 Task 3):* the §10.3 promotion identity is
+> realized physically as `editorial_opportunities.promotion_root_document_id`
+> — a NOT NULL, UNIQUE, RESTRICT FK to `normalized_documents`. This gives the
+> one-root→one-work-item invariant database backing while keeping promotion
+> identity fully separate from research-input roles (the same document can
+> still be attached as supporting/context input to another opportunity).
+
 ### 3.2 OpportunityScore (append-only, explainable)
 
 `opportunity_scores`:

@@ -15,6 +15,7 @@ from contentos.discovery import models as _discovery_models  # noqa: F401
 from contentos.duplicates import models as _duplicate_models  # noqa: F401
 from contentos.fetching import snapshots as _fetch_snapshots  # noqa: F401
 from contentos.normalization import models as _normalization_models  # noqa: F401
+from contentos.opportunities import models as _opportunity_models  # noqa: F401
 from contentos.payloads import postgres as _payload_models  # noqa: F401
 from contentos.research import models as _research_models  # noqa: F401
 from contentos.sources import models as _sources_models  # noqa: F401

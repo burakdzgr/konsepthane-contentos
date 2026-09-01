@@ -41,6 +41,27 @@ class DuplicateDecisionRepository:
         )
         return self._session.execute(statement).scalar_one_or_none()
 
+    def get_effective_for_document(
+        self, normalized_document_id: uuid.UUID
+    ) -> DuplicateDecision | None:
+        """The latest/effective decision for one document.
+
+        The deterministic ordering (evaluated_at, created_at, id descending)
+        is the same "latest is effective" contract the Task 17 read
+        projections use; consumers must never reimplement a variant.
+        """
+        statement = (
+            select(DuplicateDecision)
+            .where(DuplicateDecision.normalized_document_id == normalized_document_id)
+            .order_by(
+                DuplicateDecision.evaluated_at.desc(),
+                DuplicateDecision.created_at.desc(),
+                DuplicateDecision.id.desc(),
+            )
+            .limit(1)
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
     def list_for_document(self, normalized_document_id: uuid.UUID) -> list[DuplicateDecision]:
         statement = (
             select(DuplicateDecision)

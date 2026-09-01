@@ -5,8 +5,8 @@ Last updated: 2026-09-01
 ## Current phase
 
 PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
-(Task 1 architecture accepted; Task 2 workflow foundation COMPLETE —
-the first Phase 3 runtime code)
+(Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
+Task 3 opportunity persistence + Phase 2 -> Phase 3 promotion COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -29,8 +29,8 @@ production-readiness backlog in the closure audit §7 stands: deployment
 access protection, secrets provisioning, backups/restore, monitoring,
 source-allowlist governance, scheduled discovery, multi-worker crawl
 limiting, raw-payload retention, runbooks, and the dispatch-gap/outbox
-decision). Phase 3 design (Task 1) is accepted; Phase 3 runtime
-implementation has not started.
+decision). Phase 3 implementation is in progress; see the Phase 3 entries
+below for what actually exists.
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -765,6 +765,73 @@ main
   no API endpoints, no admin changes, and no dependency changes
 - Task 2 verified: 713 backend tests (687 + 26 new), 96 admin tests, and
   the full root quality gate passed; schema head `0009`
+- PHASE 3 Task 3 (opportunity persistence + Phase 2 -> Phase 3 promotion)
+  complete: `contentos.opportunities` added (enums/models/errors/repository/
+  service); reads Phase 2 primitives, calls WorkflowService; Phase 2 never
+  imports Phase 3 and workflow never imports opportunities
+- `EditorialOpportunity`: 1:1 with its work item (UNIQUE work_item_id,
+  RESTRICT), topic_summary, update_of_reference, disposition
+  OPEN/COMMISSIONED/REJECTED with a DB consistency CHECK (non-open requires
+  reason/at/by); promotion creates OPEN — no commissioning commands yet
+- promotion identity is DATABASE-BACKED:
+  `editorial_opportunities.promotion_root_document_id` (NOT NULL, UNIQUE,
+  RESTRICT FK to normalized_documents) realizes the design §10.3 identity
+  "one work item per promoted document root"; input roles stay a separate
+  concept, so a promoted document can still be supporting/context input on
+  another opportunity (implementation note added to the Phase 3 design doc)
+- `OpportunityResearchInput`: references only (opportunity, document,
+  duplicate decision — all RESTRICT), role
+  primary_signal/supporting/contradicting/context/update_signal, added_by
+  system/operator (OpportunityActor — distinct from workflow actor/origin
+  vocabularies), bounded note; UNIQUE (opportunity, document); append-only
+  PG trigger; never payloads/clean text/evidence text
+- `ResearchPromotionService.promote_research` (ADR 0008-binding): requires
+  document exists + SUCCEEDED + an effective DuplicateDecision (absence is a
+  hard stop, never an implicit UNIQUE) + resolvable provenance chain
+  (snapshot/item/source); UNIQUE/RELATED eligible with the exact decision
+  pinned forever; UPDATE_EXISTING eligible only as an update signal (role
+  update_signal + truthful update_of_reference naming the decision — no
+  production inventory lookup, no fake article id); DUPLICATE/REJECT are
+  hard stops
+- effective-decision semantics reused, not reinvented: new
+  `DuplicateDecisionRepository.get_effective_for_document` centralizes the
+  deterministic (evaluated_at, created_at, id DESC) latest-is-effective
+  contract the Task 17 projections already used
+- one atomic caller-owned transaction creates work item (via
+  WorkflowService, IDEA_SCORING, origin research_intake, locale from
+  discovery item, market from source) + creation event (artifact_refs pin
+  promotion kind, document, decision+outcome, snapshot, item, source) +
+  opportunity + initial input; SAVEPOINT race recovery: a concurrent winner
+  is recovered idempotently, otherwise typed PromotionConflictError; forced
+  mid-promotion failure leaves zero orphans (tested)
+- idempotent retry returns the existing work_item/opportunity ids
+  (created=False) with no second event/opportunity/input; incompatible
+  re-claim (e.g. override after a research-intake promotion when a newer
+  engine version flips the outcome) raises PromotionConflictError without
+  overwriting
+- `promote_duplicate_override` (operator-only, narrow): applies only to an
+  effective DUPLICATE decision (eligible outcomes are redirected to
+  promote_research; REJECT has no override); mandatory bounded reason +
+  distinct angle; work item origin OPERATOR, event actor OPERATOR, event
+  reason = override reason, refs record promotion=duplicate_override with
+  the pinned DUPLICATE decision; input note records the override; the
+  DuplicateDecision is never mutated and never claimed wrong
+- migration `0010_create_editorial_opportunities`: both tables, frozen
+  literal vocabularies, uniques (work_item, promotion_root,
+  opportunity+document), disposition-consistency CHECK, five RESTRICT FKs,
+  indexes, append-only trigger on research inputs; symmetric downgrade
+  removes only Task 3 objects
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0010`, full REAL chain (payload store + snapshots + normalization + real
+  duplicate engine producing unique/duplicate), promotion end-to-end,
+  idempotent retry, DUPLICATE hard stop, operator override, input
+  UPDATE/DELETE rejected by trigger, opportunity RESTRICT, promotion-root
+  uniqueness enforced by PG, downgrade to `0009` with workflow/Phase 2
+  rows and pgvector surviving, re-upgrade; teardown complete
+- Task 3 added no scoring, search signals, ideas, evidence packs, AI,
+  Celery jobs, API endpoints, admin changes, or dependency changes
+- Task 3 verified: 735 backend tests (713 + 22 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0010`
 
 ## Current documentation structure
 
@@ -792,8 +859,9 @@ Frontend/control panel: Next.js foundation with server-side backend client, trut
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
 DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
-raw_payload_blobs tables complete; Phase 3 editorial_work_items and
-append-only editorial_workflow_events tables complete; schema head `0009`
+raw_payload_blobs tables complete; Phase 3 editorial_work_items, append-only
+editorial_workflow_events, editorial_opportunities, and append-only
+opportunity_research_inputs tables complete; schema head `0010`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -837,19 +905,20 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 3 (awaiting explicit authorization) — Opportunity persistence +
-intake, per the accepted design's implementation order item 2:
-`contentos.opportunities` with the EditorialOpportunity anchor and
-multi-source `opportunity_research_inputs` (roles, each pinning the exact
-normalized_document_id + duplicate_decision_id), plus deterministic Phase 2
-eligibility and the `promote_research` service path — operator-triggered
-promotion of eligible Phase 2 chains into the workflow foundation
-(SUCCEEDED normalization + effective DuplicateDecision required; DUPLICATE
-hard stop with the explicit audited operator-override event for a distinct
-angle; REJECT hard stop; UNIQUE/RELATED eligible; UPDATE_EXISTING as update
-signal), promotion idempotency (one work item per promoted
-normalized-document root), and a migration. No scoring engine yet (that is
-design item 3), no AI, no Celery, no API/admin.
+PHASE 3 TASK 4 (awaiting explicit authorization) — Deterministic opportunity
+scoring v1, per the accepted design's implementation order item 3: the
+`opportunity-engine/1` deterministic engine plus append-only
+`opportunity_scores` and relational `opportunity_score_components`
+(availability KNOWN/UNKNOWN/NOT_APPLICABLE — UNKNOWN != ZERO, weights
+renormalized over known components, missing signals and risk flags
+recorded), frozen weights/threshold snapshots via versioned config, input
+snapshots + hashes for idempotency
+(opportunity, engine, version, input_snapshot_hash unique), overall band +
+eligibility result, deterministic-latest effective-score selection, and a
+migration. v1 scores only signals that exist today (recency, source
+diversity/trust from Phase 2 joins, duplicate disposition, evidence
+availability) and never invents search/competition data. No search-signal
+store yet (design item 4), no AI, no Celery, no API/admin.
 
 Before implementing the affected integrations, resolve:
 
