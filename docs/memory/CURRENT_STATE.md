@@ -9,7 +9,8 @@ PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
 opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
 foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
-persistence + operator selection COMPLETE)
+persistence + operator selection COMPLETE; Task 8 provider-neutral AI
+boundary COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1172,6 +1173,113 @@ main
   changes
 - Task 7 verified: 874 backend tests (829 + 45 new), 96 admin tests, and
   the full root quality gate passed; schema head `0014`
+- PHASE 3 Task 8 (provider-neutral AI boundary) complete: `contentos.ai`
+  added (enums/errors/hashing/dto/protocol/validation/fake/models/
+  repository/service) — the reusable structured-generation boundary ONLY;
+  no real provider, no OpenAI SDK, no network, no domain engine
+- `StructuredGenerationProvider` protocol: adapters expose an honest
+  `ProviderIdentity` (provider, model_name, model_version None when
+  genuinely unavailable — never fabricated) and return provider-neutral
+  `ProviderResult` DTOs (JSON payload + identity + bounded finish/usage);
+  SDK/HTTP objects and exceptions never cross the boundary — adapters
+  translate failures into typed `ProviderFailureError`
+  (provider_error/timeout/cancelled) with bounded sanitized error classes
+- `GenerationRequest`: purpose (idea_candidates/intent_synthesis/
+  brief_composition/evidence_organization), schema name+version, template
+  NAME+version (both persisted so template provenance is unambiguous),
+  bounded `input_refs` (durable artifact provenance), bounded in-memory
+  `input_projection` (NEVER persisted in full), positive-int
+  generation_bounds, retry_number (convention: first attempt = 0; changing
+  it permits a new attempt); all fields bounded with NaN/Infinity/depth/
+  key/list/string rejection
+- canonical hashing (`contentos.ai.hashing`, allow_nan=False, sorted keys,
+  never repr): `GENERATION_INPUT_SCHEMA_VERSION = 1` input hash over
+  input_refs + projection + bounds (same projection with different
+  input_refs = different hash — audit honesty; dict order never matters,
+  list order always does); `ATTEMPT_IDENTITY_SCHEMA_VERSION = 1` NULL-safe
+  DB-UNIQUE `attempt_identity_hash` over purpose/input_hash/provider/
+  model_name/model_version-as-explicit-null/schema/template/retry — the
+  physical idempotency identity (nullable UNIQUE tuples deliberately not
+  used)
+- structured output ONLY: provider payload -> versioned Pydantic schema
+  validation -> optional typed domain-validator callback (a plain function
+  in `StructuredOutputSpec` so future engines plug in without contentos.ai
+  importing ideas/packs/intent/briefs) -> SUCCEEDED; any failure is
+  recorded VALIDATION_FAILED with stable error class `schema_validation` /
+  `domain_validation`; output is never coerced, partially accepted, or
+  repaired; no second call; spec/request schema-identity mismatch is
+  rejected BEFORE provider invocation
+- append-only `ai_generation_attempts` (ONE generic table, migration
+  `0015`): purpose/provider/model identity, schema+template identity,
+  input_refs + input_hash + attempt_identity_hash (UNIQUE), status
+  (succeeded/validation_failed/provider_error/timeout/cancelled — never
+  editorial vocabulary), sanitized bounded error_class (NULL exactly when
+  succeeded, DB CHECK), retry_number >= 0, bounded usage JSONB (tokens/
+  latency/finish_reason; cost amount+currency only when genuinely
+  supplied, never invented); NO raw output/prompt/messages/payload columns
+  (test-pinned); completed-outcome insert model (no PENDING/RUNNING state
+  machine); PG append-only trigger; repository is add/get/list only with
+  no "latest AI truth" surface
+- expected outcomes are DURABLE FACTS returned in typed
+  `GenerationExecution` (attempt, status, created flag, payload only when
+  newly SUCCEEDED — idempotent reuse returns no payload since raw output
+  is never persisted); contract errors raise typed errors before
+  invocation; service flushes, caller commits (failure rows survive
+  commit, tested)
+- idempotency: identity pre-check + SAVEPOINT race recovery on the UNIQUE;
+  sequential identical retries return the same attempt with ZERO extra
+  provider invocations (fake invocation counter pinned); truthful
+  concurrency contract: under truly concurrent identical execution both callers
+  may invoke the provider but exactly ONE durable attempt row exists —
+  provider-call serialization would need mutable reservation state and is
+  documented as a future orchestration boundary (design-doc note)
+- deterministic fake provider (`fake` /
+  `deterministic-structured-test-model` / `1`): configurable fixed
+  payload/usage/failure kind/claimed identity, deep-copied deterministic
+  responses, invocation counter, cost absent unless configured, no
+  randomness/network/keys; a result claiming a different identity than the
+  adapter declares is detected and recorded as PROVIDER_ERROR
+  `provider_identity_mismatch` under the DECLARED identity
+- staged Idea AI provenance (migration 0015): `ideas.origin` widened to
+  operator/model_assisted, nullable `generation_attempt_id` FK RESTRICT,
+  DB CHECK `ck_ideas_origin_attempt_consistency` (operator <-> NULL,
+  model_assisted <-> NOT NULL) so fake model provenance stays impossible;
+  runtime IdeaService remains OPERATOR-ONLY (no generate/model-assisted
+  surface, test-pinned); Task 9's engine must validate the referenced
+  attempt is the right successful IDEA_CANDIDATES attempt (deliberately
+  not SQL); downgrade restores the operator-only CHECK and FAILS loudly if
+  model-assisted rows exist (never lossy conversion)
+- staged EvidencePack link (migration 0015): nullable
+  `organization_attempt_id` FK RESTRICT; deterministic assembly/reassembly
+  always writes NULL (test-pinned) — no AI organization engine exists and
+  a deterministic pack is never claimed AI-organized; idea_id/assembly
+  hash/sufficiency semantics untouched
+- migration `0015_create_ai_generation_attempts`: attempts table with
+  frozen literal vocabularies + identity/format/consistency CHECKs +
+  jsonb-object CHECKs + purpose/input_hash indexes + append-only trigger,
+  plus both staged FK columns/indexes and the widened origin CHECK;
+  symmetric downgrade removes pack link, idea link, restores operator-only
+  origin, then drops the attempts table
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0015`; Task-7-style seed (operator idea + selection + idea-pinned READY
+  pack) valid with NULL AI columns; fake-provider SUCCEEDED /
+  schema-invalid / domain-invalid / provider-error / timeout / cancelled
+  attempts; sequential retry idempotent (one invocation); retry_number
+  append; raw duplicate-identity INSERT rejected by the UNIQUE;
+  UPDATE/DELETE trigger-rejected; all three idea origin/attempt/FK
+  inconsistencies DB-rejected; pack organization column protected; zero
+  workflow/disposition/selection/evidence side effects; downgrade to
+  `0014` removed only Task 8 objects with all Task 7 rows + pgvector
+  surviving and the restored operator-only origin CHECK rejecting a raw
+  model_assisted insert; re-upgrade to `0015` WITH existing rows proved
+  the upgrade preserves data (idea/pack NULL columns, empty attempts)
+- Task 8 added NO OpenAI/Anthropic/Gemini/local-LLM adapter, no network,
+  no API key/secret/setting, no idea-generation engine, no
+  SearchIntentAnalysis, no ContentBrief, no Celery, no API/admin changes,
+  no workflow transitions, and no dependency changes (lockfiles untouched;
+  Pydantic/SQLAlchemy/stdlib only)
+- Task 8 verified: 905 backend tests (874 + 31 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0015`
 
 ## Current documentation structure
 
@@ -1204,8 +1312,10 @@ editorial_workflow_events, editorial_opportunities, append-only
 opportunity_research_inputs, append-only opportunity_scores +
 opportunity_score_components, append-only search_signals, append-only
 evidence_packs + evidence_pack_items + resolution-guarded
-evidence_contradictions (now with the nullable idea link), and append-only
-ideas + idea_selection_events tables complete; schema head `0014`
+evidence_contradictions (now with the nullable idea and
+organization-attempt links), append-only ideas + idea_selection_events
+(with staged nullable AI generation-attempt provenance), and the generic
+append-only ai_generation_attempts table complete; schema head `0015`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -1221,7 +1331,10 @@ PostgreSQL raw-payload backend, the idempotent Celery research-pipeline
 orchestration, and read-only operator visibility (internal API + admin screens)
 are complete; no production inventory comparison exists
 
-AI integration: not started
+AI integration: provider-neutral boundary complete (protocol, structured
+validation pipeline, generic attempt provenance, deterministic fake
+provider); NO real provider/adapter exists and no model has ever been
+called
 
 Publishing integration: not started
 
@@ -1233,8 +1346,10 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No AI boundary, Celery Beat scheduling, pre-commit configuration, or
-model-assisted generation exists yet. The admin exposes exactly the minimal
+No real AI provider/adapter, Celery Beat scheduling, pre-commit
+configuration, or model-assisted generation exists yet; the runtime
+IdeaService is operator-only and the deterministic EvidencePack service
+never sets an organization attempt. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1249,17 +1364,18 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 8 (awaiting explicit authorization) — provider-neutral AI
-boundary, per the accepted design's implementation order item 7:
-`contentos.ai` with the provider-neutral protocol, neutral DTOs, the
-structured-output validation pipeline (provider -> neutral DTO -> schema
-validation -> domain validation -> artifact), the generic append-only
-`ai_generation_attempts` provenance record (provider/model/version,
-schema/template version, input refs + hash, status, retry, usage), and the
-mandatory fake deterministic test provider; migration. NO real adapter, no
-OpenAI SDK, no network — the first real adapter is implementation-order
-item 8 with its own dependency/ADR checkpoint. This task may also widen the
-idea `origin` vocabulary and add the real `generation_attempt_id` FK.
+PHASE 3 TASK 9 (awaiting explicit authorization) — first real adapter +
+idea generation engine, per the accepted design's implementation order
+item 8: the OpenAI adapter behind the existing
+StructuredGenerationProvider protocol (first provider per ARCHITECTURE.md;
+requires its own dependency/ADR checkpoint before the SDK is added),
+model-assisted Idea candidates end-to-end — IdeaCandidate schema +
+template, generation engine consuming the Task 8 boundary, validated
+candidates persisted as origin=model_assisted Idea versions pinning the
+exact successful IDEA_CANDIDATES attempt, originality guards rerun on
+generated candidates, attempt provenance mandatory. The engine must
+validate the referenced attempt purpose/status (deliberately not a SQL
+CHECK).
 
 Before implementing the affected integrations, resolve:
 

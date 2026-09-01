@@ -759,3 +759,91 @@ class TestIsolationAndImmutability:
         with open_session(session_factory) as session:
             assert session.execute(select(Idea)).scalar_one_or_none() is None
             assert session.execute(select(IdeaSelectionEvent)).scalar_one_or_none() is None
+
+
+class TestStagedAiProvenance:
+    """The AI boundary staged the schema; the runtime stays operator-only."""
+
+    def test_runtime_service_remains_operator_only(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id = default_opportunity(session)
+            idea = IdeaService(session).create_operator_idea(opportunity_id, **idea_kwargs())
+            session.commit()
+            assert idea.origin is IdeaOrigin.OPERATOR
+            assert idea.generation_attempt_id is None
+        exposed = {name for name in dir(IdeaService) if not name.startswith("_")}
+        assert not any("model" in name or "generat" in name for name in exposed)
+
+    def test_db_rejects_inconsistent_origin_attempt_pairs(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        from sqlalchemy.exc import IntegrityError
+
+        from contentos.ai.enums import GenerationPurpose, GenerationStatus
+        from contentos.ai.models import AiGenerationAttempt
+
+        def build_idea(origin: IdeaOrigin, attempt_id: uuid.UUID | None) -> Idea:
+            return Idea(
+                logical_idea_id=uuid.uuid4(),
+                opportunity_id=opportunity_id,
+                version=1,
+                working_title="Tutarlılık testi adayı",
+                angle="a",
+                audience="a",
+                value_proposition="a",
+                content_type=ContentType.GUIDE,
+                locale="tr-TR",
+                market="TR",
+                rationale="a",
+                exclusions=[],
+                planning_dimensions={},
+                originality_status=OriginalityStatus.NOT_CHECKABLE,
+                originality_detail={},
+                originality_policy_snapshot={},
+                origin=origin,
+                generation_attempt_id=attempt_id,
+            )
+
+        with open_session(session_factory) as session:
+            opportunity_id = default_opportunity(session)
+            operator_idea = IdeaService(session).create_operator_idea(
+                opportunity_id, **idea_kwargs()
+            )
+            session.commit()
+            attempt = AiGenerationAttempt(
+                purpose=GenerationPurpose.IDEA_CANDIDATES,
+                provider="fake",
+                model_name="deterministic-structured-test-model",
+                model_version="1",
+                schema_name="outline-test",
+                schema_version="1",
+                template_name="outline-template",
+                template_version="1",
+                input_refs={},
+                input_hash="0" * 64,
+                attempt_identity_hash="1" * 64,
+                status=GenerationStatus.SUCCEEDED,
+                error_class=None,
+                retry_number=0,
+                usage={},
+            )
+            session.add(attempt)
+            session.commit()
+
+            # model_assisted without an attempt is impossible at the DB.
+            with pytest.raises(IntegrityError):
+                session.add(build_idea(IdeaOrigin.MODEL_ASSISTED, None))
+                session.flush()
+            session.rollback()
+
+            # operator with an attempt reference is equally impossible.
+            with pytest.raises(IntegrityError):
+                session.add(build_idea(IdeaOrigin.OPERATOR, attempt.id))
+                session.flush()
+            session.rollback()
+
+            # Existing operator ideas remain fully valid.
+            reread = IdeaRepository(session).get_idea(operator_idea.id)
+            assert reread is not None and reread.generation_attempt_id is None

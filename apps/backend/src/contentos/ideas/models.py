@@ -19,6 +19,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+# Registered so the ai_generation_attempts FK target always resolves
+# wherever the Idea model is used (artifacts reference attempts, never the
+# reverse, so this import is acyclic by design).
+from contentos.ai import models as _ai_models  # noqa: F401
 from contentos.core.context import REQUEST_ID_MAX_LENGTH
 from contentos.db.base import Base
 from contentos.db.types import JSON_DICT, JSON_LIST, string_enum
@@ -44,9 +48,12 @@ class Idea(Base):
     never factual evidence, never a provenance root (ADR 0007), never
     publication approval (ADR 0004).
 
-    The `generation_attempt_id` FK from the accepted design is deliberately
-    absent: ai_generation_attempts does not exist yet, and no placeholder is
-    created. The AI-boundary task adds the real FK and widens `origin`.
+    `generation_attempt_id` records real AI provenance for a future
+    model-assisted version: the database enforces that operator rows carry
+    NULL and model-assisted rows carry a real attempt reference. No runtime
+    path creates model-assisted ideas yet — that engine is a later task,
+    and it must additionally validate that the referenced attempt is the
+    right successful IDEA_CANDIDATES attempt (deliberately not a SQL CHECK).
     """
 
     __tablename__ = "ideas"
@@ -63,7 +70,13 @@ class Idea(Base):
         CheckConstraint("length(trim(rationale)) > 0", name="ck_ideas_rationale_nonempty"),
         CheckConstraint("length(trim(locale)) > 0", name="ck_ideas_locale_nonempty"),
         CheckConstraint("length(trim(market)) = 2", name="ck_ideas_market_length"),
+        CheckConstraint(
+            "(origin = 'operator' AND generation_attempt_id IS NULL) OR "
+            "(origin = 'model_assisted' AND generation_attempt_id IS NOT NULL)",
+            name="ck_ideas_origin_attempt_consistency",
+        ),
         Index("ix_ideas_opportunity", "opportunity_id"),
+        Index("ix_ideas_generation_attempt", "generation_attempt_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
@@ -100,6 +113,11 @@ class Idea(Base):
     )
     origin: Mapped[IdeaOrigin] = mapped_column(
         string_enum(IdeaOrigin, "ck_ideas_origin", 16), nullable=False
+    )
+    generation_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("ai_generation_attempts.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

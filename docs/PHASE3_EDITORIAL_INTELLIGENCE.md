@@ -400,6 +400,26 @@ This answers, permanently: which provider/model produced this suggestion,
 under which schema/template version, from which exact inputs, when, at what
 usage, did validation pass, and which retry it was.
 
+> **Implementation note (Task 8).** Physical attempt identity is a
+> DB-UNIQUE `attempt_identity_hash` (schema-versioned canonical-JSON
+> SHA-256 over purpose, input hash, provider/model identity — an
+> unavailable `model_version` participates explicitly as null, never a
+> fabricated value — schema/template name+version, retry number), because a
+> nullable-column UNIQUE tuple cannot give exact idempotency.
+> `template_name` is persisted alongside `template_version`. The mandatory
+> deterministic test provider is `fake` /
+> `deterministic-structured-test-model` / `1`. Retry convention: the first
+> provider attempt of a logical operation is `retry_number = 0`.
+> Idea `generation_attempt_id` and EvidencePack `organization_attempt_id`
+> were realized as staged nullable FKs (runtime idea creation stays
+> operator-only; deterministic pack assembly writes NULL). Sequential
+> identical retries never invoke the provider twice; under truly concurrent
+> identical execution both callers may invoke the provider while the DB
+> identity still guarantees exactly one durable attempt row — serializing
+> the provider call itself would need a mutable reservation model that
+> conflicts with the append-only completed-outcome design and remains a
+> future orchestration boundary.
+
 ---
 
 ## 7. EvidencePack

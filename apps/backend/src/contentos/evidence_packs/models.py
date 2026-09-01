@@ -18,6 +18,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+# Registered so the ideas / ai_generation_attempts FK targets always
+# resolve wherever the pack models are used (both imports are acyclic:
+# neither module imports evidence_packs).
+from contentos.ai import models as _ai_models  # noqa: F401
 from contentos.db.base import Base
 from contentos.db.types import JSON_DICT, JSON_LIST, string_enum
 from contentos.evidence_packs.enums import (
@@ -27,6 +31,7 @@ from contentos.evidence_packs.enums import (
     EvidenceItemRole,
     EvidencePackSufficiency,
 )
+from contentos.ideas import models as _idea_models  # noqa: F401
 
 
 def _utc_now() -> datetime:
@@ -50,9 +55,12 @@ class EvidencePack(Base):
 
     `idea_id` optionally pins the EXACT idea version a pack was (re)built
     for; packs may exist before/without any idea, so it stays nullable
-    forever. The accepted design's AI organization-attempt link remains
-    deliberately absent — the AI-boundary task adds it with its own
-    migration.
+    forever. `organization_attempt_id` is staged schema support for the
+    accepted AI organization link: the deterministic assembly service
+    always writes NULL today (no AI organization engine exists), and a
+    future dedicated engine will introduce the semantic integration and
+    bump the assembly snapshot schema at that time — a deterministic pack
+    is never claimed as AI-organized.
     """
 
     __tablename__ = "evidence_packs"
@@ -80,6 +88,7 @@ class EvidencePack(Base):
         ),
         Index("ix_evidence_packs_opportunity", "opportunity_id", "version"),
         Index("ix_evidence_packs_idea", "idea_id"),
+        Index("ix_evidence_packs_organization_attempt", "organization_attempt_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
@@ -91,6 +100,11 @@ class EvidencePack(Base):
     idea_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(),
         ForeignKey("ideas.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    organization_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("ai_generation_attempts.id", ondelete="RESTRICT"),
         nullable=True,
     )
     version: Mapped[int] = mapped_column(Integer(), nullable=False)

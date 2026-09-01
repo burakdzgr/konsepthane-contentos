@@ -294,6 +294,22 @@ class TestAssembly:
             items = EvidencePackRepository(session).list_items(pack.id)
             assert {item.research_evidence_id for item in items} == set(evidence_ids)
 
+    def test_deterministic_assembly_never_claims_ai_organization(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            service = EvidencePackService(session)
+            pack = service.assemble_pack(opportunity_id, selections_for(evidence_ids)).pack
+            session.commit()
+            assert pack.organization_attempt_id is None
+            reassembled = service.reassemble_pack(
+                pack.id,
+                additional_contradictions=[blocking_declaration(evidence_ids[1], evidence_ids[2])],
+            ).pack
+            session.commit()
+            assert reassembled.organization_attempt_id is None
+
     def test_no_evidence_text_field_exists(self) -> None:
         columns = {column.name for column in EvidencePackItem.__table__.columns}
         assert "evidence_text" not in columns

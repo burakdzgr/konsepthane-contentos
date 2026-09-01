@@ -6,11 +6,11 @@ The database URL always comes from the typed ContentOS settings
 
 from alembic import context
 
+# Model modules must be imported so Base.metadata reflects the full schema.
+from contentos.ai import models as _ai_models  # noqa: F401
 from contentos.core.config import Settings
 from contentos.db.base import Base
 from contentos.db.session import create_database_engine
-
-# Model modules must be imported so Base.metadata reflects the full schema.
 from contentos.discovery import models as _discovery_models  # noqa: F401
 from contentos.duplicates import models as _duplicate_models  # noqa: F401
 from contentos.evidence_packs import models as _evidence_pack_models  # noqa: F401

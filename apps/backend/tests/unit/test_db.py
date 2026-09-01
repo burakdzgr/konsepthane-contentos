@@ -87,6 +87,7 @@ def test_no_engine_is_created_at_import_time() -> None:
 
 
 def test_declarative_base_registers_exactly_the_known_tables() -> None:
+    import contentos.ai.models  # noqa: F401
     import contentos.discovery.models  # noqa: F401
     import contentos.duplicates.models  # noqa: F401
     import contentos.evidence_packs.models  # noqa: F401
@@ -121,6 +122,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "evidence_contradictions",
         "ideas",
         "idea_selection_events",
+        "ai_generation_attempts",
     }
 
 

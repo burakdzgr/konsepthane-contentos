@@ -24,13 +24,16 @@ class ContentType(StrEnum):
 class IdeaOrigin(StrEnum):
     """Who authored this idea version.
 
-    Task 7 deliberately contains ONLY the operator origin: MODEL_ASSISTED
-    arrives with the AI-boundary task's own migration together with the real
-    ai_generation_attempts FK, so fake model provenance is impossible today.
-    This is dependency-safe staged implementation, not a design change.
+    MODEL_ASSISTED is persistence vocabulary only for now: the runtime
+    IdeaService still creates operator-authored ideas exclusively, and the
+    database requires a real generation-attempt reference for any
+    model-assisted row (and forbids one on operator rows), so fake model
+    provenance stays impossible. The first model-assisted generation path
+    arrives with the idea-generation-engine task.
     """
 
     OPERATOR = "operator"
+    MODEL_ASSISTED = "model_assisted"
 
 
 class OriginalityStatus(StrEnum):
