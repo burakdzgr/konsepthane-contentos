@@ -11,7 +11,7 @@ opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
 foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
 persistence + operator selection COMPLETE; Task 8 provider-neutral AI
 boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
-engine COMPLETE)
+engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1375,6 +1375,109 @@ main
 - Task 9 verified: 939 backend tests (905 + 34 new), 96 admin tests, and
   the full root quality gate passed; schema head `0015`; the only
   dependency change is the approved `openai` SDK
+- Task 9 final contract verification pass: store=False and the production
+  max_retries=0 client construction are test-pinned; the pathological
+  SUCCEEDED/no-artifact + retry_number+1 contracts re-proven; PROJECT_
+  MEMORY's ADR 0009 entry trimmed to a minimal durable reference (940
+  backend tests)
+- PHASE 3 Task 10 (SearchIntentAnalysis) complete: `contentos.
+  search_intent` added (enums/errors/values/models/generation_schemas/
+  repository/service) — the FIRST-CLASS versioned artifact (design §8
+  option A), never a ContentBrief sub-object
+- `search_intent_analyses` (immutable, append-only trigger, migration
+  `0016`): UNIQUE (opportunity, version) + DB-backed semantic identity
+  UNIQUE (opportunity, engine name+version, input_snapshot_hash); RESTRICT
+  FKs to opportunity, the EXACT analyzed idea version, and the optional
+  synthesis attempt; every accepted field persisted (primary/secondary
+  intents, target_audience, query_concepts, page_purpose, likely_format,
+  known_signal_refs, missing_signals, cannibalization status+basis,
+  related_references, locale/market, engine identity, input snapshot+hash)
+  with nonempty/format/jsonb-shape CHECKs; deliberately NO evidence-pack
+  FK — the READY-pack gate belongs to orchestration (design §18), not the
+  artifact contract
+- selected-idea pin: creation requires the supplied idea to BE the current
+  effective selection (typed IdeaNotSelectedError otherwise — none
+  selected, wrong idea, or a historical version while a newer one is
+  selected); a later selection change NEVER repoints an existing analysis
+  (tested); the service never selects/deselects anything
+- signals are EXPLICIT observations: callers supply exact SearchSignal ids
+  (no implicit "latest" exists anywhere); each observation must match the
+  analysis locale/market (typed rejection otherwise); `known_signal_refs`
+  freezes id/type/subject/provider/exact canonical value/confidence/
+  observed_at/as_of per consumed signal, sorted by observation identity —
+  QUERY_SET internal query order stays semantic and preserved as stored;
+  a NEW observation id is a NEW analysis input (old versions keep their
+  frozen snapshots); signal rows are never mutated or marked consumed
+- `missing_signals` is durable data computed from what was ACTUALLY
+  supplied (the 5 existing signal-type values; no CPC/difficulty invented)
+  — UNKNOWN != ZERO holds: absent volume is named missing, never 0
+- semantic fields are bounded validated editorial text (no invented SEO
+  enum): deterministic path takes the typed `IntentComposition` DTO
+  (primary/page_purpose/likely_format required; bounded order-preserving
+  duplicate-rejecting secondary_intents/query_concepts — concepts are
+  concepts, never measured demand); `target_audience` is SYSTEM-OWNED from
+  the pinned idea in BOTH paths (auditable Idea -> SearchIntent
+  continuity)
+- engine identity `search-intent-analyzer/1`; identity =
+  SEARCH_INTENT_INPUT_SCHEMA_VERSION 1 canonical-JSON SHA-256 snapshot
+  covering opportunity/idea/mode/composition (deterministic) or the
+  synthesis attempt identity hash (AI), frozen signal snapshots, missing
+  signals, cannibalization status+basis, related references; exact retry
+  returns the existing analysis, any semantic change appends a version;
+  version allocation under the opportunity row lock (concurrent distinct
+  analyses got distinct versions on real PG)
+- cannibalization truth-states persisted exactly as accepted
+  (not_checked/no_known_conflict/potential_conflict/known_conflict);
+  default NOT_CHECKED with a basis that truthfully records the
+  unavailable published inventory; NO_KNOWN_CONFLICT / POTENTIAL_CONFLICT
+  require the exact internal references actually examined (existence-
+  validated) and are explicitly scoped `contentos_internal` — never a
+  site-wide claim; KNOWN_CONFLICT is REFUSED by the service (accepted
+  future vocabulary only; no production/inventory access, ADR 0001/0003
+  intact); vague/empty bases and NOT_CHECKED-with-refs are typed
+  rejections; related_references are allowlisted internal kinds only
+- optional AI synthesis through the EXISTING boundary (purpose strictly
+  INTENT_SYNTHESIS, schema `search-intent-synthesis/1`, template
+  `search-intent-synthesis/1`): callers explicitly choose
+  `compose_deterministic` vs `synthesize` (no ambiguous boolean); the
+  strict closed schema proposes ONLY the five semantic fields — system
+  facts (ids, locale/market, signal refs, missing signals, cannibalization
+  anything, related refs, audience) cannot enter (schema-rejected, tested)
+  — and the domain module imports no SDK (fake provider end-to-end tests);
+  attempt input_refs pin opportunity/idea/signal ids/analyzer/
+  cannibalization + related identities; failed attempts (validation/
+  provider/timeout/cancelled) persist durably with ZERO analyses;
+  deterministic path creates NO attempt (tested)
+- AI artifact idempotency mirrors Task 9: exact retry returns the same
+  attempt AND the same analysis with zero provider calls; a reused
+  SUCCEEDED attempt with no linked analysis is a typed
+  IncompleteAnalysisMaterializationError (raw output never persisted;
+  recover with retry_number+1 — tested incl. real PG); synthesis attempts
+  are revalidated (purpose/status/input-ref provenance — FK never
+  trusted); concurrency contract: provider may be double-called (Task 8
+  truth) but attempt-row locking + attempt-scoped lookup guarantee ONE
+  analysis per durable attempt (two threads on real PG resolved to the
+  same analysis id)
+- migration `0016_create_search_intent_analyses`: table with frozen
+  literal cannibalization vocabulary, all CHECKs/uniques/indexes, and the
+  append-only trigger; symmetric downgrade removes only Task 10 objects —
+  verified on real PG with all Task 9/earlier rows and pgvector surviving
+  the 0016 -> 0015 -> 0016 cycle
+- real ephemeral pgvector PostgreSQL verification passed (fake provider,
+  no network, no SEO APIs): all 17 scripted checks true — deterministic
+  v1/pin/snapshots/missing-truth/zero-signal honesty, new observation ->
+  new version, exact retries (deterministic + AI), internal
+  cannibalization states + KNOWN_CONFLICT rejection, AI success/failure/
+  pathological/recovery, wrong purpose/status rejection, concurrent
+  distinct versions, concurrent AI single-materialization, UPDATE/DELETE
+  trigger-rejected, zero workflow/disposition/selection/signal/pack side
+  effects
+- Task 10 added NO ContentBrief, no brief claims/acceptance, no Celery, no
+  API/admin, no Google/Semrush/Search Console or any live SEO
+  integration, no Konsepthane production access, no workflow transitions,
+  no commissioning/selection side effects, and no dependency changes
+- Task 10 verified: 967 backend tests (940 + 27 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0016`
 
 ## Current documentation structure
 
@@ -1409,8 +1512,9 @@ opportunity_score_components, append-only search_signals, append-only
 evidence_packs + evidence_pack_items + resolution-guarded
 evidence_contradictions (now with the nullable idea and
 organization-attempt links), append-only ideas + idea_selection_events
-(with staged nullable AI generation-attempt provenance), and the generic
-append-only ai_generation_attempts table complete; schema head `0015`
+(with staged nullable AI generation-attempt provenance), the generic
+append-only ai_generation_attempts table, and append-only
+search_intent_analyses complete; schema head `0016`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -1442,13 +1546,15 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No SearchIntentAnalysis, ContentBrief, AI pack organization, Celery Beat
-scheduling, or pre-commit configuration exists yet. Model-assisted idea
-generation exists as the IdeaGenerationEngine (operator command
+No ContentBrief, brief claims/acceptance, AI pack organization, Celery
+Beat scheduling, or pre-commit configuration exists yet. Model-assisted
+idea generation exists as the IdeaGenerationEngine (operator command
 precondition: COMMISSIONED opportunity — but no commissioning command
-exists yet); the operator IdeaService paths are unchanged and the
-deterministic EvidencePack service never sets an organization attempt.
-Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
+exists yet); SearchIntentAnalysis exists with deterministic composition
+and optional INTENT_SYNTHESIS (no live SEO integrations; cannibalization
+is honest and internal-only). The operator IdeaService paths are unchanged
+and the deterministic EvidencePack service never sets an organization
+attempt. Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1463,14 +1569,15 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 10 (awaiting explicit authorization) — SearchIntentAnalysis,
-per the accepted design's implementation order item 9: the versioned
-`search_intent_analyses` artifact (opportunity + exact selected idea
-version), deterministic composition from durable SearchSignal
-observations, optional model-assisted synthesis through the existing AI
-boundary (purpose INTENT_SYNTHESIS), and the truthful cannibalization
-truth-states (NOT_CHECKED default — no production Konsepthane inventory
-access); migration. No ContentBrief yet.
+PHASE 3 TASK 11 (awaiting explicit authorization) — ContentBrief
+persistence + claim map + acceptance gate, per the accepted design's
+implementation order item 10: `content_briefs` (versioned; accepted
+versions immutable; UNIQUE (work_item_id, version); exact idea /
+evidence-pack / search-intent-analysis version FKs), `brief_claims` and
+claim-evidence links pinning ResearchEvidence (unresolved BLOCKING
+contradictions block affected claims), and the §9.3 BRIEFING -> DRAFTING
+acceptance boundary (operator command, defined now, exercised in Phase
+4); migration. No brief composition engine yet (that is item 11).
 
 Before implementing the affected integrations, resolve:
 

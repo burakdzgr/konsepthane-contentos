@@ -97,6 +97,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.opportunities.models  # noqa: F401
     import contentos.payloads.postgres  # noqa: F401
     import contentos.research.models  # noqa: F401
+    import contentos.search_intent.models  # noqa: F401
     import contentos.signals.models  # noqa: F401
     import contentos.sources.models  # noqa: F401
     import contentos.workflow.models  # noqa: F401
@@ -123,6 +124,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "ideas",
         "idea_selection_events",
         "ai_generation_attempts",
+        "search_intent_analyses",
     }
 
 

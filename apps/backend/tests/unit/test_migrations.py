@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0015"]
+    assert script.get_heads() == ["0016"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -75,6 +75,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0013").down_revision == "0012"
     assert script.get_revision("0014").down_revision == "0013"
     assert script.get_revision("0015").down_revision == "0014"
+    assert script.get_revision("0016").down_revision == "0015"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -229,6 +230,20 @@ def test_ai_attempt_migration_contains_identity_and_staged_provenance() -> None:
     # Provenance/metadata only: never a payload archive.
     for forbidden in ("raw_response", "raw_output", "prompt", "completion_text"):
         assert forbidden not in sql
+
+
+def test_search_intent_migration_contains_identity_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0015:0016")
+
+    assert "CREATE TABLE search_intent_analyses" in sql
+    assert "uq_search_intent_analyses_version" in sql
+    assert "uq_search_intent_analyses_identity" in sql
+    assert "ck_search_intent_analyses_cannibalization" in sql
+    assert "ck_search_intent_analyses_hash_format" in sql
+    assert "ck_search_intent_analyses_basis_object" in sql
+    assert "CREATE TRIGGER trg_search_intent_analyses_append_only" in sql
+    assert "BEFORE UPDATE OR DELETE ON search_intent_analyses" in sql
+    assert sql.count("ON DELETE RESTRICT") == 3
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

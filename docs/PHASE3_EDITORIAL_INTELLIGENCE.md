@@ -544,6 +544,23 @@ are `NOT_CHECKED` or, when ContentOS-internal overlap was actually examined
 `cannibalization_basis`. The system never claims "no cannibalization"
 against an inventory it cannot see; the missing integration stays visible.
 
+> **Implementation note (Task 10).** Physical analysis identity is a
+> DB-UNIQUE `input_snapshot` + `input_snapshot_hash` (schema-versioned
+> canonical-JSON SHA-256 over opportunity/exact idea/composition mode,
+> the deterministic semantic composition OR the synthesis attempt
+> identity hash, frozen signal snapshots, missing signals, cannibalization
+> status+basis, related references). Deterministic semantic fields arrive
+> through the typed `IntentComposition` DTO (no inferred-intent
+> heuristic). `cannibalization_basis` uses a versioned bounded schema
+> (schema_version 1, `scope: contentos_internal`, exact checked
+> references, `published_inventory: unavailable_not_checked`);
+> KNOWN_CONFLICT is refused until an inventory contract exists. AI
+> synthesis reuses the Task 8/9 artifact-idempotency semantics: a reused
+> SUCCEEDED attempt returns its already-materialized analysis, and a
+> reused attempt with no artifact is a typed incomplete-materialization
+> error recovered via retry_number + 1. The artifact has no evidence-pack
+> FK — the READY-pack gate stays with §18 orchestration.
+
 ---
 
 ## 9. ContentBrief
