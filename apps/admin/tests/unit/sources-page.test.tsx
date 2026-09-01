@@ -70,9 +70,75 @@ describe("Sources page", () => {
     expect(itemsLink.getAttribute("href")).toBe(
       "/research?source=11111111-2222-4333-8444-555555555555",
     );
-    // Read-only: the only button is the GET filter submit.
+    // Controls are the GET filter submit plus one lifecycle form per row;
+    // neither manual source is eligible for "Run discovery".
     const buttons = screen.getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual(["Apply"]);
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "Apply",
+      "Apply state",
+      "Apply state",
+    ]);
+    expect(screen.queryByRole("button", { name: "Run discovery" })).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Register source" })
+        .getAttribute("href"),
+    ).toBe("/sources/new");
+  });
+
+  it("shows Run discovery only for active automated sources", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: sourcePage([
+        sourceItem({
+          id: "61111111-2222-4333-8444-555555555555",
+          slug: "aktif-akis",
+          kind: "rss_feed",
+          discovery_strategy: "feed",
+          lifecycle_state: "active",
+        }),
+        sourceItem({
+          id: "71111111-2222-4333-8444-555555555555",
+          slug: "durgun-akis",
+          kind: "rss_feed",
+          discovery_strategy: "feed",
+          lifecycle_state: "paused",
+        }),
+        sourceItem({
+          id: "81111111-2222-4333-8444-555555555555",
+          slug: "elle-kaynak",
+          kind: "manual",
+          discovery_strategy: "manual",
+          lifecycle_state: "active",
+        }),
+      ]),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    // Exactly one eligible source: active rss_feed with feed strategy.
+    expect(
+      screen.getAllByRole("button", { name: "Run discovery" }),
+    ).toHaveLength(1);
+  });
+
+  it("renders success notices and bounded error notices", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: sourcePage([]),
+      requestId: null,
+    });
+
+    await renderPage({ notice: "discovery-queued" });
+    expect(screen.getByText("Discovery queued.")).toBeTruthy();
+
+    render(
+      await SourcesPage({
+        searchParams: Promise.resolve({ error: "conflict" }),
+      }),
+    );
+    expect(screen.getByText(/conflicts with the current state/i)).toBeTruthy();
   });
 
   it("passes parsed filters to the API and drops invalid values", async () => {

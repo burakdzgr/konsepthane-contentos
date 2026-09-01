@@ -10,6 +10,15 @@ Verified baseline at audit: backend 652 tests passed, admin 60 tests passed,
 `scripts/check.ps1` all stages passed, `git diff --check` clean, lockfiles
 unchanged.
 
+> **Task 19 follow-up (2026-09-01): closure condition 2 RESOLVED BY
+> IMPLEMENTATION.** The minimal operator control surface now exists — see the
+> note in §11. The only remaining closure condition is the vector-similarity
+> formal disposition (condition 1, to be resolved by the Task 20 scope
+> decision). The executive decision remains **PHASE 2 CONDITIONALLY
+> COMPLETE** until Task 20 records that decision. Verified baseline after
+> Task 19: backend 687 tests, admin 96 tests, `scripts/check.ps1` green,
+> schema head still `0008`, lockfiles unchanged.
+
 ---
 
 ## 1. Executive decision
@@ -344,12 +353,14 @@ hidden behind "read-only by design".
 - [x] Deterministic machine evidence extraction exists (idempotent, no invention)
 - [x] Worker orchestration exists (idempotent, commit-before-enqueue, PostgreSQL authoritative)
 - [x] Operator read visibility exists (no payload/excerpt/statement exposure)
-- [ ] **Operator mutation surface disposition formally resolved** (implement design item 2's endpoints — registration/lifecycle/admission/requeue — or record scope amendment)
+- [x] **Operator mutation surface disposition formally resolved** — RESOLVED BY IMPLEMENTATION in Task 19 (registration/lifecycle/admission/requeue/trigger endpoints + admin controls; see §11)
 - [x] All security/copyright/provenance invariants verified intact (§8)
 - [x] Quality baseline green at audit HEAD (backend 652, admin 60, root gate, schema `0008`)
 
 Phase 2 closes when the two unchecked boxes are resolved. No other work is
-required for closure.
+required for closure. *(Task 19 update: the operator-mutation-surface box is
+now checked; the vector-similarity disposition is the single remaining
+unchecked criterion.)*
 
 ---
 
@@ -418,6 +429,35 @@ All fourteen implementation-order items are delivered and verified except:
   the scope to accept programmatic operation for Phase 2 and move the
   mutation surface to Phase 3/production-readiness.
 
+  > **RESOLVED BY IMPLEMENTATION (Task 19, 2026-09-01).** Option (a) was
+  > implemented. The control surface is POST-only, adapter-thin over the
+  > existing domain services, and single-operator/no-auth as before:
+  >
+  > - `POST /internal/research/sources` — idempotent governed registration
+  >   (functional kinds `rss_feed`/`sitemap`/`manual` only; no free-form
+  >   JSON fields; no network I/O)
+  > - `POST /internal/research/sources/{source_id}/lifecycle` — audited
+  >   transition via `SourceRegistryService` (origin fixed to OPERATOR)
+  > - `POST /internal/research/sources/{source_id}/discover` — enqueues the
+  >   frozen `contentos.research.discover_source` job for eligible ACTIVE
+  >   feed/sitemap sources; new discoveries stay DISCOVERED
+  > - `POST /internal/research/discovery-items/{id}/accept` — DISCOVERED→
+  >   ACCEPTED (never enqueues fetch; accept and fetch stay separate)
+  > - `POST /internal/research/discovery-items/{id}/reject` — coded terminal
+  >   rejection
+  > - `POST /internal/research/discovery-items/{id}/requeue` — FETCH_FAILED→
+  >   ACCEPTED with required reason (never starts fetch)
+  > - `POST /internal/research/discovery-items/{id}/fetch` — enqueues the
+  >   frozen `contentos.research.fetch_discovery_item` job for an ACCEPTED
+  >   item of an ACTIVE source; the API accepts entity UUIDs only, never a
+  >   URL to fetch
+  >
+  > Admin gains server-only mutation flows (`/sources/new` registration,
+  > per-source lifecycle + Run discovery controls, per-item state actions on
+  > `/research/[id]`). No normalize/duplicate/evidence stage triggers, no
+  > Celery control panel, no deletes, no source editing, no schema change.
+  > §8.4's operational admission gap is thereby closed.
+
 No other deviation, deferral, or gap blocks closure: every remaining
 difference is a verified semantic equivalent, a documented strengthening, an
 explicitly future item by the design's own wording, or accepted minor doc
@@ -434,7 +474,8 @@ domain services: register source, audited lifecycle transitions
 (coded reason), requeue failed fetch (reason), and explicit "run discovery" /
 "run fetch" job enqueueing for a source/item. Same single-operator/no-auth
 boundary, full audit trail, no new schema expected (head stays `0008`), no
-new dependencies.
+new dependencies. *(DONE — Task 19, 2026-09-01; see the resolution note in
+§11.)*
 
 **Then Task 20 — Phase 2 scope amendment + formal closure (resolves closure
 condition 1):** record the vector-similarity deferral decision as a short ADR

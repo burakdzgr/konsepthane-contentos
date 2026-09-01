@@ -845,21 +845,27 @@ class TestReadOnlySurfaceAndSafety:
             for path, operations in schema["paths"].items()
             if path.startswith("/internal/research")
         }
-        assert set(research_paths) == {
+        # The three visibility endpoints must keep their GET operation.
+        # (Task 19 added explicit POST-only control endpoints, pinned in
+        # tests/unit/test_research_control_api.py; POST /sources is the one
+        # intentional overlap on a shared path.)
+        for read_path in (
             "/internal/research/sources",
             "/internal/research/discovery-items",
             "/internal/research/discovery-items/{discovery_item_id}",
-        }
-        for operations in research_paths.values():
-            assert set(operations) == {"get"}
+        ):
+            assert "get" in research_paths[read_path], read_path
+        for path, operations in research_paths.items():
+            assert set(operations) <= {"get", "post"}, path
 
-    def test_mutating_methods_are_rejected(self) -> None:
+    def test_mutating_methods_are_rejected_on_read_paths(self) -> None:
         harness = Harness()
 
         async def run() -> tuple[int, int]:
             transport = httpx.ASGITransport(app=harness.app)
             async with httpx.AsyncClient(transport=transport, base_url="http://read") as client:
-                post = await client.post("/internal/research/sources", json={})
+                # The list/detail visibility paths accept no mutation verb.
+                post = await client.post("/internal/research/discovery-items", json={})
                 delete = await client.delete("/internal/research/discovery-items")
                 return post.status_code, delete.status_code
 

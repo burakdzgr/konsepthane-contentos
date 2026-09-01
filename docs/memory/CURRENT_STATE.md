@@ -5,8 +5,9 @@ Last updated: 2026-09-01
 ## Current phase
 
 PHASE 2 - Research/Discovery foundation - CONDITIONALLY COMPLETE
-(Tasks 1-18 complete; formal closure decision recorded in
-docs/PHASE2_CLOSURE_AUDIT.md with two open closure conditions)
+(Tasks 1-19 complete; formal closure decision recorded in
+docs/PHASE2_CLOSURE_AUDIT.md; ONE open closure condition remains: the
+vector-similarity formal disposition, to be resolved by Task 20)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -541,6 +542,59 @@ main
 - Task 18 changed no runtime code, schema (head stays `0008`), or
   dependencies; gates re-run and green at audit (backend 652, admin 60,
   check.ps1, git diff --check)
+- Task 19 (minimal operator control surface) complete: closure condition 2 is
+  RESOLVED BY IMPLEMENTATION; the pipeline is now operator-usable end to end
+  without repo access
+- POST-only control endpoints under `/internal/research` (router
+  `contentos.api.routes.research_control`): source registration, source
+  lifecycle transition, source discovery trigger, discovery-item
+  accept/reject/requeue, discovery-item fetch trigger; GET on control paths
+  is 405; no PUT/PATCH/DELETE, no generic action endpoint (OpenAPI-pinned)
+- registration is idempotent through `SourceRegistryService` (identical ->
+  "existing", conflicting -> 409, invalid -> 422); control policy restricts
+  registrable kinds to rss_feed/sitemap/manual; discovery strategy derives
+  from kind; no metadata/discovery_config/fetch_policy JSON accepted
+  (extra="forbid"); registration performs no network I/O
+- lifecycle transitions call `transition_source_state` with origin fixed
+  server-side to OPERATOR (request cannot supply origin); domain matrix and
+  `SourceLifecycleEvent` audit remain authoritative; blank reasons rejected
+- admission stays two explicit operator decisions: accept never enqueues
+  fetch; requeue (FETCH_FAILED -> ACCEPTED, reason required) never starts
+  fetch; REJECTED is terminal (accept/requeue/fetch all 409)
+- task triggers validate durable eligibility only (source ACTIVE +
+  feed/sitemap strategy; item ACCEPTED + parent ACTIVE), mutate nothing, then
+  publish the frozen Task 16 entry-point names via
+  `contentos.worker.producer.CeleryResearchControlDispatcher`
+  (`send_task`, lazy Celery app — creating the FastAPI app touches neither
+  Redis nor PostgreSQL); dispatcher is injectable via
+  `app.state.research_control_dispatcher`
+- the control API never accepts a URL to fetch: triggers take entity UUIDs
+  only, so registered durable entities alone determine what the crawler may
+  touch; task messages carry one UUID arg plus only a validated request_id
+  header; broker publish failure returns a safe 503 and is never reported as
+  queued; Celery task IDs are never exposed
+- domain mutations commit before responding; commit failure returns the
+  opaque 500 envelope with full rollback (transition + audit event atomic)
+- admin gains server-only mutation flows via Server Actions (browser never
+  learns the backend URL; failures become bounded notice codes in redirect
+  query params): `/sources/new` registration form ("registering does not
+  automatically crawl"), per-source lifecycle controls + Run discovery
+  (shown only for eligible ACTIVE feed/sitemap sources) on `/sources`, and
+  state-appropriate actions on `/research/[id]` (DISCOVERED: Accept/Reject
+  with real coded reasons; ACCEPTED: Start fetch; FETCH_FAILED: Requeue with
+  reason; FETCHED/REJECTED: no actions)
+- no manual normalize/duplicate/evidence triggers (Task 16 owns the chain
+  after fetch), no Celery control panel, no deletes, no source editing, no
+  manual discovery-item creation, no auth/RBAC
+- real ephemeral pgvector PostgreSQL verification passed: HTTP registration
+  (idempotent, single row), audited lifecycle round-trip, both triggers
+  dispatching the frozen task names with request_id headers and
+  UUID-only payloads, accept/requeue via HTTP, rejected-terminal enforcement,
+  schema stayed `0008`, pgvector intact, teardown complete; no Redis needed
+  (fake dispatcher — producer behavior is the unit under test)
+- Task 19 added no migration (head stays `0008`) and no dependency changes
+- Task 19 verified: 687 backend tests, 96 admin tests, and the full root
+  quality gate passed
 
 ## Current documentation structure
 
@@ -560,9 +614,9 @@ main
 
 Repository foundation: complete
 
-Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, liveness/readiness endpoints, and the GET-only `/internal/research` visibility API (sources, discovery-items list, discovery-item detail) complete
+Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, liveness/readiness endpoints, the GET-only `/internal/research` visibility API (sources, discovery-items list, discovery-item detail), and the POST-only operator control surface (registration, lifecycle, admission, requeue, discovery/fetch triggers) complete
 
-Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, Docker/Compose integration, and the read-only Sources / Research Pipeline / pipeline-detail screens with header navigation; no mutation screens by design
+Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, Docker/Compose integration, the Sources / Research Pipeline / pipeline-detail screens with header navigation, and server-action operator controls (source registration/lifecycle/discovery trigger, item accept/reject/requeue/fetch); the browser never calls FastAPI or learns its URL
 
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
@@ -595,10 +649,12 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Evidence Pack, Celery Beat scheduling, admin mutation screens,
-pre-commit configuration, or editorial business logic exists yet. The admin
-research screens are strictly read-only (GET only; no admission, requeue,
-lifecycle, retry, or Celery controls). Backend
+No Evidence Pack, Celery Beat scheduling, pre-commit configuration, or
+editorial business logic exists yet. The admin exposes exactly the minimal
+Task 19 operator controls (registration, lifecycle, admission, requeue,
+discovery/fetch triggers); there are no normalize/duplicate/evidence stage
+triggers, no Celery control panel, no deletes, no source editing, and no
+manual discovery-item creation. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -609,17 +665,19 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 19 (awaiting explicit authorization), per the closure audit's
-recommendation: minimal operator control surface resolving closure
-condition 2 — internal write API + admin forms strictly over existing domain
-services (register source; audited lifecycle transitions with reason;
-accept/reject DiscoveryItem with coded reason; requeue failed fetch with
-reason; explicit "run discovery"/"run fetch" job enqueueing). Same
-single-operator/no-auth boundary, full audit trail, no new schema expected
-(head stays 0008), no new dependencies. Then Task 20: formal scope-amendment
-ADR for the vector-similarity deferral (closure condition 1) and declare
-PHASE 2 COMPLETE. Alternative fast path (operator's choice): one amendment
-task deferring both conditions formally.
+Phase 2 Task 20 (awaiting explicit authorization): Vector Similarity Scope
+Amendment / Phase 2 Closure Decision. Documentation/ADR work only — write
+ADR 0008 formally deferring the vector-similarity duplicate signal (design §5
+signal 7, §12 vector column, implementation-order item 11) until the
+corpus/provider/quality threshold justifies it. The ADR must record: why the
+deterministic URL/hash/title/lexical engine is sufficient for the Phase 2
+baseline; why selecting an embedding provider/model now is premature; that
+vector similarity remains planned, not abandoned; the provider-neutral design
+requirement when implemented; exact re-entry triggers; and that Phase 3 may
+start without it only while duplicate-eligibility semantics stay
+conservative. Then update the Phase 2 design status note, flip the last exit
+criterion in docs/PHASE2_CLOSURE_AUDIT.md, and declare PHASE 2 COMPLETE here
+and in the audit.
 
 Before implementing the affected integrations, resolve:
 

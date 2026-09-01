@@ -9,12 +9,31 @@ import {
 } from "@/lib/research-api";
 import { formatUtcTimestamp } from "@/lib/format";
 import {
+  allowedLifecycleTargets,
+  isDiscoveryEligible,
+} from "@/lib/source-controls";
+import {
   buildPageQuery,
+  firstParam,
   parseOffset,
   parseSearchText,
   pickEnum,
   type RawSearchParams,
 } from "@/lib/search-params";
+import { ControlNotice } from "../notices";
+import {
+  runSourceDiscoveryAction,
+  transitionSourceLifecycleAction,
+} from "./actions";
+
+const SOURCE_NOTICES: Record<string, string> = {
+  "source-registered":
+    "Source registered. Registering a source does not automatically crawl it.",
+  "source-existing":
+    "An identical source already existed; nothing was changed.",
+  "lifecycle-updated": "Source lifecycle updated.",
+  "discovery-queued": "Discovery queued.",
+};
 
 // Operational registry data must reflect the moment of the request.
 export const dynamic = "force-dynamic";
@@ -114,12 +133,53 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
   );
 }
 
+function SourceControls({ source }: { source: SourceListItem }) {
+  return (
+    <div className="control-stack">
+      <form action={transitionSourceLifecycleAction} className="control-form">
+        <input type="hidden" name="source_id" value={source.id} />
+        <select
+          name="new_state"
+          required
+          defaultValue=""
+          aria-label={`New lifecycle state for ${source.slug}`}
+        >
+          <option value="" disabled>
+            New state…
+          </option>
+          {allowedLifecycleTargets(source.lifecycle_state).map((state) => (
+            <option key={state} value={state}>
+              {state}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          name="reason"
+          required
+          maxLength={1000}
+          placeholder="reason"
+          aria-label={`Reason for changing ${source.slug}`}
+        />
+        <button type="submit">Apply state</button>
+      </form>
+      {isDiscoveryEligible(source) && (
+        <form action={runSourceDiscoveryAction} className="control-form">
+          <input type="hidden" name="source_id" value={source.id} />
+          <button type="submit">Run discovery</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default async function SourcesPage({
   searchParams,
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const filters = parseFilters(await searchParams);
+  const params = await searchParams;
+  const filters = parseFilters(params);
   const result = await fetchResearchSources({
     lifecycleState: filters.state,
     kind: filters.kind,
@@ -133,8 +193,14 @@ export default async function SourcesPage({
     <section className="panel" aria-labelledby="sources-title">
       <h1 id="sources-title">Sources</h1>
       <p className="muted">
-        Governed research origins and their discovery-item counts. Read-only.
+        Governed research origins and their discovery-item counts.{" "}
+        <Link href="/sources/new">Register source</Link>
       </p>
+      <ControlNotice
+        notice={firstParam(params.notice)}
+        error={firstParam(params.error)}
+        noticeMessages={SOURCE_NOTICES}
+      />
       <FilterForm filters={filters} />
       {result.kind === "unreachable" && (
         <p role="status">The backend API cannot be reached right now.</p>
@@ -161,6 +227,7 @@ export default async function SourcesPage({
                   <th scope="col">Discovery items</th>
                   <th scope="col">Base URL</th>
                   <th scope="col">Updated</th>
+                  <th scope="col">Controls</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,6 +274,9 @@ export default async function SourcesPage({
                       {source.base_url}
                     </td>
                     <td>{formatUtcTimestamp(source.updated_at)}</td>
+                    <td>
+                      <SourceControls source={source} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

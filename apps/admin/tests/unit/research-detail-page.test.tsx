@@ -129,6 +129,117 @@ describe("Research detail page", () => {
     expect(notFoundMock).toHaveBeenCalledTimes(1);
   });
 
+  it("shows Accept and Reject with real reasons for a DISCOVERED item", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: pipelineDetail({
+        discovery_item: {
+          ...pipelineDetail().discovery_item,
+          lifecycle_state: "discovered",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    const reasonSelect = screen.getByLabelText(
+      "Rejection reason",
+    ) as HTMLSelectElement;
+    const reasons = Array.from(reasonSelect.options)
+      .map((option) => option.value)
+      .filter((value) => value !== "");
+    expect(reasons).toEqual([
+      "out_of_scope",
+      "duplicate_url",
+      "source_not_active",
+      "policy",
+      "invalid_url",
+      "unsupported_scheme",
+    ]);
+    expect(screen.queryByRole("button", { name: "Start fetch" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Requeue" })).toBeNull();
+  });
+
+  it("shows only Start fetch for an ACCEPTED item", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: pipelineDetail({
+        discovery_item: {
+          ...pipelineDetail().discovery_item,
+          lifecycle_state: "accepted",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: "Start fetch" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    expect(screen.getByText(/continues automatically/i)).toBeTruthy();
+  });
+
+  it("shows only Requeue with a required reason for a FETCH_FAILED item", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: pipelineDetail({
+        discovery_item: {
+          ...pipelineDetail().discovery_item,
+          lifecycle_state: "fetch_failed",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: "Requeue" })).toBeTruthy();
+    const reason = screen.getByLabelText("Requeue reason") as HTMLInputElement;
+    expect(reason.required).toBe(true);
+    expect(screen.queryByRole("button", { name: "Start fetch" })).toBeNull();
+    expect(screen.getByText(/does not start the fetch/i)).toBeTruthy();
+  });
+
+  it("shows terminal text and no actions for a REJECTED item", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: pipelineDetail({
+        discovery_item: {
+          ...pipelineDetail().discovery_item,
+          lifecycle_state: "rejected",
+          rejection_reason: "out_of_scope",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    expect(screen.getByText(/rejection is terminal/i)).toBeTruthy();
+  });
+
+  it("renders an action notice from the redirect params", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: pipelineDetail(),
+      requestId: null,
+    });
+
+    render(
+      await ResearchDetailPage({
+        params: Promise.resolve({ id: ITEM_ID }),
+        searchParams: Promise.resolve({ notice: "fetch-queued" }),
+      }),
+    );
+
+    expect(screen.getByText(/fetch queued/i)).toBeTruthy();
+  });
+
   it("renders unreachable and malformed states without crashing", async () => {
     fetchMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage();

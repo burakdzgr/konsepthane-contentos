@@ -42,14 +42,29 @@ export type FetchedResponse = {
   json(): Promise<unknown>;
 };
 
+export type BackendRequestInit = {
+  method?: "GET" | "POST";
+  jsonBody?: unknown;
+};
+
 export async function requestBackend(
   path: string,
+  init: BackendRequestInit = {},
 ): Promise<FetchedResponse | null> {
   const baseUrl = getServerEnv().internalApiUrl;
+  const headers: Record<string, string> = {
+    [REQUEST_ID_HEADER]: `admin-${crypto.randomUUID()}`,
+  };
+  if (init.jsonBody !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
   try {
     return await fetch(new URL(path, baseUrl), {
+      method: init.method ?? "GET",
       cache: "no-store",
-      headers: { [REQUEST_ID_HEADER]: `admin-${crypto.randomUUID()}` },
+      headers,
+      body:
+        init.jsonBody !== undefined ? JSON.stringify(init.jsonBody) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {

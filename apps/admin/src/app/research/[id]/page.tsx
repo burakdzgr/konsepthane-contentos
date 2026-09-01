@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { fetchPipelineDetail, type PipelineDetail } from "@/lib/research-api";
+import {
+  DISCOVERY_REJECTION_REASONS,
+  fetchPipelineDetail,
+  type PipelineDetail,
+} from "@/lib/research-api";
 import { formatUtcTimestamp } from "@/lib/format";
 import {
   discoveryStateTone,
@@ -9,10 +13,28 @@ import {
   fetchOutcomeTone,
   normalizationStatusTone,
 } from "@/lib/pipeline-display";
+import { firstParam, type RawSearchParams } from "@/lib/search-params";
+import { ControlNotice } from "../../notices";
+import {
+  acceptDiscoveryItemAction,
+  rejectDiscoveryItemAction,
+  requeueDiscoveryItemAction,
+  startDiscoveryItemFetchAction,
+} from "./actions";
 
 // One DiscoveryItem's full pipeline history from durable state, at request
-// time. Read-only: no mutation controls, no payload access, no article body.
+// time, plus the explicit operator decisions valid for its current state.
+// No payload access, no article body, no pipeline-stage bypass.
 export const dynamic = "force-dynamic";
+
+const DETAIL_NOTICES: Record<string, string> = {
+  accepted: "Item accepted. Starting the fetch is a separate action.",
+  rejected: "Item rejected. Rejection is terminal.",
+  requeued:
+    "Item requeued as accepted. Starting the fetch is a separate action.",
+  "fetch-queued":
+    "Fetch queued. The pipeline continues automatically after a successful fetch.",
+};
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
   return (
@@ -305,12 +327,102 @@ function EvidenceSection({ detail }: { detail: PipelineDetail }) {
   );
 }
 
+function ActionPanel({ detail }: { detail: PipelineDetail }) {
+  const item = detail.discovery_item;
+  const state = item.lifecycle_state;
+  return (
+    <section aria-labelledby="detail-actions">
+      <h2 id="detail-actions">Operator actions</h2>
+      {state === "discovered" && (
+        <div className="control-stack">
+          <form action={acceptDiscoveryItemAction} className="control-form">
+            <input type="hidden" name="discovery_item_id" value={item.id} />
+            <button type="submit">Accept</button>
+            <span className="muted">
+              Accept admits the item for fetching; fetch stays a separate
+              action.
+            </span>
+          </form>
+          <form action={rejectDiscoveryItemAction} className="control-form">
+            <input type="hidden" name="discovery_item_id" value={item.id} />
+            <select
+              name="reason"
+              required
+              defaultValue=""
+              aria-label="Rejection reason"
+            >
+              <option value="" disabled>
+                Rejection reason…
+              </option>
+              {DISCOVERY_REJECTION_REASONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              name="note"
+              maxLength={2000}
+              placeholder="optional note"
+              aria-label="Rejection note"
+            />
+            <button type="submit">Reject</button>
+          </form>
+        </div>
+      )}
+      {state === "accepted" && (
+        <form action={startDiscoveryItemFetchAction} className="control-form">
+          <input type="hidden" name="discovery_item_id" value={item.id} />
+          <button type="submit">Start fetch</button>
+          <span className="muted">
+            After a successful fetch the pipeline continues automatically:
+            normalize → duplicate check → evidence.
+          </span>
+        </form>
+      )}
+      {state === "fetch_failed" && (
+        <form action={requeueDiscoveryItemAction} className="control-form">
+          <input type="hidden" name="discovery_item_id" value={item.id} />
+          <input
+            type="text"
+            name="reason"
+            required
+            maxLength={1000}
+            placeholder="reason for requeueing"
+            aria-label="Requeue reason"
+          />
+          <button type="submit">Requeue</button>
+          <span className="muted">
+            Requeue returns the item to accepted; it does not start the fetch.
+          </span>
+        </form>
+      )}
+      {state === "fetched" && (
+        <p className="muted">
+          This item is fetched; the pipeline ran from its snapshot. No actions
+          are available here.
+        </p>
+      )}
+      {state === "rejected" && (
+        <p className="muted">
+          This item is rejected. Rejection is terminal; no actions are
+          available.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default async function ResearchDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<RawSearchParams>;
 }) {
   const { id } = await params;
+  const query = searchParams === undefined ? {} : await searchParams;
   const result = await fetchPipelineDetail(id);
 
   if (result.kind === "not_found") {
@@ -340,7 +452,13 @@ export default async function ResearchDetailPage({
       <p className="muted">
         <Link href="/research">← Back to Research Pipeline</Link>
       </p>
+      <ControlNotice
+        notice={firstParam(query.notice)}
+        error={firstParam(query.error)}
+        noticeMessages={DETAIL_NOTICES}
+      />
       <DiscoverySection detail={detail} />
+      <ActionPanel detail={detail} />
       <FetchSection detail={detail} />
       <NormalizationSection detail={detail} />
       <DuplicateSection detail={detail} />
