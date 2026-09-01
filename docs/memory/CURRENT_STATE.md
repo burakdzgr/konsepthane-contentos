@@ -8,7 +8,7 @@ PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
 opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
-foundation COMPLETE)
+foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -971,6 +971,111 @@ main
   API/admin surfaces, and no dependency changes
 - Task 5 verified: 805 backend tests (778 + 27 new), 96 admin tests, and
   the full root quality gate passed; schema head `0012`
+- PHASE 3 Task 6 (EvidencePack foundation, including the reproducibility
+  correction pass) complete: `contentos.evidence_packs` added
+  (enums/errors/policy/models/repository/service); assembler identity
+  `evidence-pack-assembler`/`1`; membership and provenance fully
+  deterministic — a pack is assembled from explicitly selected
+  ResearchEvidence units and is never copied text, a source dump, raw HTML,
+  a URL list, or an AI summary
+- assembly identity covers the WHOLE semantic assembly input: each pack
+  stores a canonical `assembly_input_snapshot` (schema v1: assembler
+  name+version, the EXACT policy snapshot, sorted selection triples
+  (evidence id, role, claim_cluster), sorted contradiction states
+  (claim_key, sides, nature, severity, resolution_status)) plus its SHA-256
+  `assembly_input_hash` over canonical sorted JSON (never Python repr);
+  DB-backed UNIQUE (opportunity, assembler name+version,
+  assembly_input_hash) alongside UNIQUE (opportunity, version); display
+  notes and handling recommendations are excluded ONLY as formally cosmetic/
+  advisory (documented + tested: a notes-only retry returns the existing
+  pack; they never affect sufficiency)
+- sufficiency policy is an EXPLICIT caller input: frozen
+  `EvidenceSufficiencyPolicy` dataclass (name, version, min_evidence_items,
+  min_distinct_sources, min_key_facts, staleness_days) with
+  snapshot()/from_snapshot(); `DEFAULT_EVIDENCE_POLICY` = default/1
+  (3 items, 2 distinct sources, 1 key fact, 180 staleness days) is a named,
+  versioned initial operational policy — fully persisted per pack in
+  policy_snapshot AND inside the assembly snapshot, never invisible
+  universal truth; the 180-day staleness caution belongs to the versioned
+  policy; changing ONLY a policy version/threshold yields a NEW pack
+  version with a different hash while the old pack is untouched, and an
+  exact retry with the original policy returns the original pack
+  (DB-uniqueness-protected, tested on SQLite and real PG)
+- REPRODUCIBILITY CONTRACT: authoritative sufficiency for a pack version is
+  the persisted immutable `sufficiency` + `sufficiency_detail` computed
+  once at assembly; "pack UUID X / version N was READY" never changes
+  afterward; there is NO live/current sufficiency helper and no
+  get_current_ready_pack semantics (test-pinned: the service exposes no
+  evaluate/current/effective surface)
+- contradictions are ASSEMBLY INPUTS: `ContradictionDeclaration`s supplied
+  to `assemble_pack` (sides validated as disjoint subsets of the selected
+  evidence) become per-pack `evidence_contradictions` rows starting
+  UNRESOLVED and participate in the assembly identity (same selections with
+  vs without a declaration are distinct packs — never deduped);
+  `resolve_contradiction` stays an audited mutation on the contradiction
+  row (non-unresolved status + mandatory reason, stamps
+  resolved_by=operator + resolved_at, refuses re-resolution; DB CHECK
+  enforces resolution-field consistency) but NEVER changes any pack's
+  stored sufficiency
+- explicit `reassemble_pack(pack_id, policy=None,
+  additional_contradictions=None)` produces the NEW version: policy
+  defaults to the old pack's persisted snapshot via from_snapshot;
+  selections (including display notes) are rebuilt from the old pack's
+  items; contradiction definitions + resolution state are carried forward
+  into the new pack's OWN rows and snapshot frozen at reassembly time
+  (independently explainable later, no evidence text copied); an unchanged
+  reassembly returns the existing pack; the §6 flow is test-pinned on
+  SQLite and real PG: v1 with a blocking declaration is CONFLICTED,
+  resolving its row leaves v1 historically CONFLICTED forever, reassembly
+  yields v2 READY with the resolved state carried into v2's rows
+- sufficiency evaluation (at assembly only): any UNRESOLVED BLOCKING
+  contradiction -> CONFLICTED; policy minimums missing -> INSUFFICIENT with
+  named missing entries; else READY; detail records policy name+version;
+  BLOCKED reserved (policy v1 defines no deterministic block condition and
+  never emits it); absence of evidence is never a pass
+- `evidence_packs` (immutable, append-only trigger) also stores
+  source-diversity summary (distinct sources, trust-tier distribution,
+  reference_only flag), staleness notes (recency basis older than the
+  policy's staleness_days — a caution, never a block), locale-limitation
+  summary, aggregated licensing cautions (reference_only sources + evidence
+  licensing_notes travel with the pack per ADR 0007); the accepted design's
+  idea link and AI organization-attempt link are deliberately absent —
+  those columns arrive with the Ideas and AI-boundary tasks' own migrations
+- `evidence_pack_items` (append-only trigger): mandatory NOT NULL RESTRICT
+  FK to research_evidence, roles key_fact/supporting/contradicting/context/
+  caution, bounded claim_cluster, bounded optional display_note beside the
+  mandatory reference — no evidence_text/statement/excerpt column exists
+  (test-pinned); eligibility requires every selected evidence unit to trace
+  to the opportunity's admitted research inputs
+- `evidence_contradictions`: core fields immutable and DELETE forbidden via
+  a guarded PG trigger that permits UPDATE only on the resolution
+  dimension; severity low/material/blocking
+- assembly idempotency mechanics: identity pre-check returns the existing
+  pack; SAVEPOINT race recovery returns the concurrent winner; changed
+  set/roles/contradictions/policy appends a new version with old versions
+  fully queryable; caller owns commit
+- migration `0013_create_evidence_packs`: three tables, frozen literal
+  vocabularies, four RESTRICT FKs, identity/version uniques, hash-format +
+  assembly-snapshot jsonb-object + resolution-consistency CHECKs,
+  append-only triggers on packs/items and the guarded mutation trigger on
+  contradictions; symmetric downgrade removes only Task 6 objects
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0013`, real chain (payload store + real duplicate engine + promotion +
+  two-source evidence), v1 assembly with a blocking declaration ->
+  CONFLICTED with the policy inside the stored jsonb snapshot, idempotent
+  exact retry, audited resolution leaving v1 CONFLICTED, reassembly -> v2
+  READY carrying the resolved contradiction into its own row, stricter
+  policy -> v3 INSUFFICIENT with pinned policy snapshot, original-input
+  retry deduping to v1, all six pack/item/contradiction-core UPDATE/DELETE
+  mutations rejected while a resolution-dimension UPDATE is allowed,
+  PG-enforced assembly identity uniqueness, zero workflow/disposition side
+  effects, downgrade to `0012` with evidence/opportunities/pgvector
+  surviving, re-upgrade; teardown complete
+- Task 6 added no AI organization assistance, no Ideas/intent/briefs, no
+  claim/evidence maps, no Celery, no API/admin changes, no workflow
+  transitions, no commissioning, and no dependency changes
+- Task 6 verified (post-correction): 829 backend tests (805 + 24 new), 96
+  admin tests, and the full root quality gate passed; schema head `0013`
 
 ## Current documentation structure
 
@@ -1001,8 +1106,9 @@ DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
 raw_payload_blobs tables complete; Phase 3 editorial_work_items, append-only
 editorial_workflow_events, editorial_opportunities, append-only
 opportunity_research_inputs, append-only opportunity_scores +
-opportunity_score_components, and append-only search_signals tables
-complete; schema head `0012`
+opportunity_score_components, append-only search_signals, and append-only
+evidence_packs + evidence_pack_items + resolution-guarded
+evidence_contradictions tables complete; schema head `0013`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -1030,8 +1136,8 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Evidence Pack, Celery Beat scheduling, pre-commit configuration, or
-editorial business logic exists yet. The admin exposes exactly the minimal
+No Idea persistence, Celery Beat scheduling, pre-commit configuration, or
+AI boundary exists yet. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1046,24 +1152,21 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 6 (awaiting explicit authorization) — EvidencePack foundation,
-per the accepted design's implementation order item 5: `contentos.
-evidence_packs` with immutable versioned `evidence_packs` (UNIQUE
-(opportunity_id, version); assembler name/version identity; optional
-idea_id; sufficiency READY/INSUFFICIENT/CONFLICTED/BLOCKED with recorded
-detail and versioned policy config; source-diversity summary;
-staleness/locale/licensing caution aggregation), `evidence_pack_items`
-(NOT NULL RESTRICT FKs to research_evidence; roles KEY_FACT/SUPPORTING/
-CONTRADICTING/CONTEXT/CAUTION; claim clusters; bounded optional display
-note beside the mandatory evidence reference — no provenance-stripping
-evidence_text), `evidence_contradictions` (claim key, evidence ids per
-side, nature, severity LOW/MATERIAL/BLOCKING, resolution status, handling
-recommendation), the deterministic assembler + explicit sufficiency gate
-(absence of evidence is never a pass; configurable per-content-type/risk
-minimums, no universal number), pack-assembly idempotency (opportunity +
-canonical evidence-id set + assembler identity), and a migration. No AI
-organization assistance yet (attempt FK stays null until the AI boundary
-task), no Celery, no API/admin.
+PHASE 3 TASK 7 (awaiting explicit authorization) — Idea persistence +
+selection, per the accepted design's implementation order item 6:
+`contentos.ideas` with immutable versioned idea rows (version identity id +
+stable logical_idea_id, UNIQUE (logical_idea_id, version); working_title,
+mandatory angle and rationale, audience, value_proposition, content_type
+controlled vocabulary, locale/market, exclusions, optional bounded
+planning_dimensions, origin OPERATOR only for now — the MODEL_ASSISTED
+origin and generation-attempt FK arrive with the AI-boundary task),
+append-only `idea_selection_events` (SELECTED/DESELECTED, operator-only,
+reason + request_id, effective selection = deterministic latest, rejected
+candidates never overwritten), deterministic originality guards
+(multi-source policy per content type, title-similarity check against input
+documents, fake-UGC guard), multiple candidates per opportunity, and a
+migration. Operator-authored ideas only — no AI generation, no Celery, no
+API/admin.
 
 Before implementing the affected integrations, resolve:
 

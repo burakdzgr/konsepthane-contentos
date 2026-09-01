@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0012"]
+    assert script.get_heads() == ["0013"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -72,6 +72,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0010").down_revision == "0009"
     assert script.get_revision("0011").down_revision == "0010"
     assert script.get_revision("0012").down_revision == "0011"
+    assert script.get_revision("0013").down_revision == "0012"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -176,6 +177,23 @@ def test_search_signal_migration_contains_identity_and_append_only_protection() 
     assert "ck_search_signals_value_object" in sql
     assert "CREATE TRIGGER trg_search_signals_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON search_signals" in sql
+
+
+def test_evidence_pack_migration_contains_provenance_and_protection() -> None:
+    sql = offline_sql("upgrade", "0012:0013")
+
+    assert "CREATE TABLE evidence_packs" in sql
+    assert "CREATE TABLE evidence_pack_items" in sql
+    assert "CREATE TABLE evidence_contradictions" in sql
+    assert "uq_evidence_packs_identity" in sql
+    assert "assembly_input_hash" in sql
+    assert "ck_evidence_packs_assembly_snapshot_object" in sql
+    assert "uq_evidence_pack_items_evidence" in sql
+    assert "ck_evidence_contradictions_resolution_consistency" in sql
+    assert "CREATE TRIGGER trg_evidence_packs_append_only" in sql
+    assert "CREATE TRIGGER trg_evidence_pack_items_append_only" in sql
+    assert "CREATE TRIGGER trg_evidence_contradictions_guarded" in sql
+    assert sql.count("ON DELETE RESTRICT") == 4
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

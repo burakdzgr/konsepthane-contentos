@@ -89,6 +89,7 @@ def test_no_engine_is_created_at_import_time() -> None:
 def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.discovery.models  # noqa: F401
     import contentos.duplicates.models  # noqa: F401
+    import contentos.evidence_packs.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
     import contentos.normalization.models  # noqa: F401
     import contentos.opportunities.models  # noqa: F401
@@ -114,6 +115,9 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "opportunity_scores",
         "opportunity_score_components",
         "search_signals",
+        "evidence_packs",
+        "evidence_pack_items",
+        "evidence_contradictions",
     }
 
 
