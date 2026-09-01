@@ -4,10 +4,22 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - CONDITIONALLY COMPLETE
-(Tasks 1-19 complete; formal closure decision recorded in
-docs/PHASE2_CLOSURE_AUDIT.md; ONE open closure condition remains: the
-vector-similarity formal disposition, to be resolved by Task 20)
+PHASE 2 - Research/Discovery foundation - COMPLETE (2026-09-01)
+
+Tasks 1-20 complete. The formal closure decision is recorded in
+docs/PHASE2_CLOSURE_AUDIT.md (final decision: PHASE 2 COMPLETE, zero
+remaining Phase 2 blockers). Closure condition 2 (operator control surface)
+was resolved by Task 19's implementation; closure condition 1 (vector
+similarity) was resolved by ADR 0008, which formally defers the
+vector-similarity duplicate signal — not implemented, not abandoned —
+under frozen provider-neutral constraints and explicit re-entry triggers.
+
+Phase 2 completion does NOT mean production readiness (the
+production-readiness backlog in the closure audit §7 stands: deployment
+access protection, secrets provisioning, backups/restore, monitoring,
+source-allowlist governance, scheduled discovery, multi-worker crawl
+limiting, raw-payload retention, runbooks, and the dispatch-gap/outbox
+decision). Phase 3 is NEXT but NOT STARTED.
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -500,7 +512,8 @@ main
 - Task 18 (Phase 2 closure audit) complete: `docs/PHASE2_CLOSURE_AUDIT.md` is
   the formal closure decision record, audited at HEAD `ea9e9ac` against the
   accepted design, ADRs 0005-0007, and the actual code
-- closure decision: **PHASE 2 CONDITIONALLY COMPLETE** — the entire runtime
+- closure decision at Task 18 (historical; superseded by Task 20's PHASE 2
+  COMPLETE): **PHASE 2 CONDITIONALLY COMPLETE** — the entire runtime
   foundation is implemented and verified; no implemented behavior violates
   the accepted design; all security/copyright/provenance invariants verified
   intact at audit time
@@ -595,6 +608,41 @@ main
 - Task 19 added no migration (head stays `0008`) and no dependency changes
 - Task 19 verified: 687 backend tests, 96 admin tests, and the full root
   quality gate passed
+- Task 20 (documentation/ADR only) complete: ADR 0008 "Defer the
+  Vector-Similarity Duplicate Signal Until Justified" accepted; it
+  acknowledges the original Phase 2 promise (design §5 signal 7, §12 vector
+  column plan, implementation-order item 11) and amends scope formally
+  rather than rewriting history
+- deferral rationale recorded: empty/small corpus, conservative explainable
+  deterministic gate exists, no embedding provider contract selected,
+  premature freezing of model/dimension/lifecycle/cost/calibration, Phase 3
+  data needed for responsible thresholds, pgvector infrastructure already
+  live so nothing is foreclosed, and vector similarity is a classification
+  quality enhancement — not a provenance/security prerequisite
+- the deterministic duplicate baseline (`duplicate-engine/1`: URL/raw-hash/
+  fingerprint/title/lexical signals with persisted thresholds, signals,
+  bounded matches, append-only idempotent decisions) remains authoritative
+  for the current phase
+- ADR 0008 freezes provider-neutral constraints for the eventual vector
+  implementation (embedding protocol, model+version provenance, dimension
+  validation, deterministic embedding identity, vector-version lifecycle,
+  safe re-embedding, fake deterministic test provider, bounded batches, no
+  Writer/LLM runtime dependency, threshold+version recorded per decision)
+  and defines measurable re-entry triggers (corpus scale, observed duplicate
+  misses, Phase 3 overlap evidence, performance targets, multilingual
+  expansion, provider selection)
+- binding Phase 3 safety conditions while deferred: DUPLICATE/REJECT remain
+  hard stops; RELATED/UPDATE_EXISTING stay downstream-eligible signals;
+  uncertain similarity is never auto-rejected; the Idea Engine must not
+  treat duplicate decisions as infallible and must preserve references to
+  the underlying decisions/signals
+- Phase 2 design doc status updated (implementation closed, item 11 and
+  signal 7 annotated as deferred by ADR 0008) without deleting or rewriting
+  the original design; closure audit updated (K2 -> DEFERRED_ACCEPTED, all
+  exit criteria resolved, final decision PHASE 2 COMPLETE)
+- Task 20 changed no runtime code, schema (head stays `0008`), or
+  dependencies; gates re-run and green (backend 687, admin 96, check.ps1,
+  git diff --check)
 
 ## Current documentation structure
 
@@ -608,7 +656,7 @@ main
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
-- docs/adr/README.md (ADRs 0001-0007)
+- docs/adr/README.md (ADRs 0001-0008)
 
 ## Current implementation status
 
@@ -665,19 +713,18 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 20 (awaiting explicit authorization): Vector Similarity Scope
-Amendment / Phase 2 Closure Decision. Documentation/ADR work only — write
-ADR 0008 formally deferring the vector-similarity duplicate signal (design §5
-signal 7, §12 vector column, implementation-order item 11) until the
-corpus/provider/quality threshold justifies it. The ADR must record: why the
-deterministic URL/hash/title/lexical engine is sufficient for the Phase 2
-baseline; why selecting an embedding provider/model now is premature; that
-vector similarity remains planned, not abandoned; the provider-neutral design
-requirement when implemented; exact re-entry triggers; and that Phase 3 may
-start without it only while duplicate-eligibility semantics stay
-conservative. Then update the Phase 2 design status note, flip the last exit
-criterion in docs/PHASE2_CLOSURE_AUDIT.md, and declare PHASE 2 COMPLETE here
-and in the audit.
+PHASE 3 TASK 1 (awaiting explicit authorization) — Editorial Intelligence /
+Idea Engine Architecture. DESIGN ONLY: define the
+Sources/Evidence -> Opportunity -> Idea -> Evidence Pack -> Content Brief
+chain — entities, per-entity lifecycles, scoring boundaries, provenance
+rules (Phase 3 consumes ResearchEvidence through the evidence service only,
+never arbitrary scraped text and never bypassing provenance), the
+relationship to DuplicateDecision outcomes (advisory/gating per the existing
+contract and ADR 0008's conservative-handling conditions), provider-neutral
+AI boundaries, the human-review relationship (ADR 0004 remains binding), and
+an atomic implementation order. Phase 3 entry criteria are recorded in
+docs/PHASE2_CLOSURE_AUDIT.md §10 and ADR 0008. No implementation, no Writer,
+no Konsepthane production access, no ad-hoc embeddings.
 
 Before implementing the affected integrations, resolve:
 

@@ -1,7 +1,12 @@
 # Phase 2 - Research / Discovery Foundation Design
 
-Status: Accepted design (Phase 2 Task 1). No runtime code exists for this
-design yet; nothing below is implemented unless CURRENT_STATE.md says so.
+Status: Accepted Phase 2 design (Phase 2 Task 1). Implementation closed on
+2026-09-01: see docs/PHASE2_CLOSURE_AUDIT.md for the closure decision and
+implementation deviations, and ADR 0008 for the formal deferral of the
+vector-similarity signal (implementation-order item 11). The text below is
+the original accepted design and is preserved as written; historical
+statements such as "no runtime code exists yet" describe the state at design
+time, not the current repository.
 
 Scope: the left side of the pipeline only —
 Source Registry → Discovery → Fetch → Normalize → Duplicate Detection →
@@ -240,6 +245,7 @@ auditable record — never just a boolean on the document.
 5. Normalized title similarity
 6. Lexical similarity (shingle/minhash over `clean_text`)
 7. Vector similarity (pgvector embedding; model + version recorded per decision)
+   *(deferred by ADR 0008 after the Phase 2 closure audit; re-entry triggers recorded there)*
 8. Comparison universe: existing ContentOS normalized documents and research;
    **future**: published Konsepthane inventory via an explicit read-only
    contract (does not exist yet; no Konsepthane access is implied now)
@@ -485,6 +491,7 @@ database write commits). No business state lives only inside Celery/Redis.
     (no embeddings yet); configurable thresholds recorded per decision.
 11. pgvector embedding column + vector similarity signal in the duplicate
     engine (provider-neutral embedding interface).
+    *Deferred by ADR 0008 after the Phase 2 closure audit.*
 12. ResearchEvidence model + migration + evidence service (provenance
     enforcement).
 13. Celery orchestration: `discover_source` → `fetch_discovery_item` →

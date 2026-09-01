@@ -19,11 +19,29 @@ unchanged.
 > Task 19: backend 687 tests, admin 96 tests, `scripts/check.ps1` green,
 > schema head still `0008`, lockfiles unchanged.
 
+> **Task 20 follow-up (2026-09-01): closure condition 1 RESOLVED —
+> DEFERRED_ACCEPTED via ADR 0008.** ADR 0008 ("Defer the Vector-Similarity
+> Duplicate Signal Until Justified", Accepted) formally amends Phase 2 scope:
+> the vector signal is deferred — not implemented, not abandoned — with
+> frozen provider-neutral implementation constraints, binding Phase 3 safety
+> conditions for conservative duplicate handling, and explicit re-entry
+> triggers. With condition 2 resolved by Task 19 and condition 1 resolved by
+> ADR 0008, **zero Phase 2 blockers remain** and the executive decision is
+> amended to **A. PHASE 2 COMPLETE** (see §1 and §11). Production readiness
+> remains a separate track (§7).
+
 ---
 
 ## 1. Executive decision
 
-**B. PHASE 2 CONDITIONALLY COMPLETE.**
+**A. PHASE 2 COMPLETE** *(final decision as amended 2026-09-01: condition 2
+resolved by Task 19's implemented operator control surface; condition 1
+resolved by ADR 0008's formal deferral of the vector-similarity signal with
+recorded re-entry triggers; zero Phase 2 blockers remain).*
+
+The original Task 18 decision below is preserved as history:
+
+**B. PHASE 2 CONDITIONALLY COMPLETE.** *(historical, superseded above)*
 
 The entire runtime foundation promised by the accepted Phase 2 design is
 implemented, verified against real PostgreSQL, and protected by the security,
@@ -117,7 +135,7 @@ DEFERRED_ACCEPTED, BLOCKER, OUT_OF_SCOPE, DOC_DRIFT.
 | I. Normalization pipeline v1 (extractor, charset policy, bounded extraction, failure statuses) | §4, §14 item 8 | `contentos.normalization.pipeline` + `html-basic/1`, `text-basic/1`; verified payload reads only; stdlib parser, no NLP | `test_normalization_pipeline.py` (Task 11 incl. synthetic E2E) | COMPLETE | Closed |
 | J. Content fingerprinting | §14 item 9 | SHA-256 fingerprint v1 over exact clean-text bytes on every succeeded document | Task 11 tests | COMPLETE_DIFFERENT_IMPLEMENTATION (no stored LSH; see §5) | Closed for Phase 2 baseline |
 | K. DuplicateDecision + engine v1 (URL/hash/lexical signals, thresholds snapshot, matches, append-only) | §5, §14 item 10 | `contentos.duplicates`, migration `0006`; `duplicate-engine/1`; signals 1–6 of §5 implemented; frozen thresholds + signals + bounded matches + rationale codes persisted per decision | `test_duplicates.py`; Task 12 real-PG run | COMPLETE (record-shape drift in §5) | Closed |
-| K2. Vector similarity signal (+ embedding model/version provenance, pgvector column) | §5 signal 7, §12, **§14 item 11** | **Not implemented.** No vector column, no embedding interface, no vector code outside health checks (verified by repo-wide search) | — | **BLOCKER** (until implemented or formally amended) | Closure condition 1 — see §11/§12 |
+| K2. Vector similarity signal (+ embedding model/version provenance, pgvector column) | §5 signal 7, §12, **§14 item 11** | **Not implemented.** No vector column, no embedding interface, no vector code outside health checks (verified by repo-wide search) | ADR 0008 (Accepted 2026-09-01) | **DEFERRED_ACCEPTED** *(was BLOCKER until the Task 20 amendment)* | Deferred by ADR 0008; provider-neutral constraints frozen and re-entry triggers recorded there |
 | L. ResearchEvidence (NOT NULL provenance FKs, bounded excerpts, exact offsets, evidence identity, no orphan API) | §6, §7, §14 item 12, ADR 0007 | `contentos.research` models/validation/repository/service, migration `0007`; derived provenance (callers cannot supply it); exact-slice excerpt contract v1; evidence_key v1 SHA-256 identity | `test_research_evidence.py`; Task 13 real-PG 24-step run | COMPLETE (intentional strengthening in §5) | Closed |
 | M. Evidence extraction (machine, deterministic, idempotent) | §13 `extract_research_evidence` row, §9 | `contentos.research.extractor` `deterministic-evidence/1` (author/date metadata evidence, excerpt-less UNVERIFIED, no invention) | `test_evidence_extractor.py` (Task 14) | COMPLETE | Closed. (Design's "model/provider" wording anticipated AI extractors — those are Phase 3; deterministic machine extraction satisfies the Phase 2 primitive.) |
 | N. Celery orchestration (five jobs, idempotent, commit-before-enqueue, PostgreSQL authoritative, classified retries) | §13, §14 item 13 | `contentos.worker.research_tasks` + `runtime`: frozen task names, acks_late at-least-once, commit-before-enqueue, bounded dispatch retry, admission boundary preserved, 30s→600s backoff, terminal policy failures never retried | `test_research_tasks.py` (32 tests); Task 16 real-PG eager full-chain run | COMPLETE | Closed |
@@ -348,7 +366,7 @@ hidden behind "read-only by design".
 - [x] Deterministic normalization with failure states exists
 - [x] Content fingerprinting exists (SHA-256 v1; lexical similarity at engine)
 - [x] Duplicate boundary exists: durable, auditable, thresholds+signals frozen per decision
-- [ ] **Vector similarity signal disposition formally resolved** (implement item 11 or record scope amendment)
+- [x] **Vector similarity signal disposition formally resolved — deferred by ADR 0008** (not implemented; re-entry triggers recorded)
 - [x] Evidence primitive with non-bypassable provenance exists (ADR 0007)
 - [x] Deterministic machine evidence extraction exists (idempotent, no invention)
 - [x] Worker orchestration exists (idempotent, commit-before-enqueue, PostgreSQL authoritative)
@@ -360,7 +378,9 @@ hidden behind "read-only by design".
 Phase 2 closes when the two unchecked boxes are resolved. No other work is
 required for closure. *(Task 19 update: the operator-mutation-surface box is
 now checked; the vector-similarity disposition is the single remaining
-unchecked criterion.)*
+unchecked criterion.)* *(Task 20 update: the vector-similarity box is now
+checked via ADR 0008 — every exit criterion is resolved and Phase 2 is
+COMPLETE.)*
 
 ---
 
@@ -402,7 +422,20 @@ Phase 3 (Idea Engine / editorial intelligence) may begin only when:
 
 ## 11. Final closure decision
 
-**B. PHASE 2 CONDITIONALLY COMPLETE.**
+**A. PHASE 2 COMPLETE** *(final decision as amended 2026-09-01).*
+
+- Closure condition 2 (operator mutation surface): RESOLVED BY
+  IMPLEMENTATION in Task 19 — see the resolution note below.
+- Closure condition 1 (vector similarity): RESOLVED as DEFERRED_ACCEPTED by
+  ADR 0008 — deferred until its recorded re-entry triggers fire, under
+  frozen provider-neutral constraints and binding Phase 3 safety conditions
+  for conservative duplicate handling. Not implemented; not abandoned.
+- **Zero Phase 2 blockers remain.** Production readiness stays a separate
+  track (§7) and is explicitly not implied by this closure.
+
+The original Task 18 decision below is preserved as history:
+
+**B. PHASE 2 CONDITIONALLY COMPLETE.** *(historical, superseded above)*
 
 All fourteen implementation-order items are delivered and verified except:
 
@@ -482,7 +515,13 @@ condition 1):** record the vector-similarity deferral decision as a short ADR
 (0008) with re-entry trigger, amend the Phase 2 design/status notes
 accordingly, flip this audit's two open exit-criteria boxes, declare
 **PHASE 2 COMPLETE** in this document and CURRENT_STATE, and define the first
-Phase 3 task.
+Phase 3 task. *(DONE — Task 20, 2026-09-01: ADR 0008 accepted, Phase 2
+declared COMPLETE. The recommended next task is Phase 3 Task 1 — Editorial
+Intelligence / Idea Engine architecture, design only: entities and
+lifecycles for Sources/Evidence → Opportunity → Idea → Evidence Pack →
+Content Brief, scoring boundaries, provenance rules, the duplicate-decision
+relationship, provider-neutral AI boundaries, the human-review relationship,
+and an atomic implementation order — no implementation.)*
 
 (If the operator prefers the fastest closure instead: a single amendment task
 may defer both conditions formally — at the documented cost that the pipeline

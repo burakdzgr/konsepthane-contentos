@@ -142,6 +142,20 @@ Expected usage:
 - avoid repeatedly reading the entire repository
 - keep the graph synchronized as development progresses
 
+## Durable phase and scope decisions
+
+- Phase 2 (Research/Discovery foundation) completed 2026-09-01; the formal
+  closure decision record is docs/PHASE2_CLOSURE_AUDIT.md.
+- ADR 0008 (Accepted): the vector-similarity duplicate signal — originally
+  promised as Phase 2 implementation-order item 11 — is DEFERRED, not
+  abandoned. The deterministic URL/hash/title/lexical duplicate engine is
+  authoritative for now; re-entry is trigger-based (corpus scale, observed
+  duplicate misses, Phase 3 overlap evidence, performance, multilingual
+  expansion, provider selection) and any future implementation must follow
+  the provider-neutral constraints frozen in ADR 0008.
+- Phase 2 completion is not production readiness; the production backlog is
+  tracked in the closure audit (§7).
+
 ## Engineering principle
 
 Quality > Quantity
