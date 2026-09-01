@@ -8,6 +8,7 @@ from alembic import context
 
 # Model modules must be imported so Base.metadata reflects the full schema.
 from contentos.ai import models as _ai_models  # noqa: F401
+from contentos.briefs import models as _brief_models  # noqa: F401
 from contentos.core.config import Settings
 from contentos.db.base import Base
 from contentos.db.session import create_database_engine

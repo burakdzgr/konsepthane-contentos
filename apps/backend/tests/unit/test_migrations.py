@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0016"]
+    assert script.get_heads() == ["0017"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -76,6 +76,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0014").down_revision == "0013"
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
+    assert script.get_revision("0017").down_revision == "0016"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -244,6 +245,29 @@ def test_search_intent_migration_contains_identity_and_append_only_protection() 
     assert "CREATE TRIGGER trg_search_intent_analyses_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON search_intent_analyses" in sql
     assert sql.count("ON DELETE RESTRICT") == 3
+
+
+def test_content_brief_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0016:0017")
+
+    assert "CREATE TABLE content_briefs" in sql
+    assert "CREATE TABLE brief_claims" in sql
+    assert "CREATE TABLE brief_claim_evidence" in sql
+    assert "CREATE TABLE brief_status_events" in sql
+    assert "uq_content_briefs_version" in sql
+    assert "uq_content_briefs_identity" in sql
+    assert "uq_content_briefs_active" in sql
+    assert "uq_brief_claims_key" in sql
+    assert "uq_brief_claim_evidence_link" in sql
+    assert "ck_content_briefs_hash_format" in sql
+    assert "CREATE TRIGGER trg_content_briefs_guarded" in sql
+    assert "CREATE TRIGGER trg_brief_claims_append_only" in sql
+    assert "CREATE TRIGGER trg_brief_claim_evidence_append_only" in sql
+    assert "CREATE TRIGGER trg_brief_status_events_append_only" in sql
+    assert sql.count("ON DELETE RESTRICT") == 10
+    # A brief is a contract, never the article.
+    for forbidden in ("article_body", "markdown_body", "html_body", "draft_text"):
+        assert forbidden not in sql
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

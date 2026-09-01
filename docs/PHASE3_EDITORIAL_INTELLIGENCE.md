@@ -642,6 +642,28 @@ A brief version may be `ACCEPTED_FOR_DRAFTING` only when ALL hold:
 Acceptance for drafting is an editorial decision; it is NOT human
 publication approval — ADR 0004's approval gate remains untouched and later.
 
+> **Implementation note (Task 11).** Physical brief identity is the
+> relational UNIQUE (work_item, exact idea, exact pack, exact analysis,
+> engine name+version); a schema-versioned `content_hash` (canonical-JSON
+> SHA-256 over ALL brief content + the complete claim map with evidence
+> links + the structure-guard result/policy) makes same-identity retries
+> idempotent, different wording a typed conflict, and out-of-band child
+> inserts an acceptance-time integrity failure. The manual/deterministic
+> persistence path uses composer identity `manual-brief-input/1`
+> (`composition_attempt_id` NULL); Task 12 freezes the real composer. The
+> §9.2 copyright guard is `BriefStructurePolicy` `default/1` (ordered
+> normalized SequenceMatcher over section guidance vs each source's
+> headings, threshold 0.8, min 2 checkable headings), snapshot-persisted;
+> NOT_CHECKABLE fails acceptance closed. FACTUAL/SOURCE_ASSERTION claims
+> require pack-member evidence at draft creation already; RETRACTED
+> evidence never satisfies the gate, DISPUTED-only support requires
+> recorded handling, and idea originality NOT_CHECKABLE fails acceptance
+> closed. The duplicate gate reuses Task-3 admission semantics: current
+> effective REJECT is always a hard stop; effective DUPLICATE passes only
+> with the audited `duplicate_override` creation-event marker. STATISTIC
+> remains an evidence type only — no claim kind and no statistical-text
+> detection regex is pretended.
+
 ---
 
 ## 10. Versioning, reproducibility, idempotency

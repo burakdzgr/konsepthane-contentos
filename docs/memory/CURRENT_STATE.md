@@ -11,7 +11,8 @@ opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
 foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
 persistence + operator selection COMPLETE; Task 8 provider-neutral AI
 boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
-engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE)
+engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE; Task 11
+ContentBrief persistence + claim map + acceptance gate COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1478,6 +1479,119 @@ main
   no commissioning/selection side effects, and no dependency changes
 - Task 10 verified: 967 backend tests (940 + 27 new), 96 admin tests, and
   the full root quality gate passed; schema head `0016`
+- PHASE 3 Task 11 (ContentBrief persistence + claim/evidence map +
+  acceptance gate) complete: `contentos.briefs` added (enums/errors/
+  values/structure_guard/models/repository/service) — the writing
+  CONTRACT and its GATES only; the automated Brief Composition Engine is
+  the NEXT task and does not exist yet (no AI call, no BRIEF_COMPOSITION
+  attempt, composition_attempt_id always NULL on this path)
+- `content_briefs` (migration `0017`): every accepted field; pins EXACT
+  Idea/EvidencePack/SearchIntentAnalysis version ids (never
+  logical/latest); UNIQUE (work_item, version) + relational identity
+  UNIQUE (work_item, idea, pack, intent, engine name+version) + a partial
+  unique index enforcing AT MOST ONE non-superseded active brief per work
+  item; status strictly draft/accepted_for_drafting/superseded with a
+  guarded PG trigger: DELETE forbidden, UPDATE may change ONLY `status`
+  and only forward (draft->accepted_for_drafting, draft->superseded,
+  accepted->superseded; reverse and status+content updates rejected —
+  PG-verified); `brief_claims` (UNIQUE (brief, claim_key), accepted
+  6-kind vocabulary — deliberately NO STATISTIC claim kind, that is an
+  evidence TYPE; no regex pretends to find every statistic) and
+  `brief_claim_evidence` (exact ResearchEvidence RESTRICT links, no text
+  copies) are append-only (PG triggers); append-only
+  `brief_status_events` audits every status mutation (from/to, operator
+  actor, reason, request_id, nullable replacement_brief_id)
+- draft creation (`create_draft`, typed `BriefDraftInput` — never a dict):
+  requires the work item in BRIEFING (no transition happens on creation);
+  full upstream consistency validated (idea/pack/intent same opportunity,
+  intent pins the same idea, pack.idea_id NULL-or-equal — a generic pack
+  is allowed, nothing fabricated); the pinned idea must still be the
+  current effective selection; target_audience/original_angle/idea
+  working title are DERIVED from the pinned idea (callers cannot
+  contradict upstream); every idea exclusion is retained (brief may only
+  add); practical_requirements reuse the Task-7 planning-dimension
+  validator; sections/needs/criteria/notes are bounded ordered typed
+  structures; FACTUAL/SOURCE_ASSERTION claims REQUIRE >=1 pack-member
+  evidence AT CREATION (chosen philosophy, reported: such a map could
+  never pass acceptance, so no misleading draft persists — structure-
+  guard failures DO persist as inspectable failed drafts); evidence
+  outside the pinned pack and unresolvable provenance are creation-time
+  rejections; atomic brief+claims+links persistence; same identity+same
+  content returns the existing brief, same identity+different content is
+  a typed conflict (never a silent overwrite); a changed identity
+  component creates the next version and supersedes the active DRAFT
+  (mandatory audited reason + replacement pin) — an ACCEPTED brief is
+  never silently superseded
+- whole-version integrity: `content_hash` (schema-versioned canonical
+  JSON SHA-256) covers ALL brief content + the complete claim map with
+  evidence links + the structure-guard result and policy snapshot;
+  acceptance recomputes it from persisted rows, so out-of-band child
+  inserts fail acceptance with a typed conflict (append-only child tables
+  alone are not trusted)
+- structural copyright guard (deterministic, never AI): ordered
+  required-section guidance vs EACH admitted input document's stored
+  NormalizedDocument.headings via SequenceMatcher over normalized ordered
+  label lists; explicit versioned `BriefStructurePolicy` (default/1,
+  threshold 0.8, min 2 checkable headings, not_checkable_blocks_
+  acceptance=True) snapshot-persisted per brief; result records checked/
+  skipped documents, max similarity, most-similar document, outcome; a
+  near-copy of ONE source FAILS; no usable source headings is
+  NOT_CHECKABLE and fails acceptance closed per the persisted policy
+  (reported); failed drafts stay inspectable, never deleted
+- `accept_for_drafting` (explicit OPERATOR command, no generic
+  set_status): runs ALL accepted §9.3 gates before mutating — BRIEFING
+  state, current selection, idea originality (FAILED and NOT_CHECKABLE
+  both fail closed — no accepted policy permits NOT_CHECKABLE, reported),
+  COMMISSIONED opportunity (never mutated), duplicate gate reusing Task-3
+  semantics (pinned decisions never REJECT; current effective REJECT
+  always a hard stop; current effective DUPLICATE a hard stop unless the
+  work item's creation event records the audited `duplicate_override` —
+  the override stays distinguishable), claim gates (non-retracted
+  evidence required for FACTUAL/SOURCE_ASSERTION — RETRACTED never
+  satisfies; DISPUTED-only support requires recorded handling so
+  disagreement stays visible; INFERENCE/EDITORIAL_JUDGMENT need no
+  evidence but stay classified; OBSERVATION/INSTRUCTION follow the
+  accepted §9.2 rule — evidence optional, links still pack-bound,
+  reported), FACTUAL claims on evidence inside an UNRESOLVED BLOCKING
+  contradiction fail (cautious wording cannot bypass), exact pinned pack
+  READY, intent pinned (missing signals allowed, missing analysis not),
+  full ADR-0007 provenance chain re-resolved per linked evidence,
+  structure guard passed, content hash intact, and a non-null
+  composition attempt must be a SUCCEEDED BRIEF_COMPOSITION attempt
+  (validated for Task 12; never created here)
+- acceptance mutation (one caller-owned transaction): DRAFT ->
+  ACCEPTED_FOR_DRAFTING + audited status event + explicit WorkflowService
+  BRIEFING -> DRAFTING transition (OPERATOR actor, operator reason,
+  artifact_refs pinning exact brief/idea/pack/intent ids); a workflow
+  failure rolls everything back; exact re-acceptance of the same accepted
+  brief whose work item is DRAFTING and whose DRAFTING event pins this
+  brief is a semantic no-op (inconsistent history is a typed conflict,
+  never silently repaired); SUPERSEDED briefs can never be accepted and
+  never resurrect; ACCEPTED_FOR_DRAFTING is an editorial decision — NOT
+  publication approval (ADR 0004 untouched; no approved/published
+  vocabulary anywhere, test-pinned)
+- migration `0017_create_content_briefs`: four tables, frozen literal
+  vocabularies, 10 RESTRICT FKs, identity/version/active uniques, the
+  guarded brief trigger + three append-only triggers; symmetric downgrade
+  removes only Task 11 objects — PG-verified with Task 10/earlier rows
+  and pgvector surviving the 0017 -> 0016 -> 0017 cycle
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0017`, full real seeded chain (promotion -> selected idea ->
+  idea-pinned READY pack -> intent -> commissioned -> walked to BRIEFING
+  via legal WorkflowService transitions), draft creation + exact retry,
+  acceptance happy path with the DRAFTING workflow event pinning the
+  brief, idempotent re-acceptance, all 9 forbidden mutations
+  trigger-rejected while a status-only transition is allowed, the
+  active-brief partial unique enforced by raw INSERT, expected durable
+  state (commissioned, zero AI attempts, claim map intact); one
+  migration defect found and fixed during verification (PL/pgSQL RAISE
+  placeholder escaping in the guarded trigger)
+- Task 11 added NO brief composition engine, no AI/OpenAI call, no new AI
+  template/schema, no Celery, no API/admin, no Writer/Editor/QA, no
+  publication approval, no media assets, no Konsepthane production
+  access, and no dependency changes
+- Task 11 verified: 993 backend tests (967 + 26 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0017`
 
 ## Current documentation structure
 
@@ -1513,8 +1627,10 @@ evidence_packs + evidence_pack_items + resolution-guarded
 evidence_contradictions (now with the nullable idea and
 organization-attempt links), append-only ideas + idea_selection_events
 (with staged nullable AI generation-attempt provenance), the generic
-append-only ai_generation_attempts table, and append-only
-search_intent_analyses complete; schema head `0016`
+append-only ai_generation_attempts table, append-only
+search_intent_analyses, and the guarded content_briefs + append-only
+brief_claims + brief_claim_evidence + brief_status_events tables complete;
+schema head `0017`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -1546,15 +1662,15 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No ContentBrief, brief claims/acceptance, AI pack organization, Celery
-Beat scheduling, or pre-commit configuration exists yet. Model-assisted
-idea generation exists as the IdeaGenerationEngine (operator command
-precondition: COMMISSIONED opportunity — but no commissioning command
-exists yet); SearchIntentAnalysis exists with deterministic composition
-and optional INTENT_SYNTHESIS (no live SEO integrations; cannibalization
-is honest and internal-only). The operator IdeaService paths are unchanged
-and the deterministic EvidencePack service never sets an organization
-attempt. Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
+No Brief Composition Engine, AI pack organization, Celery Beat
+scheduling, Writer/Editor/QA, publication approval, or pre-commit
+configuration exists yet. Model-assisted idea generation exists as the
+IdeaGenerationEngine (precondition: COMMISSIONED opportunity — but no
+commissioning command exists yet); SearchIntentAnalysis exists
+(deterministic + optional INTENT_SYNTHESIS); ContentBrief persistence,
+the claim/evidence map, and the §9.3 acceptance gate exist (manual typed
+draft input only; composition_attempt_id stays NULL until the Task-12
+composer). Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1569,15 +1685,16 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 11 (awaiting explicit authorization) — ContentBrief
-persistence + claim map + acceptance gate, per the accepted design's
-implementation order item 10: `content_briefs` (versioned; accepted
-versions immutable; UNIQUE (work_item_id, version); exact idea /
-evidence-pack / search-intent-analysis version FKs), `brief_claims` and
-claim-evidence links pinning ResearchEvidence (unresolved BLOCKING
-contradictions block affected claims), and the §9.3 BRIEFING -> DRAFTING
-acceptance boundary (operator command, defined now, exercised in Phase
-4); migration. No brief composition engine yet (that is item 11).
+PHASE 3 TASK 12 (awaiting explicit authorization) — Brief Composition
+Engine, per the accepted design's implementation order item 11:
+deterministic assembly of the BriefDraftInput from the pinned upstream
+artifacts (idea, READY pack, intent analysis — sections, uncertainty
+notes from contradictions/licensing cautions, exclusions from
+reference_only/pack cautions, claim map from pack evidence), optional
+model-assisted WORDING through the existing AI boundary (purpose
+BRIEF_COMPOSITION, composition_attempt_id pinned), reusing/running the
+same deterministic structure guard, persisting through the existing
+BriefService contract. Acceptance stays the operator command.
 
 Before implementing the affected integrations, resolve:
 
