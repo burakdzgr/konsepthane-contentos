@@ -155,6 +155,16 @@ Expected usage:
   the provider-neutral constraints frozen in ADR 0008.
 - Phase 2 completion is not production readiness; the production backlog is
   tracked in the closure audit (§7).
+- Phase 3 accepted design (docs/PHASE3_EDITORIAL_INTELLIGENCE.md,
+  2026-09-01): the canonical WORKFLOW.md state machine becomes the durable
+  `EditorialWorkItem` aggregate (promotion from Phase 2, never replayed
+  synthetic history); Phase 3 ends at a versioned ContentBrief whose claim
+  map pins ResearchEvidence — the future Writer receives only an accepted
+  brief/evidence contract. AI is provider-neutral with one generic
+  append-only attempt-provenance record; AI proposes artifacts and can
+  never create source provenance. UNKNOWN != ZERO for scoring signals;
+  cannibalization is truthfully NOT_CHECKED until a governed Konsepthane
+  inventory read contract exists.
 
 ## Engineering principle
 

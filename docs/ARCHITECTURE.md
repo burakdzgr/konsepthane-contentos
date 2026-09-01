@@ -1,6 +1,10 @@
 # Konsepthane ContentOS - Architecture Baseline
 
-Status: Phase 0 documentation baseline; no application components exist yet.
+Status: Phase 0 documentation baseline (target architecture). Phases 1-2
+are implemented and closed (see docs/PHASE2_CLOSURE_AUDIT.md); Phase 3 is
+designed in docs/PHASE3_EDITORIAL_INTELLIGENCE.md. The module table below
+remains the long-term target; per-phase documents record what actually
+exists.
 
 ## System context
 

@@ -4,6 +4,15 @@ Last updated: 2026-09-01
 
 ## Current phase
 
+PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
+(Task 1 architecture complete and accepted; NO Phase 3 runtime code exists)
+
+Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
+takes eligible Phase 2 research to an auditable ContentBrief:
+research intake -> EditorialWorkItem -> EditorialOpportunity -> Idea ->
+EvidencePack -> SearchIntentAnalysis -> ContentBrief. Writer remains
+Phase 4; Phase 3 ends at an ACCEPTED_FOR_DRAFTING brief version.
+
 PHASE 2 - Research/Discovery foundation - COMPLETE (2026-09-01)
 
 Tasks 1-20 complete. The formal closure decision is recorded in
@@ -19,7 +28,8 @@ production-readiness backlog in the closure audit §7 stands: deployment
 access protection, secrets provisioning, backups/restore, monitoring,
 source-allowlist governance, scheduled discovery, multi-worker crawl
 limiting, raw-payload retention, runbooks, and the dispatch-gap/outbox
-decision). Phase 3 is NEXT but NOT STARTED.
+decision). Phase 3 design (Task 1) is accepted; Phase 3 runtime
+implementation has not started.
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -643,6 +653,66 @@ main
 - Task 20 changed no runtime code, schema (head stays `0008`), or
   dependencies; gates re-run and green (backend 687, admin 96, check.ps1,
   git diff --check)
+- PHASE 3 Task 1 complete: `docs/PHASE3_EDITORIAL_INTELLIGENCE.md` accepted
+  (design only; zero runtime changes, schema stays `0008`, no dependencies)
+- canonical workflow aggregate chosen: `EditorialWorkItem` in a new
+  foundational `contentos.workflow` module, carrying the WORKFLOW.md
+  canonical states with append-only transition events (actor/reason/
+  artifact-version pins/request_id); only WorkflowService transitions; queue
+  completion never advances state
+- intake decision: promotion, not replay — work items are created directly
+  into IDEA_SCORING with a creation event pinning the exact Phase 2 chain
+  (discovery item, normalized document, duplicate decision); the early
+  canonical states are realized by Phase 2 entity lifecycles, never
+  fabricated as synthetic event history
+- intake eligibility is deterministic and ADR 0008-binding: SUCCEEDED
+  normalization + effective DuplicateDecision required (absence is not a
+  pass); DUPLICATE = hard stop with explicit audited operator override for
+  a distinct angle only; REJECT = hard stop; UNIQUE/RELATED eligible
+  (relationship stays visible); UPDATE_EXISTING = update signal only
+- major entities designed: EditorialOpportunity (+multi-source
+  opportunity_research_inputs with roles), append-only explainable
+  OpportunityScore (+relational components with KNOWN/UNKNOWN/NOT_APPLICABLE
+  availability — UNKNOWN != ZERO, no invented search/competition data),
+  provider-neutral search_signals store, versioned Idea candidates with
+  append-only selection events and deterministic originality/fake-UGC
+  guards, immutable versioned EvidencePack (+items with mandatory
+  ResearchEvidence FKs, contradictions, explicit
+  READY/INSUFFICIENT/CONFLICTED/BLOCKED sufficiency gate), first-class
+  versioned SearchIntentAnalysis with truthful cannibalization states
+  (NOT_CHECKED default — no production inventory access), versioned
+  ContentBrief with deterministic claim/evidence map and the
+  BRIEFING->DRAFTING acceptance boundary defined now for Phase 4
+- provider-neutral AI boundary designed (`contentos.ai`): structured-output
+  pipeline (provider -> neutral DTO -> schema validation -> domain
+  validation -> artifact), one generic append-only ai_generation_attempts
+  provenance record (provider/model/version, schema/template version, input
+  refs+hash, status, retry, usage with future cost hooks), fake
+  deterministic test provider mandatory before any real adapter; failed
+  validation is a recorded failed attempt, never coerced, never a state
+  change; AI can propose artifacts but can NEVER create source provenance
+- EvidencePack provenance rule: packs reference ResearchEvidence rows
+  (NOT NULL RESTRICT); no evidence_text that strips provenance; full chain
+  ContentBrief -> EvidencePack -> ResearchEvidence -> NormalizedDocument ->
+  FetchSnapshot -> Source stays resolvable
+- versioning/idempotency/reproducibility contracts documented per artifact
+  (input snapshots + hashes, deterministic-latest selection, downstream
+  version pinning); execution failure vs domain decision separated (a
+  provider timeout never becomes editorial REJECTED)
+- module boundaries: workflow/signals/ai foundational; opportunities ->
+  ideas/evidence_packs -> search_intent -> briefs; Phase 3 reads Phase 2
+  read-only; Phase 2 never imports Phase 3; conceptual DB plan (17 tables)
+  and job plan (6 jobs with Task 16 contracts) recorded — no migrations
+  created, head stays `0008`
+- Phase 3 implementation order defined: 14 atomic tasks (workflow
+  foundation -> opportunity+intake -> scoring v1 -> signals -> evidence
+  packs -> ideas -> AI boundary -> first adapter+idea engine -> search
+  intent -> briefs+claim map -> brief composition -> orchestration ->
+  admin -> closure audit); exit criteria enumerated (Writer explicitly not
+  required for Phase 3 closure)
+- ARCHITECTURE.md status line minimally corrected (stale "no application
+  components exist yet") to point at the per-phase records; no historical
+  architecture rewritten; no new ADR needed (design conforms to 0001-0008)
 
 ## Current documentation structure
 
@@ -653,6 +723,7 @@ main
 - docs/EDITORIAL_POLICY.md
 - docs/PHASE2_RESEARCH_DISCOVERY.md
 - docs/PHASE2_CLOSURE_AUDIT.md
+- docs/PHASE3_EDITORIAL_INTELLIGENCE.md
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
@@ -713,18 +784,16 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 1 (awaiting explicit authorization) — Editorial Intelligence /
-Idea Engine Architecture. DESIGN ONLY: define the
-Sources/Evidence -> Opportunity -> Idea -> Evidence Pack -> Content Brief
-chain — entities, per-entity lifecycles, scoring boundaries, provenance
-rules (Phase 3 consumes ResearchEvidence through the evidence service only,
-never arbitrary scraped text and never bypassing provenance), the
-relationship to DuplicateDecision outcomes (advisory/gating per the existing
-contract and ADR 0008's conservative-handling conditions), provider-neutral
-AI boundaries, the human-review relationship (ADR 0004 remains binding), and
-an atomic implementation order. Phase 3 entry criteria are recorded in
-docs/PHASE2_CLOSURE_AUDIT.md §10 and ADR 0008. No implementation, no Writer,
-no Konsepthane production access, no ad-hoc embeddings.
+PHASE 3 TASK 2 (awaiting explicit authorization) — Workflow foundation,
+per the accepted design's implementation order item 1: the
+`contentos.workflow` module with the `EditorialWorkItem` aggregate, the
+append-only `editorial_workflow_events` audit table, and `WorkflowService`
+enforcing the canonical WORKFLOW.md transition matrix (actor origin,
+required reason, artifact-version pins, request_id correlation; PG
+append-only trigger; only the service transitions state; queue completion
+never advances state). Migration `0009`; real-PG verification incl.
+downgrade cycle; no intake, no opportunities, no AI — the promotion path is
+Task 3 (design item 2).
 
 Before implementing the affected integrations, resolve:
 
