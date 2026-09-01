@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-15 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-16 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -15,8 +15,10 @@ defensive RSS/Atom plus sitemap discovery, and immutable FetchSnapshot
 persistence. The immutable NormalizedDocument persistence boundary now exists;
 the provider-neutral raw-payload contract supports bounded verified reads, and
 the first executable HTML/text normalization pipeline and deterministic local
-duplicate-decision boundary are complete. No production payload backend or
-domain orchestration exists.
+duplicate-decision boundary are complete. The durable PostgreSQL payload
+backend and the idempotent Celery research-pipeline orchestration
+(fetch -> normalize -> evaluate duplicates -> extract evidence) now exist;
+PostgreSQL stays authoritative and queue progress never becomes domain state.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -390,6 +392,46 @@ main
   prior data and pgvector survival, and re-upgrade
 - Task 15 added no Celery task, endpoint, UI, object storage, AI, or dependency change
 - Task 15 verified: 595 backend tests and the full root quality gate passed
+- `contentos.worker.research_tasks` adds the five idempotent research-pipeline Celery
+  jobs with frozen names `contentos.research.discover_source`, `.fetch_discovery_item`,
+  `.normalize_fetch`, `.evaluate_duplicate`, and `.extract_research_evidence`
+- tasks are registered explicitly via `register_research_pipeline_tasks(app, runtime)`
+  with `shared=False` (no shared-task registry replay); `create_worker_app` wires a
+  process-safe lazy `WorkerRuntime` (engine/session factory created on first use,
+  never at import or registration time)
+- delivery contract: at-least-once (`acks_late` + `reject_on_worker_lost`) absorbed by
+  PostgreSQL uniqueness/idempotency; task arguments are JSON UUID strings only; no
+  payload bytes, bodies, or URLs cross the broker
+- TRANSACTION RULE enforced: every stage commits its durable output first and only
+  then enqueues the next stage; a post-commit broker publish failure triggers a
+  bounded DISPATCH retry whose rerun detects the durable output and only reschedules
+  the next stage (proven by dispatch-failure recovery and failed-commit tests)
+- discovery admission boundary preserved: `discover_source` runs feed/sitemap
+  strategies for eligible ACTIVE sources only and leaves new candidates DISCOVERED;
+  it never auto-accepts or enqueues fetches; the automatic chain starts at ACCEPTED
+- fetch redelivery in FETCHED state reuses the latest successful snapshot via the new
+  bounded `FetchSnapshotRepository.get_latest_successful_for_discovery_item` and
+  re-dispatches normalize without network I/O
+- retryable fetch failures record the failed snapshot, requeue with an explicit
+  reason, commit, then `self.retry`; SSRF/robots/policy failures and exhausted
+  retries stay terminal (FETCH_FAILED) and are never retried
+- centralized retry policy: max 3 retries, deterministic exponential backoff
+  30s..600s, HTTP Retry-After respected within the cap, no jitter
+- duplicate gate: UNIQUE/RELATED/UPDATE_EXISTING dispatch evidence extraction;
+  DUPLICATE/REJECT stop the chain; evidence extraction is the terminal stage
+- `request_id` propagates through task headers when valid; logs carry only IDs,
+  statuses, outcomes, and counts (no URLs, payloads, titles, or evidence statements)
+- eager-mode tests exercise the real registered task boundary on a PostgreSQL-faithful
+  SQLite harness (working SAVEPOINTs + timezone-aware reloads), including full-chain,
+  duplicate-stop, redelivery-idempotency, and session-lifecycle coverage
+- real ephemeral pgvector PostgreSQL verification passed: migrate to `0008`, eager
+  full chain (1 blob, 1 snapshot, 1 SUCCEEDED document, 1 UNIQUE decision, 2 evidence
+  rows, linked provenance), redelivery reuse with zero HTTP calls and zero new rows,
+  duplicate-stop for a second source with identical content (2 snapshots share 1
+  content-addressed blob, no extra evidence), schema stayed `0008`, pgvector survived
+- Task 16 added no Beat scheduling, endpoint, UI, AI, Evidence Pack, schema change
+  (head stays `0008`), or dependency change
+- Task 16 verified: 627 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -417,15 +459,18 @@ immutable FetchSnapshot, immutable NormalizedDocument, immutable
 DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
 raw_payload_blobs tables complete; schema head `0008`
 
-Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
+Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
+research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
+PostgreSQL authoritative); no Beat scheduling yet
 
 Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchClient,
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
 NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
 bounded HTML/text normalization plus deterministic local duplicate decisions complete;
 the immutable ResearchEvidence primitive with exact excerpt provenance, the
-deterministic v1 evidence extractor (author/date metadata evidence), and the durable
-PostgreSQL raw-payload backend are complete; no production inventory comparison exists
+deterministic v1 evidence extractor (author/date metadata evidence), the durable
+PostgreSQL raw-payload backend, and the idempotent Celery research-pipeline
+orchestration are complete; no production inventory comparison exists
 
 AI integration: not started
 
@@ -439,7 +484,7 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Evidence Pack, domain/queue tasks, Celery Beat, admin business screens,
+No Evidence Pack, Celery Beat scheduling, admin business screens,
 pre-commit configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
@@ -451,18 +496,14 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 16 (awaiting explicit authorization): Celery orchestration of the
-research pipeline per the design's job plan (PHASE2_RESEARCH_DISCOVERY.md
-section 13) — idempotent domain jobs `discover_source`, `fetch_discovery_item`,
-`normalize_fetch`, `evaluate_duplicate`, and `extract_research_evidence` on the
-existing Celery foundation, composed with the durable PostgreSQL payload
-provider. PostgreSQL stays authoritative (queue completion never advances
-domain state), database uniqueness absorbs at-least-once delivery, each job
-commits before enqueueing the next stage, retryable FetchResult failures use
-bounded Celery retry/backoff while policy failures stay terminal. No Beat
-scheduling, no new endpoints/UI, no AI, no Evidence Pack. The
-vector-similarity duplicate signal (design order item 11) remains a later,
-independent task.
+Phase 2 Task 17 (awaiting explicit authorization): minimal read-only admin
+visibility for the research pipeline — internal API endpoints plus admin
+screens listing Sources, DiscoveryItems (lifecycle/rejection state), and
+per-item fetch/normalization/duplicate/evidence status so the operator can
+observe pipeline results without psql. Read-only: no admission, requeue, or
+lifecycle mutations from the UI in this task; no AI; no Evidence Pack. Celery
+Beat scheduling of `discover_source` and the vector-similarity duplicate
+signal (design order item 11) remain later, independent tasks.
 
 Before implementing the affected integrations, resolve:
 

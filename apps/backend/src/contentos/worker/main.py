@@ -8,15 +8,23 @@ from celery import Celery
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.queue.celery import create_celery_app
+from contentos.worker.research_tasks import register_research_pipeline_tasks
+from contentos.worker.runtime import WorkerRuntime
 from contentos.worker.signals import install_worker_signal_handlers
 
 
 def create_worker_app(settings: Settings | None = None) -> Celery:
-    """Explicitly build settings, logging, signal hooks, and the Celery app."""
+    """Explicitly build settings, logging, signals, Celery app, and tasks.
+
+    Creating the app registers tasks only; no database, broker, or network
+    activity happens here.
+    """
     resolved_settings = settings if settings is not None else Settings()
     configure_logging(resolved_settings)
     install_worker_signal_handlers()
-    return create_celery_app(resolved_settings)
+    app = create_celery_app(resolved_settings)
+    register_research_pipeline_tasks(app, WorkerRuntime(resolved_settings))
+    return app
 
 
 def main(argv: Sequence[str] | None = None) -> None:
