@@ -12,7 +12,8 @@ foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
 persistence + operator selection COMPLETE; Task 8 provider-neutral AI
 boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
 engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE; Task 11
-ContentBrief persistence + claim map + acceptance gate COMPLETE)
+ContentBrief persistence + claim map + acceptance gate COMPLETE; Task 12
+Brief Composition Engine COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1592,6 +1593,99 @@ main
   access, and no dependency changes
 - Task 11 verified: 993 backend tests (967 + 26 new), 96 admin tests, and
   the full root quality gate passed; schema head `0017`
+- PHASE 3 Task 12 (Brief Composition Engine) complete: `contentos.briefs.
+  composition` + `generation_schemas` added; NO migration (schema head
+  stays `0017` — Task 11 already had composition_attempt_id); composer
+  identity `brief-composer/1` (never a provider name), template
+  `brief-composition/1`, schema `brief-composition/1`, purpose strictly
+  BRIEF_COMPOSITION; the engine depends only on the provider-neutral
+  boundary (fake-provider tests; no openai import outside
+  contentos.ai.providers; no live calls anywhere)
+- preconditions BEFORE any provider invocation (typed
+  CompositionPreconditionError, provider invocations = 0): work item
+  BRIEFING, COMMISSIONED opportunity, full Task-11 upstream consistency,
+  idea still the effective selection, pack READY (no tokens spent on a
+  knowingly unusable brief), and a READY pack carrying an unresolved
+  BLOCKING contradiction fails closed as impossible state
+- deterministic bounded evidence projection (policy
+  `brief-evidence-projection/1`): pack items ordered by role priority
+  (key_fact > supporting > contradicting > context > caution), then claim
+  cluster, then evidence identity; RETRACTED evidence excluded from the
+  AI-selectable set (count recorded); cap 30 with explicit omitted-count
+  metadata — the model can never cite what it did not receive (exact
+  projected ids + contradiction ids + composer/structure/projection policy
+  identities pinned in attempt input_refs under schema marker
+  `brief-composition/1`); per-unit projection carries evidence id, pack
+  role/cluster/note, type, bounded statement (500 chars), verification
+  status, source id/slug/trust tier, freshness, confidence, licensing
+  notes — never raw HTML/payloads/whole bodies (test-pinned against the
+  captured request)
+- strict `BriefCompositionV1` output (extra=forbid, bounds imported from
+  the Task-11 persistence limits): the model proposes ONLY
+  writing-contract fields (summary/objective/sections/title direction+
+  constraints/additional exclusions+uncertainty/link+media NEEDS/FAQ/
+  criteria/claims with exact projected evidence ids); system-owned fields
+  (ids, locale/market, audience, angle, version/status, engine identity,
+  guard results, hashes, cannibalization) cannot enter (smuggling is
+  schema-rejected, tested); no article body/prose/final headline
+- context-aware domain validation (VALIDATION_FAILED, zero brief rows):
+  unknown/outside-projection/retracted evidence ids, factual or
+  source-assertion claims without evidence, disputed-only factual claims
+  without handling, duplicate claim keys/evidence, duplicate section keys
+  ACROSS required+optional (stricter composition-only rule, reported),
+  duplicate criterion keys, mandatory-criterion override, and fake-UGC
+  framing (reusing the existing Task-7 pattern policy — no second
+  incompatible guard)
+- deterministic merges the model can never delete: idea exclusions
+  (Task-11 path) + pack licensing/reference-only cautions as mandatory
+  exclusions; mandatory uncertainty notes from pack staleness, locale
+  limitations, intent missing signals (UNKNOWN != ZERO), the
+  published-inventory/cannibalization limitation, and contradiction
+  records; 7 mandatory policy acceptance criteria (sections/claims/
+  uncertainty/exclusions/no-fake-UGC/no-invented-signals/
+  no-single-source-copy) merged ahead of model additions;
+  practical_requirements derived from the pinned idea's validated
+  planning dimensions (never model-invented)
+- materialization ONLY through Task-11 `BriefService` (one canonical
+  path): minimal refactor split `_create_draft(..., composition_attempt)`
+  behind an UNCHANGED manual `create_draft` (still
+  manual-brief-input/1 + NULL attempt; the brief-composer identity is
+  refused on the manual path) and a narrow `create_composed_draft` that
+  validates the attempt (SUCCEEDED + BRIEF_COMPOSITION + input_refs
+  matching the exact work-item/idea/pack/intent identity — FK never
+  trusted) before persisting engine `brief-composer/1` +
+  composition_attempt_id; version allocation, supersession (explicit
+  reason; ACCEPTED never bypassed), content hash, and the SAME structure
+  guard all stay in Task 11 — a model-mirrored source outline yields a
+  SUCCEEDED attempt whose DRAFT persists with guard outcome `failed`
+  (inspectable; no auto-retry, no auto-accept; work item stays BRIEFING)
+- idempotency/economy: pre-provider short-circuit returns the existing
+  automated brief identity with ZERO provider invocations (retry_number
+  can never regenerate a materialized same-identity brief); exact reused
+  SUCCEEDED attempt returns its materialized brief without re-invocation;
+  a reused attempt with no brief is a typed
+  IncompleteBriefMaterializationError (recover with retry_number+1 —
+  tested); a Task-11 persistence rejection of valid AI output is a typed
+  BriefCompositionMaterializationError while the attempt keeps its REAL
+  SUCCEEDED status (never retroactively relabeled, tested); failed
+  attempts (validation/provider/timeout/cancelled) persist durably with
+  zero brief/claim rows; concurrency: provider may be double-called
+  (Task-8 truth) but two concurrent first-time compositions converged to
+  ONE attempt + ONE brief + one claim map on real PG
+- composition NEVER accepts a brief, never transitions BRIEFING ->
+  DRAFTING, never mutates opportunity/idea/pack/intent/research rows;
+  acceptance remains the explicit operator command
+- real ephemeral pgvector PostgreSQL verification passed (fake provider):
+  schema stays `0017`; concurrent single-brief convergence, short-circuit
+  reuse with zero invocations, guard recorded, work item still BRIEFING
+  (no transition), exact durable state (1 attempt, 1 brief, 2 claims, 0
+  status events, disposition untouched); teardown complete
+- Task 12 added NO migration, no Celery
+  (contentos.editorial.compose_content_brief stays unregistered), no
+  API/admin, no Writer/article fields, no publication approval, no
+  production access, no OpenAI adapter changes, and no dependency changes
+- Task 12 verified: 1016 backend tests (993 + 23 new), 96 admin tests,
+  and the full root quality gate passed; schema head `0017`
 
 ## Current documentation structure
 
@@ -1662,15 +1756,15 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Brief Composition Engine, AI pack organization, Celery Beat
-scheduling, Writer/Editor/QA, publication approval, or pre-commit
-configuration exists yet. Model-assisted idea generation exists as the
-IdeaGenerationEngine (precondition: COMMISSIONED opportunity — but no
-commissioning command exists yet); SearchIntentAnalysis exists
-(deterministic + optional INTENT_SYNTHESIS); ContentBrief persistence,
-the claim/evidence map, and the §9.3 acceptance gate exist (manual typed
-draft input only; composition_attempt_id stays NULL until the Task-12
-composer). Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
+No AI pack organization, Celery orchestration/Beat scheduling,
+Writer/Editor/QA, publication approval, or pre-commit configuration
+exists yet. Model-assisted idea generation, SearchIntentAnalysis
+(deterministic + optional INTENT_SYNTHESIS), ContentBrief persistence +
+claim map + acceptance gate, and the Brief Composition Engine
+(deterministic assembly + model-assisted wording via BRIEF_COMPOSITION)
+all exist as synchronous domain engines; no commissioning command exists
+yet, and acceptance remains an explicit operator command. Automated tests
+and gates never call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1685,16 +1779,19 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 12 (awaiting explicit authorization) — Brief Composition
-Engine, per the accepted design's implementation order item 11:
-deterministic assembly of the BriefDraftInput from the pinned upstream
-artifacts (idea, READY pack, intent analysis — sections, uncertainty
-notes from contradictions/licensing cautions, exclusions from
-reference_only/pack cautions, claim map from pack evidence), optional
-model-assisted WORDING through the existing AI boundary (purpose
-BRIEF_COMPOSITION, composition_attempt_id pinned), reusing/running the
-same deterministic structure guard, persisting through the existing
-BriefService contract. Acceptance stays the operator command.
+PHASE 3 TASK 13 (awaiting explicit authorization) — Celery orchestration,
+per the accepted design's implementation order item 12: the §18 editorial
+jobs (`contentos.editorial.promote_research`, `evaluate_opportunity`,
+`generate_idea_candidates`, `build_evidence_pack` with its READY ->
+SYSTEM SEO_RESEARCH transition and not-READY -> BLOCKED,
+`analyze_search_intent` with SYSTEM -> BRIEFING,
+`compose_content_brief`) under the Task-16 contracts (PostgreSQL
+authoritative, commit-before-enqueue, at-least-once absorbed by the
+§10.3 identities, UUID-only payloads, DOMAIN vs DISPATCH retry
+separation, bounded backoff); explicit WorkflowService transitions only
+after durable results; commissioning and brief acceptance remain human
+commands. This is also where the commissioning operator command likely
+lands per design §18.
 
 Before implementing the affected integrations, resolve:
 

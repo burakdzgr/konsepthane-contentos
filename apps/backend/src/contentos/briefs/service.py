@@ -42,7 +42,9 @@ from contentos.briefs.errors import (
     BriefStatusConflictError,
     BriefStructureGuardError,
     BriefUpstreamMismatchError,
+    InvalidCompositionAttemptError,
 )
+from contentos.briefs.generation_schemas import BRIEF_COMPOSITION_INPUT_REFS_SCHEMA
 from contentos.briefs.models import (
     BriefClaim,
     BriefClaimEvidence,
@@ -57,6 +59,8 @@ from contentos.briefs.structure_guard import (
     evaluate_structure_guard,
 )
 from contentos.briefs.values import (
+    BRIEF_COMPOSER_NAME,
+    BRIEF_COMPOSER_VERSION,
     MAX_ACCEPTANCE_CRITERIA,
     MAX_CLAIM_EVIDENCE_LINKS,
     MAX_CLAIM_HANDLING_LENGTH,
@@ -182,6 +186,81 @@ class BriefService:
         supersede_reason: str | None = None,
         request_id: str | None = None,
     ) -> BriefDraftResult:
+        """Manual/deterministic path: composition_attempt_id stays NULL."""
+        if engine_name == BRIEF_COMPOSER_NAME:
+            raise BriefInputError(
+                "the automated composer identity requires a validated "
+                "BRIEF_COMPOSITION attempt; use the composition engine"
+            )
+        return self._create_draft(
+            work_item_id,
+            idea_id=idea_id,
+            evidence_pack_id=evidence_pack_id,
+            search_intent_analysis_id=search_intent_analysis_id,
+            draft=draft,
+            engine_name=engine_name,
+            engine_version=engine_version,
+            structure_policy=structure_policy,
+            supersede_reason=supersede_reason,
+            request_id=request_id,
+            composition_attempt=None,
+        )
+
+    def create_composed_draft(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        idea_id: uuid.UUID,
+        evidence_pack_id: uuid.UUID,
+        search_intent_analysis_id: uuid.UUID,
+        draft: BriefDraftInput,
+        composition_attempt: AiGenerationAttempt,
+        structure_policy: BriefStructurePolicy = DEFAULT_BRIEF_STRUCTURE_POLICY,
+        supersede_reason: str | None = None,
+        request_id: str | None = None,
+    ) -> BriefDraftResult:
+        """Automated-composer path: pins the exact SUCCEEDED attempt.
+
+        Never a generic attempt-injection surface: the attempt's purpose,
+        status, and persisted input provenance are validated against the
+        exact upstream identity before any persistence.
+        """
+        validate_composition_attempt(
+            composition_attempt,
+            work_item_id=work_item_id,
+            idea_id=idea_id,
+            evidence_pack_id=evidence_pack_id,
+            search_intent_analysis_id=search_intent_analysis_id,
+        )
+        return self._create_draft(
+            work_item_id,
+            idea_id=idea_id,
+            evidence_pack_id=evidence_pack_id,
+            search_intent_analysis_id=search_intent_analysis_id,
+            draft=draft,
+            engine_name=BRIEF_COMPOSER_NAME,
+            engine_version=BRIEF_COMPOSER_VERSION,
+            structure_policy=structure_policy,
+            supersede_reason=supersede_reason,
+            request_id=request_id,
+            composition_attempt=composition_attempt,
+        )
+
+    def _create_draft(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        idea_id: uuid.UUID,
+        evidence_pack_id: uuid.UUID,
+        search_intent_analysis_id: uuid.UUID,
+        draft: BriefDraftInput,
+        engine_name: str,
+        engine_version: str,
+        structure_policy: BriefStructurePolicy,
+        supersede_reason: str | None,
+        request_id: str | None,
+        composition_attempt: AiGenerationAttempt | None,
+    ) -> BriefDraftResult:
         work_item = self._workflow_repo.get_by_id_for_update(work_item_id)
         if work_item is None:
             raise BriefUpstreamMismatchError(f"no editorial work item with id {work_item_id}")
@@ -276,7 +355,9 @@ class BriefService:
                         structure_guard_result=guard_result,
                         structure_policy_snapshot=structure_policy.snapshot(),
                         status=BriefStatus.DRAFT,
-                        composition_attempt_id=None,
+                        composition_attempt_id=(
+                            composition_attempt.id if composition_attempt is not None else None
+                        ),
                         engine_name=cleaned_engine_name,
                         engine_version=cleaned_engine_version,
                         content_hash=content_hash,
@@ -827,6 +908,36 @@ class BriefService:
             )
         labels = [section["heading_guidance"] for section in required_sections]
         return evaluate_structure_guard(labels, sources, policy)
+
+
+def validate_composition_attempt(
+    attempt: AiGenerationAttempt,
+    *,
+    work_item_id: uuid.UUID,
+    idea_id: uuid.UUID,
+    evidence_pack_id: uuid.UUID,
+    search_intent_analysis_id: uuid.UUID,
+) -> None:
+    """Never trust the FK or the caller: revalidate the durable attempt."""
+    if attempt.purpose is not GenerationPurpose.BRIEF_COMPOSITION:
+        raise InvalidCompositionAttemptError(
+            f"attempt purpose {attempt.purpose.value!r} cannot back a composed brief"
+        )
+    if attempt.status is not GenerationStatus.SUCCEEDED:
+        raise InvalidCompositionAttemptError(
+            f"only a SUCCEEDED attempt can back a brief (got {attempt.status.value!r})"
+        )
+    refs = attempt.input_refs
+    if (
+        refs.get("schema") != BRIEF_COMPOSITION_INPUT_REFS_SCHEMA
+        or refs.get("work_item_id") != str(work_item_id)
+        or refs.get("idea_id") != str(idea_id)
+        or refs.get("evidence_pack_id") != str(evidence_pack_id)
+        or refs.get("search_intent_analysis_id") != str(search_intent_analysis_id)
+    ):
+        raise InvalidCompositionAttemptError(
+            "the attempt's persisted input provenance does not match this exact brief identity"
+        )
 
 
 def _content_hash(

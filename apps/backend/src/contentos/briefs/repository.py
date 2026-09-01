@@ -70,6 +70,12 @@ class BriefRepository:
         )
         return self._session.execute(statement).scalar_one_or_none()
 
+    def get_by_composition_attempt(self, composition_attempt_id: uuid.UUID) -> ContentBrief | None:
+        statement = select(ContentBrief).where(
+            ContentBrief.composition_attempt_id == composition_attempt_id
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
     def get_active_brief(self, work_item_id: uuid.UUID) -> ContentBrief | None:
         """The single non-superseded brief for a work item, if any."""
         statement = select(ContentBrief).where(

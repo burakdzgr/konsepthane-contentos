@@ -43,6 +43,11 @@ MAX_CLAIM_TEXT_LENGTH = 1000
 MAX_CLAIM_HANDLING_LENGTH = 500
 MAX_CLAIM_EVIDENCE_LINKS = 20
 
+# The automated composer identity (Task 12). Distinct forever from the
+# manual path's `manual-brief-input`; a manual draft can never claim it.
+BRIEF_COMPOSER_NAME = "brief-composer"
+BRIEF_COMPOSER_VERSION = "1"
+
 
 @dataclass(frozen=True, slots=True)
 class BriefSection:

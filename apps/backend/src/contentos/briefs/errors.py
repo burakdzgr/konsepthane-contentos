@@ -40,3 +40,34 @@ class BriefAcceptanceGateError(BriefError):
 
 class BriefStatusConflictError(BriefError):
     """The requested status action contradicts durable status history."""
+
+
+class CompositionPreconditionError(BriefError):
+    """A composition precondition failed BEFORE any provider invocation.
+
+    No model tokens are spent composing from an ineligible chain (wrong
+    state, uncommissioned opportunity, non-READY pack, stale selection,
+    inconsistent upstream)."""
+
+
+class InvalidCompositionAttemptError(BriefError):
+    """The referenced attempt cannot back a composed brief.
+
+    Wrong purpose, non-SUCCEEDED status, or mismatched persisted input
+    provenance — the FK alone is never trusted."""
+
+
+class IncompleteBriefMaterializationError(BriefError):
+    """A reused SUCCEEDED composition attempt has no linked brief.
+
+    Raw model output is deliberately never persisted and the provider must
+    not be re-invoked under the same attempt identity — request a new
+    provider invocation explicitly with retry_number + 1."""
+
+
+class BriefCompositionMaterializationError(BriefError):
+    """Structurally valid AI output was rejected by Task-11 persistence.
+
+    The completed AI attempt keeps its real status (it is NEVER
+    retroactively relabeled a provider/validation failure); the
+    deterministic persistence-time rejection is reported here instead."""
