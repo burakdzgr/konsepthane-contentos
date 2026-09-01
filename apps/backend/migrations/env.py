@@ -18,6 +18,7 @@ from contentos.normalization import models as _normalization_models  # noqa: F40
 from contentos.opportunities import models as _opportunity_models  # noqa: F401
 from contentos.payloads import postgres as _payload_models  # noqa: F401
 from contentos.research import models as _research_models  # noqa: F401
+from contentos.signals import models as _signal_models  # noqa: F401
 from contentos.sources import models as _sources_models  # noqa: F401
 from contentos.workflow import models as _workflow_models  # noqa: F401
 

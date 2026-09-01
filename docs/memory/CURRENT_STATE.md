@@ -7,7 +7,8 @@ Last updated: 2026-09-01
 PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
-opportunity scoring v1 COMPLETE)
+opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
+foundation COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -908,6 +909,68 @@ main
   dependency changes
 - Task 4 verified: 778 backend tests (735 + 43 new), 96 admin tests, and
   the full root quality gate passed; schema head `0011`
+- PHASE 3 Task 5 (provider-neutral search-signal foundation) complete:
+  `contentos.signals` added (enums/errors/values/models/repository/service);
+  signals are OBSERVATIONS, never current truth — multiple observations for
+  one subject coexist, no "effective/current signal" helper exists, and
+  later consumers (scoring engine v2+, SearchIntentAnalysis, briefs) will
+  explicitly choose and pin exact signal IDs
+- `search_signals` table: signal_type vocabulary frozen (search_volume,
+  trend, serp_observation, query_set, manual_intent_note — WHAT was
+  observed, never which provider), subject (bounded, conservative
+  whitespace normalization only — no slugs, no NLP, Turkish casing
+  untouched), explicit locale/market, provider as a bounded governed STRING
+  vocabulary (no enum-CHECK migration churn for future governed
+  connectors; no vendor SDK concepts in the domain), bounded typed JSONB
+  value, nullable confidence (never defaulted to 1.0 for human entry),
+  observed_at (mandatory, aware) distinct from recorded_at, nullable as_of
+  for the represented period, and a SHA-256 observation_hash
+- exactly ONE operational provider: `manual_operator` — the service exposes
+  `record_manual_signal` with NO provider parameter, so unavailable
+  providers cannot be spoofed; future connectors get their own explicit
+  admission paths
+- v1 value schemas (strict allowlists in `contentos/signals/values.py`,
+  bounded, provider-neutral, no raw API responses/SERP HTML/secrets):
+  SEARCH_VOLUME requires value+unit+basis (naked numbers rejected; zero is
+  a legitimate observation; optional period); TREND requires
+  observation+scale+basis (no fake universal 0-100 scale); SERP_OBSERVATION
+  is bounded manual facts (features/notes/intent_pattern/ranking_notes, at
+  least one, no fetching/scraping); QUERY_SET trims blanks, deduplicates
+  keeping first occurrence, and PRESERVES operator order (semantically
+  meaningful — identity hash is order-sensitive by design);
+  and MANUAL_INTENT_NOTE is a bounded operator note that is editorial research
+  input and never ResearchEvidence (model has zero FKs — no opportunity or
+  evidence binding, verified by test)
+- append-only history: PG trigger rejects UPDATE/DELETE; corrections append
+  a new observation; no supersession/retraction model yet (documented:
+  consumers select exact observations; old observations remain historical
+  and visible)
+- exact-retry idempotency: observation identity = SHA-256 over canonical
+  sorted JSON (schema v1) of type+subject+locale+market+provider+canonical
+  value+confidence+observed_at+as_of; DB-UNIQUE on the hash; identical
+  retry returns the existing row (created=False); any changed
+  observed_at/as_of/value/type/subject appends; SAVEPOINT race recovery
+  returns the concurrent winner; "same subject" alone is never deduped
+- recording a signal has zero side effects: no work item, no opportunity,
+  no score, no workflow transition (tested against a real promoted+scored
+  opportunity); opportunity-engine/1 untouched — SEARCH_DEMAND/COMPETITION
+  remain UNKNOWN and Task 4 score history stays exactly reproducible
+- migration `0012_create_search_signals`: table + frozen vocabulary CHECK +
+  subject/locale/market/provider/confidence/hash-format/jsonb-object CHECKs
+  + unique hash index + subject/type indexes + append-only trigger;
+  symmetric downgrade removes only Task 5 objects
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0012`, survivor seed (promoted+scored opportunity), record note/query
+  set/search volume, idempotent exact retry, changed-observation append,
+  4-observation deterministic history, PG-enforced hash uniqueness,
+  UPDATE/DELETE rejected by trigger, zero scoring/workflow side effects,
+  downgrade to `0011` with scores/opportunities/documents/pgvector
+  surviving and only search_signals removed, re-upgrade; teardown complete
+- Task 5 explicitly added NO external providers (no Semrush/Google/Search
+  Console/analytics/scraping/API keys/OAuth/network), no AI, no Celery, no
+  API/admin surfaces, and no dependency changes
+- Task 5 verified: 805 backend tests (778 + 27 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0012`
 
 ## Current documentation structure
 
@@ -937,8 +1000,9 @@ immutable FetchSnapshot, immutable NormalizedDocument, immutable
 DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
 raw_payload_blobs tables complete; Phase 3 editorial_work_items, append-only
 editorial_workflow_events, editorial_opportunities, append-only
-opportunity_research_inputs, and append-only opportunity_scores +
-opportunity_score_components tables complete; schema head `0011`
+opportunity_research_inputs, append-only opportunity_scores +
+opportunity_score_components, and append-only search_signals tables
+complete; schema head `0012`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -982,17 +1046,24 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 5 (awaiting explicit authorization) — Search-signal store, per
-the accepted design's implementation order item 4: the `contentos.signals`
-foundational module with the provider-neutral `search_signals` table
-(signal_type vocabulary SEARCH_VOLUME/TREND/SERP_OBSERVATION/QUERY_SET/
-MANUAL_INTENT_NOTE..., normalized subject, locale/market, governed provider
-vocabulary starting with MANUAL_OPERATOR only, bounded typed JSONB value,
-confidence, observed_at/as_of distinct from recorded_at), append-only
-persistence, a minimal service for manual operator entry, and a migration.
-No external provider selection or integration, no scoring-engine change
-(consuming signals in scoring is a later engine version), no AI, no Celery,
-no API/admin surfaces beyond what the accepted design's item 4 requires.
+PHASE 3 TASK 6 (awaiting explicit authorization) — EvidencePack foundation,
+per the accepted design's implementation order item 5: `contentos.
+evidence_packs` with immutable versioned `evidence_packs` (UNIQUE
+(opportunity_id, version); assembler name/version identity; optional
+idea_id; sufficiency READY/INSUFFICIENT/CONFLICTED/BLOCKED with recorded
+detail and versioned policy config; source-diversity summary;
+staleness/locale/licensing caution aggregation), `evidence_pack_items`
+(NOT NULL RESTRICT FKs to research_evidence; roles KEY_FACT/SUPPORTING/
+CONTRADICTING/CONTEXT/CAUTION; claim clusters; bounded optional display
+note beside the mandatory evidence reference — no provenance-stripping
+evidence_text), `evidence_contradictions` (claim key, evidence ids per
+side, nature, severity LOW/MATERIAL/BLOCKING, resolution status, handling
+recommendation), the deterministic assembler + explicit sufficiency gate
+(absence of evidence is never a pass; configurable per-content-type/risk
+minimums, no universal number), pack-assembly idempotency (opportunity +
+canonical evidence-id set + assembler identity), and a migration. No AI
+organization assistance yet (attempt FK stays null until the AI boundary
+task), no Celery, no API/admin.
 
 Before implementing the affected integrations, resolve:
 
