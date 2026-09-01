@@ -19,3 +19,15 @@ class PromotionNotEligibleError(OpportunityError):
 
 class PromotionConflictError(OpportunityError):
     """A durable promotion exists with incompatible semantics; nothing was overwritten."""
+
+
+class OpportunityNotFoundError(OpportunityError):
+    """No editorial opportunity exists for the given identity."""
+
+
+class InvalidScoringStateError(OpportunityError):
+    """The opportunity's durable inputs do not admit a scoring evaluation."""
+
+
+class ScoringConflictError(OpportunityError):
+    """A concurrent evaluation conflicted and could not be recovered."""

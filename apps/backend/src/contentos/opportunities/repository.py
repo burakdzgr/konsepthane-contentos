@@ -5,7 +5,12 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from contentos.opportunities.models import EditorialOpportunity, OpportunityResearchInput
+from contentos.opportunities.models import (
+    EditorialOpportunity,
+    OpportunityResearchInput,
+    OpportunityScore,
+    OpportunityScoreComponent,
+)
 
 
 class OpportunityRepository:
@@ -46,5 +51,60 @@ class OpportunityRepository:
             select(OpportunityResearchInput)
             .where(OpportunityResearchInput.opportunity_id == opportunity_id)
             .order_by(OpportunityResearchInput.added_at, OpportunityResearchInput.id)
+        )
+        return list(self._session.execute(statement).scalars())
+
+    # --- Scores (append/read only; no update or delete surface) -----------
+
+    def insert_score(self, score: OpportunityScore) -> OpportunityScore:
+        self._session.add(score)
+        self._session.flush()
+        return score
+
+    def insert_score_component(
+        self, component: OpportunityScoreComponent
+    ) -> OpportunityScoreComponent:
+        self._session.add(component)
+        self._session.flush()
+        return component
+
+    def get_score_by_identity(
+        self,
+        opportunity_id: uuid.UUID,
+        engine_name: str,
+        engine_version: str,
+        input_snapshot_hash: str,
+    ) -> OpportunityScore | None:
+        statement = select(OpportunityScore).where(
+            OpportunityScore.opportunity_id == opportunity_id,
+            OpportunityScore.engine_name == engine_name,
+            OpportunityScore.engine_version == engine_version,
+            OpportunityScore.input_snapshot_hash == input_snapshot_hash,
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def get_effective_score(self, opportunity_id: uuid.UUID) -> OpportunityScore | None:
+        """The latest/effective score: evaluated_at DESC, then id DESC."""
+        statement = (
+            select(OpportunityScore)
+            .where(OpportunityScore.opportunity_id == opportunity_id)
+            .order_by(OpportunityScore.evaluated_at.desc(), OpportunityScore.id.desc())
+            .limit(1)
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def list_scores(self, opportunity_id: uuid.UUID) -> list[OpportunityScore]:
+        statement = (
+            select(OpportunityScore)
+            .where(OpportunityScore.opportunity_id == opportunity_id)
+            .order_by(OpportunityScore.evaluated_at, OpportunityScore.id)
+        )
+        return list(self._session.execute(statement).scalars())
+
+    def list_score_components(self, score_id: uuid.UUID) -> list[OpportunityScoreComponent]:
+        statement = (
+            select(OpportunityScoreComponent)
+            .where(OpportunityScoreComponent.score_id == score_id)
+            .order_by(OpportunityScoreComponent.component)
         )
         return list(self._session.execute(statement).scalars())

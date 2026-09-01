@@ -110,6 +110,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "editorial_workflow_events",
         "editorial_opportunities",
         "opportunity_research_inputs",
+        "opportunity_scores",
+        "opportunity_score_components",
     }
 
 

@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0010"]
+    assert script.get_heads() == ["0011"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -70,6 +70,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0008").down_revision == "0007"
     assert script.get_revision("0009").down_revision == "0008"
     assert script.get_revision("0010").down_revision == "0009"
+    assert script.get_revision("0011").down_revision == "0010"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -150,6 +151,19 @@ def test_opportunity_migration_contains_identity_and_append_only_protection() ->
     assert "CREATE TRIGGER trg_opportunity_research_inputs_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON opportunity_research_inputs" in sql
     assert sql.count("ON DELETE RESTRICT") == 5
+
+
+def test_opportunity_score_migration_contains_identity_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0010:0011")
+
+    assert "CREATE TABLE opportunity_scores" in sql
+    assert "CREATE TABLE opportunity_score_components" in sql
+    assert "uq_opportunity_scores_identity" in sql
+    assert "uq_opportunity_score_components_component" in sql
+    assert "ck_opportunity_score_components_value_presence" in sql
+    assert "CREATE TRIGGER trg_opportunity_scores_append_only" in sql
+    assert "CREATE TRIGGER trg_opportunity_score_components_append_only" in sql
+    assert sql.count("ON DELETE RESTRICT") == 2
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

@@ -6,7 +6,8 @@ Last updated: 2026-09-01
 
 PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
-Task 3 opportunity persistence + Phase 2 -> Phase 3 promotion COMPLETE)
+Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
+opportunity scoring v1 COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -832,6 +833,81 @@ main
   Celery jobs, API endpoints, admin changes, or dependency changes
 - Task 3 verified: 735 backend tests (713 + 22 new), 96 admin tests, and
   the full root quality gate passed; schema head `0010`
+- PHASE 3 Task 4 (deterministic opportunity scoring v1) complete: pure
+  `OpportunityScoringEngine` (`opportunity-engine`/`1`) in
+  `contentos.opportunities.scoring` strictly separated from the
+  persistence-orchestrating `OpportunityScoringService`
+  (`scoring_service.py`); the engine does no I/O and the service flushes
+  while the caller commits
+- append-only `opportunity_scores` (band strong/moderate/weak/ineligible +
+  nullable normalized 0..1 overall_value, eligibility
+  commissionable/not_commissionable/needs_operator_review, weights/threshold
+  snapshots, missing_signals, risk_flags, input_snapshot + SHA-256 hash,
+  evaluated_at) and relational `opportunity_score_components` (UNIQUE
+  (score, component); availability known/unknown/not_applicable; the DB
+  CHECK enforces KNOWN <-> value present, so UNKNOWN can never be smuggled
+  in as zero); both tables trigger-protected append-only, RESTRICT FKs
+- full 12-component vocabulary frozen now (recency, audience_fit,
+  evidence_availability, source_diversity, source_trust, competition,
+  search_demand, editorial_value, seasonality, duplicate_overlap_risk,
+  policy_risk, production_cost_estimate); v1 computes exactly the five with
+  durable deterministic sources and persists explicit UNKNOWN rows (NULL
+  values) for the other seven — never fabricated, and a missing row is not
+  the same thing as UNKNOWN
+- UNKNOWN != ZERO enforced end to end: only KNOWN components enter the
+  weighted score and the denominator renormalizes over KNOWN weights;
+  known-signal coverage rule (>=3 known core components AND >=0.5 known
+  weight fraction, else eligibility = needs_operator_review) prevents one
+  lonely signal from fabricating an excellent score
+- frozen v1 policy (all persisted per score in weights/threshold snapshots,
+  test-pinned, described as initial operational policy, never statistical
+  truth): weights summing to 1.0; recency buckets 7/30/90/365 days ->
+  1.0/0.8/0.6/0.4 with 0.2 floor (external_published_at precedence, then
+  fetched_at; no timestamp -> UNKNOWN, never "old"); diversity by distinct
+  sources 1/2/3/4+ -> 0.3/0.6/0.8/1.0 (same-source documents count once);
+  trust tier map official/expert/reputable/general/reference_only ->
+  1.0/0.9/0.75/0.5/0.25 aggregated by MEAN over distinct sources; duplicate
+  overlap as inverted-risk contribution unique/related/update_existing/
+  duplicate/reject -> 1.0/0.7/0.5/0.2/0.0 aggregated by MIN (operator
+  override stays visibly high-risk; decisions never rewritten; no vector
+  claim); evidence buckets 0/1-2/3-5/6+ -> 0.0/0.4/0.7/1.0 with zero
+  evidence a KNOWN 0.0 fact (availability signal only — explicitly not the
+  future EvidencePack sufficiency gate); bands strong>=0.75, moderate>=0.55;
+  eligibility strong->commissionable, moderate->needs review,
+  weak->not commissionable; INELIGIBLE band reserved and never emitted by
+  v1 (intake already owns hard stops); risk_flags empty in v1 (no governed
+  deterministic classifier exists; nothing inferred)
+- reproducible input snapshot (schema v1): pins research-input ids,
+  document/decision ids + outcomes, roles, source ids + trust tiers,
+  recency timestamps, the evidence-set identity (sorted ids up to 200, else
+  count + set-hash + query basis), and the evaluation DAY; hash = SHA-256
+  over canonical sorted JSON (order-independent, never Python repr)
+- idempotency: DB-unique (opportunity, engine, version, input_snapshot_hash);
+  same-day identical retry returns the existing score with no duplicate
+  rows; changed evidence/inputs, a later evaluation day (recency
+  legitimately moved), or a new engine version append a new score; old
+  scores immutable; SAVEPOINT race recovery returns the concurrent winner
+- effective score = `get_effective_score` (evaluated_at DESC, id DESC);
+  history remains fully queryable; scoring never mutates
+  EditorialOpportunity.disposition and never transitions the work item
+  (tested: disposition stays open, no new workflow events)
+- migration `0011_create_opportunity_scores`: both tables, frozen literal
+  vocabularies, identity unique, value-presence/range CHECKs, hash-format
+  CHECK, JSONB shape CHECKs, indexes, two append-only triggers; symmetric
+  downgrade removes only Task 4 objects
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0011`, real chain (payload store + snapshot + normalization + real
+  duplicate engine + promotion), full evaluation (12 components, 5 KNOWN,
+  UNKNOWN NULLs, snapshots present), idempotent retry, evidence-change
+  append + effective-is-latest, no disposition/workflow side effects, all
+  four UPDATE/DELETE mutations rejected by triggers, DB rejecting
+  KNOWN-without-value, downgrade to `0010` with opportunities and pgvector
+  surviving, re-upgrade; teardown complete
+- Task 4 added no search-signal store, no external providers, no AI, no
+  Celery, no API/admin changes, no automatic commissioning, and no
+  dependency changes
+- Task 4 verified: 778 backend tests (735 + 43 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0011`
 
 ## Current documentation structure
 
@@ -860,8 +936,9 @@ Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
 DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
 raw_payload_blobs tables complete; Phase 3 editorial_work_items, append-only
-editorial_workflow_events, editorial_opportunities, and append-only
-opportunity_research_inputs tables complete; schema head `0010`
+editorial_workflow_events, editorial_opportunities, append-only
+opportunity_research_inputs, and append-only opportunity_scores +
+opportunity_score_components tables complete; schema head `0011`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -905,20 +982,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 4 (awaiting explicit authorization) — Deterministic opportunity
-scoring v1, per the accepted design's implementation order item 3: the
-`opportunity-engine/1` deterministic engine plus append-only
-`opportunity_scores` and relational `opportunity_score_components`
-(availability KNOWN/UNKNOWN/NOT_APPLICABLE — UNKNOWN != ZERO, weights
-renormalized over known components, missing signals and risk flags
-recorded), frozen weights/threshold snapshots via versioned config, input
-snapshots + hashes for idempotency
-(opportunity, engine, version, input_snapshot_hash unique), overall band +
-eligibility result, deterministic-latest effective-score selection, and a
-migration. v1 scores only signals that exist today (recency, source
-diversity/trust from Phase 2 joins, duplicate disposition, evidence
-availability) and never invents search/competition data. No search-signal
-store yet (design item 4), no AI, no Celery, no API/admin.
+PHASE 3 TASK 5 (awaiting explicit authorization) — Search-signal store, per
+the accepted design's implementation order item 4: the `contentos.signals`
+foundational module with the provider-neutral `search_signals` table
+(signal_type vocabulary SEARCH_VOLUME/TREND/SERP_OBSERVATION/QUERY_SET/
+MANUAL_INTENT_NOTE..., normalized subject, locale/market, governed provider
+vocabulary starting with MANUAL_OPERATOR only, bounded typed JSONB value,
+confidence, observed_at/as_of distinct from recorded_at), append-only
+persistence, a minimal service for manual operator entry, and a migration.
+No external provider selection or integration, no scoring-engine change
+(consuming signals in scoring is a later engine version), no AI, no Celery,
+no API/admin surfaces beyond what the accepted design's item 4 requires.
 
 Before implementing the affected integrations, resolve:
 
