@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0008"]
+    assert script.get_heads() == ["0009"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -68,6 +68,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0006").down_revision == "0005"
     assert script.get_revision("0007").down_revision == "0006"
     assert script.get_revision("0008").down_revision == "0007"
+    assert script.get_revision("0009").down_revision == "0008"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -120,6 +121,20 @@ def test_raw_payload_blob_migration_contains_identity_and_append_only_protection
     assert "BYTEA" in sql
     assert "CREATE TRIGGER trg_raw_payload_blobs_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON raw_payload_blobs" in sql
+
+
+def test_editorial_workflow_migration_contains_audit_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0008:0009")
+
+    assert "CREATE TABLE editorial_work_items" in sql
+    assert "CREATE TABLE editorial_workflow_events" in sql
+    assert "ck_editorial_work_items_current_state" in sql
+    assert "ck_editorial_work_items_blocked_reason" in sql
+    assert "ck_editorial_work_items_rejected_reason" in sql
+    assert "ck_editorial_workflow_events_artifact_refs_object" in sql
+    assert "CREATE TRIGGER trg_editorial_workflow_events_append_only" in sql
+    assert "BEFORE UPDATE OR DELETE ON editorial_workflow_events" in sql
+    assert "ON DELETE RESTRICT" in sql
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

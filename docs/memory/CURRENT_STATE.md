@@ -5,7 +5,8 @@ Last updated: 2026-09-01
 ## Current phase
 
 PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
-(Task 1 architecture complete and accepted; NO Phase 3 runtime code exists)
+(Task 1 architecture accepted; Task 2 workflow foundation COMPLETE —
+the first Phase 3 runtime code)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -713,6 +714,57 @@ main
 - ARCHITECTURE.md status line minimally corrected (stale "no application
   components exist yet") to point at the per-phase records; no historical
   architecture rewritten; no new ADR needed (design conforms to 0001-0008)
+- PHASE 3 Task 2 (workflow foundation) complete: `contentos.workflow` added
+  with `EditorialWorkItem`, append-only `EditorialWorkflowEvent`,
+  `WorkflowRepository` (insert/append/get/get-for-update/list-history only;
+  no update/delete surface), and `WorkflowService` as the sole transition
+  boundary (validates, flushes; caller commits; typed transport-neutral
+  errors)
+- the full canonical WORKFLOW.md state vocabulary is persisted as one frozen
+  lowercase enum (26 states) so later phases never migrate it; Phase 3
+  exercises only its subset
+- creation is fixed at IDEA_SCORING (promotion, not replay): no caller can
+  choose an initial state; the creation event is from_state NULL ->
+  idea_scoring with actor origin, required reason, bounded artifact_refs
+  snapshot (identifiers only: depth/items/string-length limits, no payloads
+  or secrets, never interpreted as FKs), and validated optional request_id;
+  work item + creation event are written atomically in one transaction
+- structural transition matrix implemented exactly from WORKFLOW.md
+  including the MEASURING self-loop and explicit REJECTED/ARCHIVED ->
+  RESEARCHING reopen paths; STRUCTURAL validity is deliberately separate
+  from artifact eligibility (no opportunity/evidence/brief gates exist yet)
+- BLOCKED and CHANGES_REQUESTED exits are derived from durable history
+  (the from_state of the latest entry event), never from a caller-supplied
+  target; BLOCKED may also go to REJECTED; documented Task 2 limitation:
+  CHANGES_REQUESTED supports return-to-origin only — the richer
+  named-responsible-state mechanism belongs to the phase implementing
+  review loops
+- entering BLOCKED/REJECTED requires a non-empty bounded reason mirrored to
+  blocked_reason/rejected_reason (DB CHECKs enforce presence in those
+  states); leaving clears the current-row projection while the immutable
+  event history preserves the original reason; execution failures are never
+  REJECTED (that separation stays with the failure model)
+- transitions run under a row lock (get_by_id_for_update) and validate
+  against the actually observed state, so stale/duplicate deliveries fail
+  with a typed error instead of appending impossible history; promotion
+  idempotency (one work item per promoted research root) is deliberately
+  Task 3's identity — Task 2 defines no fake external key
+- migration `0009_create_editorial_workflow`: both tables, frozen literal
+  enum CHECKs, blocked/rejected-reason CHECKs, jsonb object CHECK on
+  artifact_refs, BIGINT identity event PK, ON DELETE RESTRICT, indexes,
+  and the established append-only trigger
+  (`trg_editorial_workflow_events_append_only`); symmetric downgrade
+  removes only Task 2 objects; work items are effectively permanent (no
+  deletion API anywhere)
+- real ephemeral pgvector PostgreSQL verification passed: 0008 -> 0009,
+  service round-trip (create + valid transition + typed invalid transition),
+  event UPDATE/DELETE rejected by trigger, work-item RESTRICT, state/event
+  consistency, downgrade to 0008 with Phase 2 rows and pgvector surviving
+  and only workflow objects removed, re-upgrade to 0009; teardown complete
+- Task 2 added no intake, no opportunities/scoring, no AI, no Celery jobs,
+  no API endpoints, no admin changes, and no dependency changes
+- Task 2 verified: 713 backend tests (687 + 26 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0009`
 
 ## Current documentation structure
 
@@ -740,7 +792,8 @@ Frontend/control panel: Next.js foundation with server-side backend client, trut
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
 DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
-raw_payload_blobs tables complete; schema head `0008`
+raw_payload_blobs tables complete; Phase 3 editorial_work_items and
+append-only editorial_workflow_events tables complete; schema head `0009`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -784,16 +837,19 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 2 (awaiting explicit authorization) — Workflow foundation,
-per the accepted design's implementation order item 1: the
-`contentos.workflow` module with the `EditorialWorkItem` aggregate, the
-append-only `editorial_workflow_events` audit table, and `WorkflowService`
-enforcing the canonical WORKFLOW.md transition matrix (actor origin,
-required reason, artifact-version pins, request_id correlation; PG
-append-only trigger; only the service transitions state; queue completion
-never advances state). Migration `0009`; real-PG verification incl.
-downgrade cycle; no intake, no opportunities, no AI — the promotion path is
-Task 3 (design item 2).
+PHASE 3 TASK 3 (awaiting explicit authorization) — Opportunity persistence +
+intake, per the accepted design's implementation order item 2:
+`contentos.opportunities` with the EditorialOpportunity anchor and
+multi-source `opportunity_research_inputs` (roles, each pinning the exact
+normalized_document_id + duplicate_decision_id), plus deterministic Phase 2
+eligibility and the `promote_research` service path — operator-triggered
+promotion of eligible Phase 2 chains into the workflow foundation
+(SUCCEEDED normalization + effective DuplicateDecision required; DUPLICATE
+hard stop with the explicit audited operator-override event for a distinct
+angle; REJECT hard stop; UNIQUE/RELATED eligible; UPDATE_EXISTING as update
+signal), promotion idempotency (one work item per promoted
+normalized-document root), and a migration. No scoring engine yet (that is
+design item 3), no AI, no Celery, no API/admin.
 
 Before implementing the affected integrations, resolve:
 

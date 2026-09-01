@@ -94,6 +94,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.payloads.postgres  # noqa: F401
     import contentos.research.models  # noqa: F401
     import contentos.sources.models  # noqa: F401
+    import contentos.workflow.models  # noqa: F401
 
     assert set(Base.metadata.tables) == {
         "sources",
@@ -104,6 +105,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "normalized_documents",
         "research_evidence",
         "raw_payload_blobs",
+        "editorial_work_items",
+        "editorial_workflow_events",
     }
 
 
