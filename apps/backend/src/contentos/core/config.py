@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     fetch_user_agent: str = Field(
         default="Konsepthane-ContentOS/0.1 (+https://konsepthane.net)", min_length=1
     )
+    # OpenAI configuration is needed ONLY when constructing the OpenAI
+    # adapter; every non-OpenAI feature works without it. Provider and
+    # model are configuration, never domain constants.
+    openai_api_key: SecretStr | None = None
+    openai_model: str | None = Field(default=None, min_length=1)
+    openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
 
     @field_validator("database_url")
     @classmethod

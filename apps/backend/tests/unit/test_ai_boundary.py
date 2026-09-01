@@ -519,12 +519,32 @@ class TestBoundaryIsolation:
             assert session.execute(select(AiGenerationAttempt)).scalar_one_or_none() is None
 
     def test_fake_provider_is_deterministic(self) -> None:
+        from contentos.ai.dto import ProviderOutputSchema
+
+        schema = ProviderOutputSchema(
+            name="outline-test",
+            version="1",
+            json_schema=OutlineTestPayload.model_json_schema(),
+        )
         provider = FakeStructuredProvider(payload=VALID_PAYLOAD)
-        first = provider.generate(make_request())
-        second = provider.generate(make_request())
+        first = provider.generate(make_request(), schema)
+        second = provider.generate(make_request(), schema)
         assert first.payload == second.payload
         assert first.provider == FAKE_PROVIDER_NAME
         assert provider.invocations == 2
         # Mutating a returned payload never leaks into later calls.
         first.payload["title"] = "tampered"
-        assert provider.generate(make_request()).payload == VALID_PAYLOAD
+        assert provider.generate(make_request(), schema).payload == VALID_PAYLOAD
+
+    def test_service_hands_provider_a_neutral_schema_descriptor(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            provider = FakeStructuredProvider(payload=VALID_PAYLOAD)
+            StructuredGenerationService(session).execute(make_request(), TEST_SPEC, provider)
+            descriptor = provider.last_output_schema
+            assert descriptor is not None
+            assert descriptor.name == "outline-test"
+            assert descriptor.version == "1"
+            assert descriptor.strict is True
+            assert descriptor.json_schema == OutlineTestPayload.model_json_schema()

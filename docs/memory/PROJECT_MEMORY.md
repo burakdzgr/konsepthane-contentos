@@ -165,6 +165,12 @@ Expected usage:
   never create source provenance. UNKNOWN != ZERO for scoring signals;
   cannibalization is truthfully NOT_CHECKED until a governed Konsepthane
   inventory read contract exists.
+- ADR 0009 (Accepted, 2026-09-01): OpenAI is the first real
+  structured-generation provider adapter, behind the provider-neutral
+  boundary; the binding constraints (official SDK only, strict Responses
+  Structured Outputs, no provider persistence/retries/tools, no SDK
+  leakage, config-not-constants, no live-OpenAI tests) are recorded in
+  docs/adr/0009-openai-first-provider-adapter.md.
 
 ## Engineering principle
 

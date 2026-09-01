@@ -37,7 +37,12 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from contentos.ai.dto import GenerationRequest, ProviderIdentity, ProviderResult
+from contentos.ai.dto import (
+    GenerationRequest,
+    ProviderIdentity,
+    ProviderOutputSchema,
+    ProviderResult,
+)
 from contentos.ai.enums import GenerationStatus, ProviderFailureKind
 from contentos.ai.errors import (
     GenerationConflictError,
@@ -122,8 +127,14 @@ class StructuredGenerationService:
         usage: dict[str, Any] = {}
         payload: PayloadT | None = None
 
+        output_schema = ProviderOutputSchema(
+            name=spec.schema_name,
+            version=spec.schema_version,
+            json_schema=spec.model_type.model_json_schema(),
+            strict=True,
+        )
         try:
-            result = provider.generate(request)
+            result = provider.generate(request, output_schema)
         except ProviderFailureError as failure:
             status = _FAILURE_STATUS[failure.kind]
             error_class = _bounded_error_class(failure.error_class)

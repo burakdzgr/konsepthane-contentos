@@ -23,6 +23,7 @@ MAX_VERSION_LENGTH = 50
 MAX_FINISH_REASON_LENGTH = 100
 MAX_GENERATION_BOUND_KEYS = 20
 MAX_CURRENCY_LENGTH = 3
+MAX_INSTRUCTIONS_LENGTH = 20_000
 
 # Bounds for input_refs (immutable provenance metadata: ids/versions only).
 MAX_REF_KEYS = 50
@@ -132,6 +133,12 @@ class GenerationRequest:
     `input_refs` (exact durable artifact provenance) plus the deterministic
     canonical input hash, so results stay reconstructable from durable
     referenced inputs.
+
+    `instructions` is the rendered versioned template text handed to the
+    provider in memory only: it is never persisted (the attempt stores
+    template name+version instead) and never part of the input hash —
+    substantive instruction changes REQUIRE a template version bump, which
+    changes the attempt identity.
     """
 
     purpose: GenerationPurpose
@@ -143,6 +150,7 @@ class GenerationRequest:
     input_projection: dict[str, Any] = field(default_factory=dict)
     generation_bounds: dict[str, int] = field(default_factory=dict)
     retry_number: int = 0
+    instructions: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.purpose, GenerationPurpose):
@@ -182,6 +190,34 @@ class GenerationRequest:
                 raise InvalidGenerationRequestError(
                     "generation_bounds values must be positive integers"
                 )
+        if not isinstance(self.instructions, str):
+            raise InvalidGenerationRequestError("instructions must be a string")
+        if len(self.instructions) > MAX_INSTRUCTIONS_LENGTH:
+            raise InvalidGenerationRequestError(
+                f"instructions exceed the {MAX_INSTRUCTIONS_LENGTH}-character limit"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderOutputSchema:
+    """Provider-neutral output-schema descriptor crossing the boundary.
+
+    Carries only neutral data (name, version, a plain JSON Schema object,
+    strictness) so adapters can request provider-side strict structured
+    output as defense layer 1 — the service's own Pydantic validation
+    remains defense layer 2 and always runs.
+    """
+
+    name: str
+    version: str
+    json_schema: dict[str, Any]
+    strict: bool = True
+
+    def __post_init__(self) -> None:
+        _require_identifier("schema name", self.name, MAX_IDENTIFIER_LENGTH)
+        _require_identifier("schema version", self.version, MAX_VERSION_LENGTH)
+        if not isinstance(self.json_schema, dict) or not self.json_schema:
+            raise InvalidGenerationRequestError("json_schema must be a non-empty object")
 
 
 @dataclass(frozen=True, slots=True)

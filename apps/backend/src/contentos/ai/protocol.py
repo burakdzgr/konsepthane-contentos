@@ -13,7 +13,12 @@ own dependency/ADR checkpoint) implement this narrow contract:
 
 from typing import Protocol, runtime_checkable
 
-from contentos.ai.dto import GenerationRequest, ProviderIdentity, ProviderResult
+from contentos.ai.dto import (
+    GenerationRequest,
+    ProviderIdentity,
+    ProviderOutputSchema,
+    ProviderResult,
+)
 
 
 @runtime_checkable
@@ -21,4 +26,6 @@ class StructuredGenerationProvider(Protocol):
     @property
     def identity(self) -> ProviderIdentity: ...
 
-    def generate(self, request: GenerationRequest) -> ProviderResult: ...
+    def generate(
+        self, request: GenerationRequest, output_schema: ProviderOutputSchema
+    ) -> ProviderResult: ...

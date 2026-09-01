@@ -334,27 +334,7 @@ class IdeaService:
         return idea
 
     def _originality_inputs(self, opportunity_id: uuid.UUID) -> tuple[list[InputTitle], int]:
-        """Titles and DERIVED distinct-source count for the admitted inputs.
-
-        Source identity comes from the durable provenance chain
-        NormalizedDocument -> FetchSnapshot -> DiscoveryItem -> Source; a
-        caller can never submit a source count.
-        """
-        inputs = self._opportunities.list_research_inputs(opportunity_id)
-        titles: list[InputTitle] = []
-        source_ids: set[uuid.UUID] = set()
-        for research_input in inputs:
-            document = self._session.get(NormalizedDocument, research_input.normalized_document_id)
-            if document is None:  # pragma: no cover - RESTRICT FK guarantees this
-                continue
-            titles.append(InputTitle(normalized_document_id=document.id, title=document.title))
-            snapshot = self._session.get(FetchSnapshot, document.fetch_snapshot_id)
-            if snapshot is None:  # pragma: no cover - RESTRICT FK guarantees this
-                continue
-            item = self._session.get(DiscoveryItem, snapshot.discovery_item_id)
-            if item is not None:
-                source_ids.add(item.source_id)
-        return titles, len(source_ids)
+        return originality_inputs_for_opportunity(self._session, opportunity_id)
 
     def _selection_inputs(
         self, idea_id: uuid.UUID, reason: str, request_id: str | None
@@ -366,6 +346,34 @@ class IdeaService:
         if request_id is not None and not is_valid_request_id(request_id):
             raise InvalidSelectionError("request_id is not a valid correlation identifier")
         return idea, cleaned_reason, request_id
+
+
+def originality_inputs_for_opportunity(
+    session: Session, opportunity_id: uuid.UUID
+) -> tuple[list[InputTitle], int]:
+    """Titles and DERIVED distinct-source count for the admitted inputs.
+
+    Source identity comes from the durable provenance chain
+    NormalizedDocument -> FetchSnapshot -> DiscoveryItem -> Source; a caller
+    can never submit a source count. Shared by the operator path and the
+    model-assisted generation engine so both apply IDENTICAL originality
+    inputs — never a weaker AI-side variant.
+    """
+    inputs = OpportunityRepository(session).list_research_inputs(opportunity_id)
+    titles: list[InputTitle] = []
+    source_ids: set[uuid.UUID] = set()
+    for research_input in inputs:
+        document = session.get(NormalizedDocument, research_input.normalized_document_id)
+        if document is None:  # pragma: no cover - RESTRICT FK guarantees this
+            continue
+        titles.append(InputTitle(normalized_document_id=document.id, title=document.title))
+        snapshot = session.get(FetchSnapshot, document.fetch_snapshot_id)
+        if snapshot is None:  # pragma: no cover - RESTRICT FK guarantees this
+            continue
+        item = session.get(DiscoveryItem, snapshot.discovery_item_id)
+        if item is not None:
+            source_ids.add(item.source_id)
+    return titles, len(source_ids)
 
 
 def _required_text(name: str, value: str, limit: int) -> str:

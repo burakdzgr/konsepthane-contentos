@@ -15,6 +15,7 @@ from contentos.ai.dto import (
     GenerationRequest,
     GenerationUsage,
     ProviderIdentity,
+    ProviderOutputSchema,
     ProviderResult,
 )
 from contentos.ai.enums import ProviderFailureKind
@@ -44,7 +45,9 @@ class FakeStructuredProvider:
     - `claimed_identity`: lets tests simulate an adapter whose result
       claims a different identity than it declares (a contract violation
       the service must detect);
-    - `invocations` counts real generate() calls for idempotency proofs.
+    - `invocations` counts real generate() calls for idempotency proofs;
+    - `last_output_schema` records the schema descriptor the boundary
+      handed over, so tests can assert what a real adapter would receive.
     """
 
     payload: dict[str, Any] = field(default_factory=dict)
@@ -55,13 +58,17 @@ class FakeStructuredProvider:
     declared_identity: ProviderIdentity = DEFAULT_FAKE_IDENTITY
     claimed_identity: ProviderIdentity | None = None
     invocations: int = 0
+    last_output_schema: ProviderOutputSchema | None = None
 
     @property
     def identity(self) -> ProviderIdentity:
         return self.declared_identity
 
-    def generate(self, request: GenerationRequest) -> ProviderResult:
+    def generate(
+        self, request: GenerationRequest, output_schema: ProviderOutputSchema
+    ) -> ProviderResult:
         self.invocations += 1
+        self.last_output_schema = output_schema
         if self.failure is not None:
             raise ProviderFailureError(self.failure, self.failure_class)
         reported = self.claimed_identity or self.declared_identity

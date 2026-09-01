@@ -10,7 +10,8 @@ Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
 opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
 foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
 persistence + operator selection COMPLETE; Task 8 provider-neutral AI
-boundary COMPLETE)
+boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
+engine COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1280,6 +1281,100 @@ main
   Pydantic/SQLAlchemy/stdlib only)
 - Task 8 verified: 905 backend tests (874 + 31 new), 96 admin tests, and
   the full root quality gate passed; schema head `0015`
+- PHASE 3 Task 9 (first real OpenAI adapter + model-assisted idea
+  generation engine) complete; ADR 0009 accepted (OpenAI first provider:
+  official SDK only, Responses API + strict Structured Outputs,
+  store=false, no tools, SDK retries disabled, no SDK types/raw
+  output/prompts across the boundary, key/model as configuration,
+  automated tests never hit live OpenAI); the `openai` SDK (3.6.0) is the
+  approved dependency exception, pinned in pyproject/uv.lock
+- protocol evolution (smallest, provider-neutral): providers now receive a
+  `ProviderOutputSchema` (name, version, plain JSON Schema derived by the
+  service from the Pydantic spec, strict flag) alongside the request, and
+  `GenerationRequest` gained bounded in-memory `instructions` (rendered
+  versioned template text — never persisted, never hashed; substantive
+  changes require a template version bump); contentos.ai still imports no
+  domain module
+- `contentos.ai.providers.openai_provider.OpenAiStructuredProvider`: the
+  ONLY module importing the SDK; explicit construction (injectable client,
+  no import-time/global client, max_retries=0, bounded timeout); truthful
+  identity provider=openai + exact configured model, model_version NULL
+  (never fabricated/parsed); `responses.create` with instructions +
+  canonical-JSON projection input + strict json_schema text format +
+  store=False + max_output_tokens from generation_bounds; refusal/
+  incomplete/non-completed/malformed-JSON outputs and SDK exceptions map
+  to stable sanitized classes (openai_timeout/_rate_limit/_connection_
+  error/_api_error/_sdk_error/_refusal/_incomplete_response/_response_
+  not_completed/_malformed_structured_output); usage maps only reported
+  tokens + locally measured latency, cost never invented; response IDs
+  not persisted; settings CONTENTOS_OPENAI_API_KEY (SecretStr) /
+  _MODEL / _TIMEOUT_SECONDS — app + all non-OpenAI features run with none
+  set (.env.example documents commented-out safe placeholders)
+- `contentos.ideas.generation.IdeaGenerationEngine`: the first end-to-end
+  model-assisted domain engine — depends ONLY on the provider-neutral
+  boundary (fully tested with the fake provider; never knows OpenAI
+  exists); frozen identities generator `idea-generator/1`, template
+  `idea-candidates/1`, schema `idea-candidate-batch/1`, input-refs schema
+  `idea-generation/1`; purpose strictly IDEA_CANDIDATES
+- precondition (design §18): generation runs only on a COMMISSIONED
+  opportunity — validated, never mutated (no commissioning command exists
+  yet, so tests seed the disposition directly); generation never selects,
+  never transitions workflow, never rebuilds packs
+- deterministic bounded research projection (never raw HTML/bodies/whole
+  articles): topic summary, locale/market, ≤10 admitted inputs (added_at,
+  id order), document titles + roles + source labels/trust tiers, ≤20
+  ResearchEvidence statements truncated to 500 chars with verification
+  status labels (RETRACTED excluded deterministically and counted),
+  duplicate/update context, pinned effective OpportunityScore summary
+  (exact score id in refs; absent stays absent), allowed content types,
+  originality policy summary; exact projected artifact IDs pinned in
+  input_refs (opportunity, work item, inputs, documents, evidence,
+  decisions, score, policy name+version, generator identity, count)
+- structured output: `IdeaCandidateBatchV1` (strict-friendly closed
+  models, all fields required/nullable, existing ContentType vocabulary,
+  Task-7 exclusions + planning-dimensions revalidated — no second weaker
+  vocabulary); model can never supply IDs/logical identity/opportunity/
+  locale/market/origin/attempt refs/scores/selection markers; exact
+  candidate count enforced (mismatch, exact-duplicate candidates, or any
+  fake-UGC candidate rejects the WHOLE batch as VALIDATION_FAILED with
+  zero artifacts)
+- Task-7 semantics preserved: near-copy titles and insufficient source
+  diversity persist as ideas with FAILED originality (recorded, never
+  hidden, never auto-deleted); fake UGC remains a hard no-artifact rule;
+  every generated idea reruns the SAME originality machinery via the
+  shared `originality_inputs_for_opportunity` (no AI-side variant)
+- persistence: fresh logical_idea_id + version 1 per candidate, origin
+  MODEL_ASSISTED + generation_attempt_id = the exact SUCCEEDED attempt
+  (engine revalidates purpose/status/input-ref provenance — FK and caller
+  are never trusted); batch materialization is atomic (all or nothing) in
+  the same transaction as the attempt (rollback removes both); operator
+  IdeaService paths unchanged (regression-tested); failed attempts
+  (validation/provider/timeout/cancelled) persist durably with ZERO ideas
+- idempotency: exact retry returns the stored attempt AND its existing
+  ideas with zero provider calls (`IdeaRepository.list_by_generation_
+  attempt`); reused SUCCEEDED attempt with no linked ideas is a typed
+  IncompleteMaterializationError (raw output is never re-fetchable;
+  recover explicitly with retry_number+1 — tested); policy version,
+  template version, provider/model identity, and retry_number each change
+  the attempt identity; concurrent identical invocations may double-call
+  the provider (Task 8 truth) but attempt-row locking + attempt-scoped
+  idea queries guarantee exactly ONE materialized batch and both callers
+  resolve to the same idea IDs (verified with threads on real PG)
+- real ephemeral pgvector PostgreSQL verification passed (fake provider,
+  no network): schema stays `0015` (NO new migration), end-to-end
+  generation (3 MODEL_ASSISTED ideas, fresh logical ids, exact attempt
+  provenance), exact-retry idempotency (1 invocation), concurrent
+  single-batch materialization, durable state exactly 2 attempts + 6
+  ideas + 2 batches + 0 selection events + 1 workflow event + disposition
+  untouched, no instruction text persisted anywhere
+- Task 9 added NO SearchIntentAnalysis, no ContentBrief, no AI pack
+  organization, no Celery, no API endpoints, no admin UI, no automatic
+  selection/commissioning/workflow transitions, no live OpenAI calls in
+  any gate; adapter tests use an injected mocked client; the API key
+  never appears in errors/DTOs/rows
+- Task 9 verified: 939 backend tests (905 + 34 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0015`; the only
+  dependency change is the approved `openai` SDK
 
 ## Current documentation structure
 
@@ -1331,10 +1426,11 @@ PostgreSQL raw-payload backend, the idempotent Celery research-pipeline
 orchestration, and read-only operator visibility (internal API + admin screens)
 are complete; no production inventory comparison exists
 
-AI integration: provider-neutral boundary complete (protocol, structured
-validation pipeline, generic attempt provenance, deterministic fake
-provider); NO real provider/adapter exists and no model has ever been
-called
+AI integration: provider-neutral boundary complete; the OpenAI adapter
+(official SDK, Responses API, strict Structured Outputs, ADR 0009) and the
+model-assisted idea generation engine exist; automated gates never call
+OpenAI (deterministic fake provider) and no live model call has been made
+by any verification
 
 Publishing integration: not started
 
@@ -1346,10 +1442,13 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No real AI provider/adapter, Celery Beat scheduling, pre-commit
-configuration, or model-assisted generation exists yet; the runtime
-IdeaService is operator-only and the deterministic EvidencePack service
-never sets an organization attempt. The admin exposes exactly the minimal
+No SearchIntentAnalysis, ContentBrief, AI pack organization, Celery Beat
+scheduling, or pre-commit configuration exists yet. Model-assisted idea
+generation exists as the IdeaGenerationEngine (operator command
+precondition: COMMISSIONED opportunity — but no commissioning command
+exists yet); the operator IdeaService paths are unchanged and the
+deterministic EvidencePack service never sets an organization attempt.
+Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1364,18 +1463,14 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 9 (awaiting explicit authorization) — first real adapter +
-idea generation engine, per the accepted design's implementation order
-item 8: the OpenAI adapter behind the existing
-StructuredGenerationProvider protocol (first provider per ARCHITECTURE.md;
-requires its own dependency/ADR checkpoint before the SDK is added),
-model-assisted Idea candidates end-to-end — IdeaCandidate schema +
-template, generation engine consuming the Task 8 boundary, validated
-candidates persisted as origin=model_assisted Idea versions pinning the
-exact successful IDEA_CANDIDATES attempt, originality guards rerun on
-generated candidates, attempt provenance mandatory. The engine must
-validate the referenced attempt purpose/status (deliberately not a SQL
-CHECK).
+PHASE 3 TASK 10 (awaiting explicit authorization) — SearchIntentAnalysis,
+per the accepted design's implementation order item 9: the versioned
+`search_intent_analyses` artifact (opportunity + exact selected idea
+version), deterministic composition from durable SearchSignal
+observations, optional model-assisted synthesis through the existing AI
+boundary (purpose INTENT_SYNTHESIS), and the truthful cannibalization
+truth-states (NOT_CHECKED default — no production Konsepthane inventory
+access); migration. No ContentBrief yet.
 
 Before implementing the affected integrations, resolve:
 

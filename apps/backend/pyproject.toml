@@ -8,6 +8,7 @@ dependencies = [
   "celery[redis]",
   "fastapi",
   "httpx",
+  "openai>=3.6.0",
   "pgvector",
   "psycopg[binary,pool]",
   "pydantic-settings",

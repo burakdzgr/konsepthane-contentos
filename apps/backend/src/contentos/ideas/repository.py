@@ -51,6 +51,15 @@ class IdeaRepository:
         )
         return list(self._session.execute(statement).scalars())
 
+    def list_by_generation_attempt(self, generation_attempt_id: uuid.UUID) -> list[Idea]:
+        """All idea versions materialized from one generation attempt."""
+        statement = (
+            select(Idea)
+            .where(Idea.generation_attempt_id == generation_attempt_id)
+            .order_by(Idea.created_at, Idea.id)
+        )
+        return list(self._session.execute(statement).scalars())
+
     def list_selection_events(self, opportunity_id: uuid.UUID) -> list[IdeaSelectionEvent]:
         statement = (
             select(IdeaSelectionEvent)

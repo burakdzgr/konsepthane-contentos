@@ -13,3 +13,4 @@ later ADRs amend earlier scope only where they say so explicitly.
 | 0006 | Fetch snapshots are immutable and append-only |
 | 0007 | Research evidence carries non-bypassable provenance |
 | 0008 | Defer the vector-similarity duplicate signal until justified |
+| 0009 | OpenAI as the first structured-generation provider adapter |
