@@ -4,7 +4,9 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-17 complete)
+PHASE 2 - Research/Discovery foundation - CONDITIONALLY COMPLETE
+(Tasks 1-18 complete; formal closure decision recorded in
+docs/PHASE2_CLOSURE_AUDIT.md with two open closure conditions)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -494,6 +496,51 @@ main
   no AI
 - Task 17 verified: 652 backend tests, 60 admin tests, and the full root
   quality gate passed
+- Task 18 (Phase 2 closure audit) complete: `docs/PHASE2_CLOSURE_AUDIT.md` is
+  the formal closure decision record, audited at HEAD `ea9e9ac` against the
+  accepted design, ADRs 0005-0007, and the actual code
+- closure decision: **PHASE 2 CONDITIONALLY COMPLETE** — the entire runtime
+  foundation is implemented and verified; no implemented behavior violates
+  the accepted design; all security/copyright/provenance invariants verified
+  intact at audit time
+- open closure condition 1: vector-similarity duplicate signal (design §5
+  signal 7, §12 vector column, implementation-order item 11) is an explicit
+  unimplemented Phase 2 commitment with no formal scope amendment on record;
+  resolution = implement item 11 OR record a formal deferral ADR with a
+  re-entry trigger (audit recommends the ADR)
+- open closure condition 2: implementation-order item 2's "minimal API
+  endpoints for source listing/registration" is half-delivered (listing only);
+  no operator-facing mechanism exists for source registration, lifecycle
+  transitions, DISCOVERED->ACCEPTED admission, rejection, requeue, or job
+  triggering — the pipeline is currently operable only programmatically;
+  resolution = minimal operator control surface (audit recommends) OR formal
+  amendment
+- audit dispositions recorded: retention job and Konsepthane inventory
+  comparison OUT_OF_SCOPE by explicit design wording; Celery Beat never a
+  Phase 2 commitment (executable jobs only were promised); human duplicate
+  override (decided_by) and evidence verification workflow
+  (verified_by/verified_at) DEFERRED_ACCEPTED with human review flows;
+  duplicate record shape, evidence append-only strengthening, evidence_key
+  identity, FetchSnapshot field naming/redirect_chain, normalization
+  status/failure-code split, and explicit-markup-only language all
+  COMPLETE_DIFFERENT_IMPLEMENTATION with rationale; missing
+  fetcher_version/metadata snapshot columns accepted as minor doc drift;
+  SHA-256 + engine-time lexical similarity confirmed sufficient for the
+  Phase 2 baseline (stored LSH is a later scaling optimization); distributed
+  per-host rate limiting DEFERRED (holds exactly with one fetch worker;
+  required before multi-worker production); commit-vs-publish gap documented
+  with recovery strategy, residual stall window, and outbox trigger criteria
+- production-readiness matrix recorded separately from phase completion
+  (deployment access protection, secrets, backups, retention, scheduling,
+  monitoring, runbooks, DR, source-allowlist governance = before production;
+  none of these block Phase 2)
+- Phase 3 entry criteria defined: closure recorded, no provenance blockers,
+  frozen duplicate-eligibility semantics, evidence-service-only retrieval,
+  end-to-end auditability (no clean_text bypass), no Konsepthane access, AI
+  never a provenance root, no Writer before Idea/Evidence-Pack/Brief design
+- Task 18 changed no runtime code, schema (head stays `0008`), or
+  dependencies; gates re-run and green at audit (backend 652, admin 60,
+  check.ps1, git diff --check)
 
 ## Current documentation structure
 
@@ -503,6 +550,7 @@ main
 - docs/WORKFLOW.md
 - docs/EDITORIAL_POLICY.md
 - docs/PHASE2_RESEARCH_DISCOVERY.md
+- docs/PHASE2_CLOSURE_AUDIT.md
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
@@ -561,14 +609,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 closure audit (awaiting explicit authorization): compare the accepted
-Phase 2 design (docs/PHASE2_RESEARCH_DISCOVERY.md, implementation order items
-1-14) against the implemented system; record which capabilities are complete,
-which are intentionally deferred (pgvector embedding / vector-similarity
-duplicate signal — design order item 11 — and periodic discovery scheduling /
-Celery Beat), identify production-readiness gaps, and define Phase 3 entry
-criteria. Documentation/audit only: do NOT implement the deferred
-capabilities as part of the audit.
+Phase 2 Task 19 (awaiting explicit authorization), per the closure audit's
+recommendation: minimal operator control surface resolving closure
+condition 2 — internal write API + admin forms strictly over existing domain
+services (register source; audited lifecycle transitions with reason;
+accept/reject DiscoveryItem with coded reason; requeue failed fetch with
+reason; explicit "run discovery"/"run fetch" job enqueueing). Same
+single-operator/no-auth boundary, full audit trail, no new schema expected
+(head stays 0008), no new dependencies. Then Task 20: formal scope-amendment
+ADR for the vector-similarity deferral (closure condition 1) and declare
+PHASE 2 COMPLETE. Alternative fast path (operator's choice): one amendment
+task deferring both conditions formally.
 
 Before implementing the affected integrations, resolve:
 
