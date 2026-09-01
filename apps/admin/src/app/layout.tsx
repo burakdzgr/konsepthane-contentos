@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { AppNav } from "./nav";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,8 +19,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <header className="app-header">
-          <span className="app-name">ContentOS</span>
-          <span className="app-role">Internal Control Panel</span>
+          <div className="app-identity">
+            <span className="app-name">ContentOS</span>
+            <span className="app-role">Internal Control Panel</span>
+          </div>
+          <AppNav />
         </header>
         <main className="app-main">{children}</main>
       </body>

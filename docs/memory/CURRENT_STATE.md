@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-16 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-17 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -19,6 +19,8 @@ duplicate-decision boundary are complete. The durable PostgreSQL payload
 backend and the idempotent Celery research-pipeline orchestration
 (fetch -> normalize -> evaluate duplicates -> extract evidence) now exist;
 PostgreSQL stays authoritative and queue progress never becomes domain state.
+The single operator can now inspect the whole pipeline chain without psql
+through a read-only internal API and read-only admin screens.
 
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
@@ -432,6 +434,66 @@ main
 - Task 16 added no Beat scheduling, endpoint, UI, AI, Evidence Pack, schema change
   (head stays `0008`), or dependency change
 - Task 16 verified: 627 backend tests and the full root quality gate passed
+- `contentos.api.read_models.research` adds the read-only research visibility
+  layer: immutable frozen Pydantic DTOs plus bounded query functions that never
+  write, never commit, and never return ORM entities
+- `/internal/research` GET-only router registered in `create_app` (three
+  endpoints: `/sources`, `/discovery-items`, `/discovery-items/{id}`); health
+  routes, request-context middleware, error envelope, and lazy DB connection
+  are unchanged; POST/PUT/PATCH/DELETE return 405
+- source list: id/slug/name/kind/locale/market/lifecycle/trust/strategy/
+  base_url/timestamps plus aggregate discovery counts (total + per lifecycle
+  state) computed in one grouped SQL subquery — never N+1
+- pipeline list answers "what happened to this URL": discovery fields plus
+  deterministic latest-stage projections (latest FetchSnapshot by fetched_at/
+  created_at/id desc; latest NormalizedDocument by normalized_at/created_at/id
+  desc; latest DuplicateDecision scoped to that latest document only; evidence
+  count + newest timestamp for that document) — a decision or evidence from an
+  older normalization version is never shown as belonging to the latest one
+- list endpoints are one window-function SELECT plus one COUNT over the same
+  filtered join (query count independent of page size); filters cover source,
+  lifecycle state, method, fetch outcome, normalization status, duplicate
+  outcome, has_evidence, and bounded URL/text substring search (escaped, no
+  regex); pagination is mandatory (default 50, max 100, bounded offset) with a
+  frozen `{items,total,limit,offset}` envelope and deterministic ordering
+  (sources: updated/created desc then id; pipeline: last_seen/discovered desc
+  then id) pinned by tests
+- detail endpoint returns bounded histories (max 20 each, newest first, with
+  totals and truncated flags) for fetch attempts, normalization attempts, and
+  duplicate decisions, plus an evidence SUMMARY only (counts by verification
+  status and type, newest timestamp)
+- deliberately never exposed by the read API: raw payload bytes/refs,
+  clean_text, excerpts, evidence statements, wholesale structured/metadata
+  JSON, selected headers, redirect chains, duplicate signals/thresholds/match
+  payloads, secrets/URLs; a recursive JSON scan test and the real-PG
+  verification both enforce this
+- invalid UUIDs return the 422 validation envelope; missing items return the
+  404 envelope; no DB or SQL details leak
+- admin gains read-only routes `/sources`, `/research`, `/research/[id]` plus
+  header navigation (Status / Sources / Research Pipeline with aria-current);
+  all pages are force-dynamic React Server Components fetching server-side
+  only — the backend URL never reaches browser JavaScript
+- admin filters/pagination live in URL search params via GET forms (shareable,
+  no JS required); the only buttons are filter submits — no mutation controls
+  anywhere; per-stage badges keep explicit text (color is never the sole
+  carrier); backend unavailable/malformed/empty states render truthfully
+- admin responses are zod-validated against exact backend enum vocabularies
+  (unknown values are malformed, never rendered); timestamps render
+  deterministically server-side as `YYYY-MM-DD HH:mm UTC` with no timezone
+  dependency
+- no Celery/queue/worker introspection appears anywhere: the screens reflect
+  durable PostgreSQL state only; no auto-refresh/websocket/SSE/polling
+- real ephemeral pgvector PostgreSQL verification passed: migrate to `0008`,
+  service-seeded realistic rows (full chain with evidence, duplicate stop,
+  retry history, discovered-only, rejected, failed normalization), all three
+  endpoints via the real FastAPI app — aggregates, projections, filters,
+  pagination, detail histories, 404/422, forbidden-field scan; schema stayed
+  `0008`, pgvector intact, teardown complete
+- Task 17 added no auth/RBAC, no mutations, no migration (head stays `0008`),
+  no backend or frontend dependency (lockfiles unchanged), no Celery control,
+  no AI
+- Task 17 verified: 652 backend tests, 60 admin tests, and the full root
+  quality gate passed
 
 ## Current documentation structure
 
@@ -450,9 +512,9 @@ main
 
 Repository foundation: complete
 
-Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, and liveness/readiness endpoints complete
+Backend: application factory, typed settings, structured logging, request context, API error contract, database engine/session foundation, liveness/readiness endpoints, and the GET-only `/internal/research` visibility API (sources, discovery-items list, discovery-item detail) complete
 
-Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, and Docker/Compose integration; no business screens yet
+Frontend/control panel: Next.js foundation with server-side backend client, truthful Foundation Status page, Docker/Compose integration, and the read-only Sources / Research Pipeline / pipeline-detail screens with header navigation; no mutation screens by design
 
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
@@ -469,8 +531,9 @@ NormalizedDocument persistence, provider-neutral raw-payload contracts, and exec
 bounded HTML/text normalization plus deterministic local duplicate decisions complete;
 the immutable ResearchEvidence primitive with exact excerpt provenance, the
 deterministic v1 evidence extractor (author/date metadata evidence), the durable
-PostgreSQL raw-payload backend, and the idempotent Celery research-pipeline
-orchestration are complete; no production inventory comparison exists
+PostgreSQL raw-payload backend, the idempotent Celery research-pipeline
+orchestration, and read-only operator visibility (internal API + admin screens)
+are complete; no production inventory comparison exists
 
 AI integration: not started
 
@@ -484,8 +547,10 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Evidence Pack, Celery Beat scheduling, admin business screens,
-pre-commit configuration, or editorial business logic exists yet. Backend
+No Evidence Pack, Celery Beat scheduling, admin mutation screens,
+pre-commit configuration, or editorial business logic exists yet. The admin
+research screens are strictly read-only (GET only; no admission, requeue,
+lifecycle, retry, or Celery controls). Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -496,14 +561,14 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 17 (awaiting explicit authorization): minimal read-only admin
-visibility for the research pipeline — internal API endpoints plus admin
-screens listing Sources, DiscoveryItems (lifecycle/rejection state), and
-per-item fetch/normalization/duplicate/evidence status so the operator can
-observe pipeline results without psql. Read-only: no admission, requeue, or
-lifecycle mutations from the UI in this task; no AI; no Evidence Pack. Celery
-Beat scheduling of `discover_source` and the vector-similarity duplicate
-signal (design order item 11) remain later, independent tasks.
+Phase 2 closure audit (awaiting explicit authorization): compare the accepted
+Phase 2 design (docs/PHASE2_RESEARCH_DISCOVERY.md, implementation order items
+1-14) against the implemented system; record which capabilities are complete,
+which are intentionally deferred (pgvector embedding / vector-similarity
+duplicate signal — design order item 11 — and periodic discovery scheduling /
+Celery Beat), identify production-readiness gaps, and define Phase 3 entry
+criteria. Documentation/audit only: do NOT implement the deferred
+capabilities as part of the audit.
 
 Before implementing the affected integrations, resolve:
 

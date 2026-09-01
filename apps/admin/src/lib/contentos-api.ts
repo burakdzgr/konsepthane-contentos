@@ -36,13 +36,15 @@ export type BackendResult<T> =
   | { kind: "unreachable" }
   | { kind: "malformed" };
 
-type FetchedResponse = {
+export type FetchedResponse = {
   status: number;
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
 };
 
-async function requestBackend(path: string): Promise<FetchedResponse | null> {
+export async function requestBackend(
+  path: string,
+): Promise<FetchedResponse | null> {
   const baseUrl = getServerEnv().internalApiUrl;
   try {
     return await fetch(new URL(path, baseUrl), {
@@ -56,7 +58,7 @@ async function requestBackend(path: string): Promise<FetchedResponse | null> {
   }
 }
 
-async function parseBackendResponse<T>(
+export async function parseBackendResponse<T>(
   response: FetchedResponse,
   schema: z.ZodType<T>,
   expectedStatuses: readonly number[],
