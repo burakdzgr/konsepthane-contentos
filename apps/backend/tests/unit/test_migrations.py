@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0007"]
+    assert script.get_heads() == ["0008"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -67,6 +67,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0005").down_revision == "0004"
     assert script.get_revision("0006").down_revision == "0005"
     assert script.get_revision("0007").down_revision == "0006"
+    assert script.get_revision("0008").down_revision == "0007"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -108,6 +109,17 @@ def test_research_evidence_migration_contains_provenance_and_append_only_protect
     assert "CREATE TRIGGER trg_research_evidence_append_only" in sql
     assert "BEFORE UPDATE OR DELETE ON research_evidence" in sql
     assert sql.count("ON DELETE RESTRICT") == 3
+
+
+def test_raw_payload_blob_migration_contains_identity_and_append_only_protection() -> None:
+    sql = offline_sql("upgrade", "0007:0008")
+
+    assert "CREATE TABLE raw_payload_blobs" in sql
+    assert "ck_raw_payload_blobs_sha256_format" in sql
+    assert "ck_raw_payload_blobs_size_consistency" in sql
+    assert "BYTEA" in sql
+    assert "CREATE TRIGGER trg_raw_payload_blobs_append_only" in sql
+    assert "BEFORE UPDATE OR DELETE ON raw_payload_blobs" in sql
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current phase
 
-PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-14 complete)
+PHASE 2 - Research/Discovery foundation - IN PROGRESS (Tasks 1-15 complete)
 
 Phase 1 foundation is complete and verified (first real CI run passed, both
 local quality gates pass, fresh-clone bootstrap verified).
@@ -361,6 +361,35 @@ main
 - Task 14 added no migration (head stays `0007`), no AI, no Celery, no EvidencePack,
   no endpoint, no dependency change
 - Task 14 verified: 565 backend tests and the full root quality gate passed
+- Task 15 sequencing corrected: the durable payload backend was implemented BEFORE Celery
+  orchestration because cross-process fetch->normalize requires retrievable raw bytes;
+  Celery orchestration moves to Task 16
+- `contentos.payloads.postgres` adds the durable, immutable, content-addressed PostgreSQL
+  provider (`RawPayloadBlob` model + `PostgresRawPayloadStore`) satisfying the unchanged
+  Task 10 `RawPayloadStore`/`RawPayloadReader` protocols
+- migration `0008_create_raw_payload_blobs`: sha256 CHAR(64) primary identity, BIGINT size,
+  BYTEA payload, timestamptz created_at, format/size/octet-length CHECKs, the append-only
+  UPDATE/DELETE trigger, and a symmetric downgrade
+- frozen reference format `postgres:sha256:<64 lowercase hex>`; identity is SHA-256 of the
+  exact bytes only; same bytes share one row and reference, expected hash/size mismatches
+  are rejected before persistence
+- put() refuses payloads above the configured cap (default matches the fetch body cap;
+  DB CHECK enforces the absolute 50 MiB settings ceiling); readers still require explicit
+  max_bytes and yield bounded chunks
+- the store is session-scoped, flushes only, never commits; identical concurrent puts are
+  absorbed with the SAVEPOINT race pattern and the outer transaction stays usable;
+  hash-conflicting or inconsistent stored rows raise typed conflict/integrity errors
+- FetchSnapshot integration verified: body -> postgres put -> record_fetch_result stores
+  the ref with matching body_sha256/body_size_bytes; NormalizationPipeline succeeded
+  through the PostgreSQL reader with zero pipeline code changes (provider neutrality held)
+- `InMemoryRawPayloadStore` remains DEV/TEST only and unchanged
+- real ephemeral pgvector PostgreSQL verification passed all 25 steps: empty upgrade to
+  `0008`, BYTEA/constraint/trigger catalog checks, exact Turkish/UTF-8 byte round-trip,
+  hashlib-equal digests, idempotent re-put, chunked reconstruction, max_bytes rejection,
+  snapshot + pipeline integration, raw UPDATE/DELETE rejection, downgrade to `0007` with
+  prior data and pgvector survival, and re-upgrade
+- Task 15 added no Celery task, endpoint, UI, object storage, AI, or dependency change
+- Task 15 verified: 595 backend tests and the full root quality gate passed
 
 ## Current documentation structure
 
@@ -385,7 +414,8 @@ Frontend/control panel: Next.js foundation with server-side backend client, trut
 
 Database: engine/session, Alembic + pgvector, Source Registry, DiscoveryItem,
 immutable FetchSnapshot, immutable NormalizedDocument, immutable
-DuplicateDecision, and immutable ResearchEvidence tables complete; schema head `0007`
+DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
+raw_payload_blobs tables complete; schema head `0008`
 
 Queue/workers: Redis/Celery foundation and worker entrypoint complete; no domain tasks or Beat scheduling yet
 
@@ -393,9 +423,9 @@ Research discovery: Source Registry, manual/feed/sitemap admission, safe FetchCl
 bounded sitemap-index traversal, immutable FetchSnapshot persistence, and the
 NormalizedDocument persistence, provider-neutral raw-payload contracts, and executable
 bounded HTML/text normalization plus deterministic local duplicate decisions complete;
-the immutable ResearchEvidence primitive with exact excerpt provenance and the
-deterministic v1 evidence extractor (author/date metadata evidence) are complete;
-no production payload adapter or production inventory comparison exists
+the immutable ResearchEvidence primitive with exact excerpt provenance, the
+deterministic v1 evidence extractor (author/date metadata evidence), and the durable
+PostgreSQL raw-payload backend are complete; no production inventory comparison exists
 
 AI integration: not started
 
@@ -409,9 +439,8 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No production raw-payload backend, Evidence Pack, domain/queue tasks, Celery Beat,
-admin business screens, pre-commit configuration, or editorial business logic
-exists yet. Backend
+No Evidence Pack, domain/queue tasks, Celery Beat, admin business screens,
+pre-commit configuration, or editorial business logic exists yet. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -422,19 +451,18 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-Phase 2 Task 15 (awaiting explicit authorization): Celery orchestration of the
+Phase 2 Task 16 (awaiting explicit authorization): Celery orchestration of the
 research pipeline per the design's job plan (PHASE2_RESEARCH_DISCOVERY.md
 section 13) — idempotent domain jobs `discover_source`, `fetch_discovery_item`,
 `normalize_fetch`, `evaluate_duplicate`, and `extract_research_evidence` on the
-existing Celery foundation. PostgreSQL stays authoritative (queue completion
-never advances domain state), database uniqueness absorbs at-least-once
-delivery, retry classification follows the fetch boundary's retryable/terminal
-contract, and each job schedules the next only after its database write
-commits. No Beat scheduling, no new endpoints/UI, no AI, no Evidence Pack.
-Rationale: every pipeline stage now has an executable producer, so orchestration
-wires existing verified capabilities; the vector-similarity duplicate signal
-(design order item 11) remains a later, independent task, and Evidence Pack is
-explicitly outside Phase 2.
+existing Celery foundation, composed with the durable PostgreSQL payload
+provider. PostgreSQL stays authoritative (queue completion never advances
+domain state), database uniqueness absorbs at-least-once delivery, each job
+commits before enqueueing the next stage, retryable FetchResult failures use
+bounded Celery retry/backoff while policy failures stay terminal. No Beat
+scheduling, no new endpoints/UI, no AI, no Evidence Pack. The
+vector-similarity duplicate signal (design order item 11) remains a later,
+independent task.
 
 Before implementing the affected integrations, resolve:
 
