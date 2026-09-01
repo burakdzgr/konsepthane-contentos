@@ -8,7 +8,8 @@ PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
 opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
-foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE)
+foundation COMPLETE; Task 6 EvidencePack foundation COMPLETE; Task 7 Idea
+persistence + operator selection COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1076,6 +1077,101 @@ main
   transitions, no commissioning, and no dependency changes
 - Task 6 verified (post-correction): 829 backend tests (805 + 24 new), 96
   admin tests, and the full root quality gate passed; schema head `0013`
+- PHASE 3 Task 7 (Idea persistence + operator selection) complete:
+  `contentos.ideas` added (enums/errors/policy/values/originality/models/
+  repository/service); an Idea is a proposed Konsepthane-specific editorial
+  concept — never evidence, never a provenance root (ADR 0007), never
+  publication approval (ADR 0004), never generated article content
+- immutable version identity: each `ideas` row is ONE exact version (`id`
+  is what downstream artifacts pin); `logical_idea_id` is the stable
+  candidate identity; UNIQUE (logical_idea_id, version), version >= 1;
+  revision creates a NEW row (`revise_operator_idea` derives logical id +
+  opportunity from the prior version — a caller can never move a logical
+  idea between opportunities); repository has no update/delete surface and
+  a PG append-only trigger protects rows; concurrent revisions serialize by
+  locking the owning EditorialOpportunity row (FOR UPDATE) before version
+  allocation — verified on real PG with two threads producing v2/v3
+- operator-only origin: the `origin` vocabulary and DB CHECK contain ONLY
+  `operator` today, so fake model provenance is impossible at the database
+  level; MODEL_ASSISTED + the real generation_attempt FK arrive with the
+  AI-boundary task's own migration (dependency-safe staged implementation,
+  not a design change; no placeholder UUID was created)
+- fields: bounded non-empty working_title (proposed direction, never a
+  final/SEO title), angle, audience, value_proposition, rationale (an idea
+  without a stated original angle is invalid at the domain layer);
+  content_type is the accepted controlled 8-value vocabulary (guide/
+  idea_list/checklist/planning_guide/comparison/faq/how_to/inspiration) —
+  an editorial choice supplied by the operator, never inferred from a
+  source article; locale/market derive from the parent work item through
+  the opportunity (callers cannot supply conflicting values); exclusions
+  are a bounded deduplicated ordered string list; planning_dimensions use a
+  versioned bounded schema (schema_version 1, explicit 12-dimension
+  allowlist, bounded strings/lists, NaN/Infinity/nesting rejected)
+- deterministic originality guards (design §5.3) with an EXPLICIT typed
+  versioned `IdeaOriginalityPolicy` (name/version/min_distinct_sources/
+  title_similarity_failure_threshold/fake_ugc_patterns) whose full snapshot
+  is persisted per idea version; DEFAULT = default/1 (2 distinct sources,
+  0.90 title threshold) documented as initial operational policy, caller
+  can supply another; no hidden universal editorial constants
+- recorded checks per version (originality_status + originality_detail +
+  originality_policy_snapshot): source diversity DERIVED from the
+  NormalizedDocument -> FetchSnapshot -> DiscoveryItem -> Source chain
+  (three documents from one source = one source; caller can never submit a
+  count); working-title similarity against every usable input-document
+  title via the existing shared `title_similarity` utility (max similarity,
+  most-similar document id, threshold, skipped no-title inputs recorded);
+  a near-copy is recorded as FAILED — never rewritten, never hidden;
+  missing titles yield NOT_CHECKABLE, which is never promoted to PASSED;
+  guards are deterministic protections, not a plagiarism oracle, and a
+  FAILED candidate row remains visible (the accepted design gates brief
+  commissioning on it later; selection itself stays an operator decision)
+- fake-UGC guard: bounded versioned casefolded pattern list (gerçek
+  kullanıcı yorumları / annelerden tavsiyeler / testimonial / ratings
+  phrasing etc.) scanned over all five text fields; any match is a typed
+  hard `FakeUgcRejectionError` with NO idea row persisted (Phase 3 has no
+  UGC ingestion; no LLM, no semantic-detection claim)
+- append-only `idea_selection_events` (BIGINT monotonic id = audit order):
+  action strictly selected/deselected (no approve/publish vocabulary),
+  actor operator-only, mandatory bounded reason, validated optional
+  request_id, exact idea-version FK RESTRICT; PG append-only trigger;
+  effective-selection rule = the LATEST event decides (SELECTED -> its
+  exact version; DESELECTED or none -> nothing effective; deselect must
+  target the current selection, so no older candidate ever silently
+  resurrects); revising a logical idea NEVER retargets an existing
+  selection; re-selecting the effective idea is a semantic no-op (no
+  duplicate event — verified concurrently on real PG); selection commands
+  serialize on the opportunity row lock
+- EvidencePack idea link realized (deferred by Task 6): migration 0014 adds
+  nullable `evidence_packs.idea_id` FK RESTRICT; `assemble_pack` accepts an
+  optional exact idea version (must belong to the same opportunity) and the
+  pinned idea participates in the semantic assembly identity (snapshot
+  schema bumped to 2; same evidence/policy with a different idea = a
+  different pack); `reassemble_pack` carries the existing idea forward
+  unless explicitly replaced via `replace_idea=True`; existing packs stay
+  NULL and valid (idea_id never NOT NULL); changing the effective selection
+  never mutates or repoints an existing pack; Idea never imports
+  evidence_packs (dependency stays one-directional)
+- migration `0014_create_ideas`: ideas + idea_selection_events with frozen
+  literal vocabularies, nonempty/jsonb-shape/version CHECKs, uniques,
+  indexes, two append-only trigger functions, plus the evidence_packs
+  idea_id column/FK/index; symmetric downgrade removes the pack link FIRST,
+  then Task 7 tables only — Task 6 packs survive downgrade to `0013`
+  (verified: 3 pack rows intact, idea_id column gone, re-upgrade clean)
+- real ephemeral pgvector PostgreSQL verification passed: migrate to
+  `0014`, create v1 (PASSED, tr-TR/TR derived), near-copy FAILED with
+  recorded similarity 1.0, fake-UGC hard rejection with no row, two-thread
+  concurrent revisions -> versions 2 and 3, selection pinning across
+  revisions, explicit re-select, concurrent duplicate select -> single
+  event, idea/event UPDATE/DELETE trigger-rejected, DB CHECK rejecting
+  'model_assisted' origin, pack-idea distinct identity + explicit
+  replacement + no repointing, zero workflow/disposition/score side
+  effects, downgrade/re-upgrade cycle; teardown complete
+- Task 7 added no AI, no MODEL_ASSISTED origin, no ai_generation_attempts,
+  no SearchIntentAnalysis, no ContentBrief, no Celery, no API endpoints, no
+  admin UI, no commissioning, no workflow transitions, and no dependency
+  changes
+- Task 7 verified: 874 backend tests (829 + 45 new), 96 admin tests, and
+  the full root quality gate passed; schema head `0014`
 
 ## Current documentation structure
 
@@ -1106,9 +1202,10 @@ DuplicateDecision, immutable ResearchEvidence, and immutable content-addressed
 raw_payload_blobs tables complete; Phase 3 editorial_work_items, append-only
 editorial_workflow_events, editorial_opportunities, append-only
 opportunity_research_inputs, append-only opportunity_scores +
-opportunity_score_components, append-only search_signals, and append-only
+opportunity_score_components, append-only search_signals, append-only
 evidence_packs + evidence_pack_items + resolution-guarded
-evidence_contradictions tables complete; schema head `0013`
+evidence_contradictions (now with the nullable idea link), and append-only
+ideas + idea_selection_events tables complete; schema head `0014`
 
 Queue/workers: Redis/Celery foundation, worker entrypoint, and the five idempotent
 research-pipeline domain tasks complete (commit-before-enqueue, at-least-once,
@@ -1136,8 +1233,8 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No Idea persistence, Celery Beat scheduling, pre-commit configuration, or
-AI boundary exists yet. The admin exposes exactly the minimal
+No AI boundary, Celery Beat scheduling, pre-commit configuration, or
+model-assisted generation exists yet. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1152,21 +1249,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 7 (awaiting explicit authorization) — Idea persistence +
-selection, per the accepted design's implementation order item 6:
-`contentos.ideas` with immutable versioned idea rows (version identity id +
-stable logical_idea_id, UNIQUE (logical_idea_id, version); working_title,
-mandatory angle and rationale, audience, value_proposition, content_type
-controlled vocabulary, locale/market, exclusions, optional bounded
-planning_dimensions, origin OPERATOR only for now — the MODEL_ASSISTED
-origin and generation-attempt FK arrive with the AI-boundary task),
-append-only `idea_selection_events` (SELECTED/DESELECTED, operator-only,
-reason + request_id, effective selection = deterministic latest, rejected
-candidates never overwritten), deterministic originality guards
-(multi-source policy per content type, title-similarity check against input
-documents, fake-UGC guard), multiple candidates per opportunity, and a
-migration. Operator-authored ideas only — no AI generation, no Celery, no
-API/admin.
+PHASE 3 TASK 8 (awaiting explicit authorization) — provider-neutral AI
+boundary, per the accepted design's implementation order item 7:
+`contentos.ai` with the provider-neutral protocol, neutral DTOs, the
+structured-output validation pipeline (provider -> neutral DTO -> schema
+validation -> domain validation -> artifact), the generic append-only
+`ai_generation_attempts` provenance record (provider/model/version,
+schema/template version, input refs + hash, status, retry, usage), and the
+mandatory fake deterministic test provider; migration. NO real adapter, no
+OpenAI SDK, no network — the first real adapter is implementation-order
+item 8 with its own dependency/ADR checkpoint. This task may also widen the
+idea `origin` vocabulary and add the real `generation_attempt_id` FK.
 
 Before implementing the affected integrations, resolve:
 

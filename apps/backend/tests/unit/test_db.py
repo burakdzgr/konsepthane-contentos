@@ -91,6 +91,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.duplicates.models  # noqa: F401
     import contentos.evidence_packs.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
+    import contentos.ideas.models  # noqa: F401
     import contentos.normalization.models  # noqa: F401
     import contentos.opportunities.models  # noqa: F401
     import contentos.payloads.postgres  # noqa: F401
@@ -118,6 +119,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "evidence_packs",
         "evidence_pack_items",
         "evidence_contradictions",
+        "ideas",
+        "idea_selection_events",
     }
 
 

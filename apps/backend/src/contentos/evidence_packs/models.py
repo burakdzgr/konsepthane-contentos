@@ -44,12 +44,15 @@ class EvidencePack(Base):
 
     `assembly_input_hash` covers the WHOLE semantic assembly identity:
     selections (evidence, role, cluster), assembler identity, the exact
-    policy snapshot, and canonical contradiction state. Display notes and
-    handling recommendations are formally cosmetic/advisory and excluded.
+    policy snapshot, canonical contradiction state, and the pinned idea
+    version (nullable). Display notes and handling recommendations are
+    formally cosmetic/advisory and excluded.
 
-    Note: the accepted design's nullable idea link and AI organization
-    attempt link are deliberately absent — the ideas and AI-boundary tasks
-    add those columns with their own migrations.
+    `idea_id` optionally pins the EXACT idea version a pack was (re)built
+    for; packs may exist before/without any idea, so it stays nullable
+    forever. The accepted design's AI organization-attempt link remains
+    deliberately absent — the AI-boundary task adds it with its own
+    migration.
     """
 
     __tablename__ = "evidence_packs"
@@ -76,6 +79,7 @@ class EvidencePack(Base):
             name="ck_evidence_packs_hash_format",
         ),
         Index("ix_evidence_packs_opportunity", "opportunity_id", "version"),
+        Index("ix_evidence_packs_idea", "idea_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
@@ -83,6 +87,11 @@ class EvidencePack(Base):
         Uuid(),
         ForeignKey("editorial_opportunities.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    idea_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("ideas.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     version: Mapped[int] = mapped_column(Integer(), nullable=False)
     assembler_name: Mapped[str] = mapped_column(String(100), nullable=False)

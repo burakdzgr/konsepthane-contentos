@@ -47,6 +47,9 @@ from contentos.fetching.models import (
     RobotsDecision,
 )
 from contentos.fetching.snapshot_service import FetchSnapshotService
+from contentos.ideas.enums import ContentType
+from contentos.ideas.models import Idea
+from contentos.ideas.service import IdeaService
 from contentos.normalization.service import NormalizationService
 from contentos.opportunities.enums import OpportunityActor, ResearchInputRole
 from contentos.opportunities.errors import OpportunityNotFoundError
@@ -231,6 +234,20 @@ def selections_for(
             )
         )
     return selections
+
+
+def make_idea(session: Session, opportunity_id: uuid.UUID, *, title_suffix: str = "") -> Idea:
+    idea = IdeaService(session).create_operator_idea(
+        opportunity_id,
+        working_title=f"Evde balon temalı doğum günü planı{title_suffix}",
+        angle="Bütçe dostu üç saatlik hazırlık akışına odaklanıyoruz.",
+        audience="Küçük çocuklu ebeveynler",
+        value_proposition="Tek listeyle eksiksiz parti hazırlığı sağlar.",
+        rationale="Kaynaklar genel kalıyor; biz uygulanabilir plan veriyoruz.",
+        content_type=ContentType.PLANNING_GUIDE,
+    )
+    session.commit()
+    return idea
 
 
 def blocking_declaration(side_a: uuid.UUID, side_b: uuid.UUID) -> ContradictionDeclaration:
@@ -723,3 +740,131 @@ class TestIsolation:
             opportunity_id, evidence_ids = build_opportunity(session)
             eligible = EvidencePackService(session).list_eligible_evidence(opportunity_id)
             assert {evidence.id for evidence in eligible} == set(evidence_ids)
+
+
+class TestIdeaLink:
+    def test_pack_without_idea_stays_valid_and_unpinned(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            pack = (
+                EvidencePackService(session)
+                .assemble_pack(opportunity_id, selections_for(evidence_ids))
+                .pack
+            )
+            session.commit()
+            assert pack.idea_id is None
+            assert pack.assembly_input_snapshot["idea_id"] is None
+
+    def test_pack_pins_exact_idea_version_in_identity(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            service = EvidencePackService(session)
+            plain = service.assemble_pack(opportunity_id, selections_for(evidence_ids)).pack
+            session.commit()
+            idea = make_idea(session, opportunity_id)
+            pinned = service.assemble_pack(
+                opportunity_id, selections_for(evidence_ids), idea_id=idea.id
+            ).pack
+            session.commit()
+            # Same evidence + policy but a different pinned idea is a
+            # DIFFERENT pack identity — never deduped, never mutated.
+            assert pinned.id != plain.id
+            assert pinned.idea_id == idea.id
+            assert pinned.assembly_input_snapshot["idea_id"] == str(idea.id)
+            assert pinned.assembly_input_hash != plain.assembly_input_hash
+
+            v2 = IdeaService(session).revise_operator_idea(
+                idea.id,
+                working_title="Evde balon temalı parti: saat saat plan",
+                angle="Bütçe dostu üç saatlik hazırlık akışına odaklanıyoruz.",
+                audience="Küçük çocuklu ebeveynler",
+                value_proposition="Tek listeyle eksiksiz parti hazırlığı sağlar.",
+                rationale="Kaynaklar genel kalıyor; biz uygulanabilir plan veriyoruz.",
+                content_type=ContentType.PLANNING_GUIDE,
+            )
+            session.commit()
+            repinned = service.assemble_pack(
+                opportunity_id, selections_for(evidence_ids), idea_id=v2.id
+            ).pack
+            session.commit()
+            assert repinned.id != pinned.id
+            assert repinned.assembly_input_hash != pinned.assembly_input_hash
+
+    def test_idea_from_another_opportunity_rejected(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            other_opportunity_id, _ = build_opportunity(session)
+            foreign_idea = make_idea(session, other_opportunity_id)
+            service = EvidencePackService(session)
+            with pytest.raises(InvalidPackInputError, match="different opportunity"):
+                service.assemble_pack(
+                    opportunity_id, selections_for(evidence_ids), idea_id=foreign_idea.id
+                )
+            with pytest.raises(InvalidPackInputError, match="no idea"):
+                service.assemble_pack(
+                    opportunity_id, selections_for(evidence_ids), idea_id=uuid.uuid4()
+                )
+
+    def test_reassembly_carries_idea_unless_explicitly_replaced(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            service = EvidencePackService(session)
+            idea = make_idea(session, opportunity_id)
+            v1 = service.assemble_pack(
+                opportunity_id,
+                selections_for(evidence_ids),
+                contradictions=[blocking_declaration(evidence_ids[1], evidence_ids[2])],
+                idea_id=idea.id,
+            ).pack
+            session.commit()
+            [contradiction] = EvidencePackRepository(session).list_contradictions(v1.id)
+            service.resolve_contradiction(
+                contradiction.id,
+                resolution_status=ContradictionResolutionStatus.RESOLVED_CAUTIOUS_WORDING,
+                reason="aralık olarak ifade edilecek",
+            )
+            session.commit()
+            v2 = service.reassemble_pack(v1.id).pack
+            session.commit()
+            # The pinned idea carries forward by default...
+            assert v2.idea_id == idea.id
+
+            # ...an accidental idea_id without replace_idea is refused...
+            other_idea = make_idea(session, opportunity_id, title_suffix=" farklı aday")
+            with pytest.raises(InvalidPackInputError, match="replace_idea"):
+                service.reassemble_pack(v2.id, idea_id=other_idea.id)
+
+            # ...and an explicit replacement creates a new distinct version.
+            v3 = service.reassemble_pack(v2.id, idea_id=other_idea.id, replace_idea=True).pack
+            session.commit()
+            assert v3.idea_id == other_idea.id
+            assert v3.assembly_input_hash != v2.assembly_input_hash
+            # Existing packs are never mutated or repointed.
+            assert EvidencePackRepository(session).get_pack(v1.id).idea_id == idea.id  # type: ignore[union-attr]
+
+    def test_selection_change_never_mutates_or_repoints_a_pack(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            opportunity_id, evidence_ids = build_opportunity(session)
+            service = EvidencePackService(session)
+            idea = make_idea(session, opportunity_id)
+            other = make_idea(session, opportunity_id, title_suffix=" farklı aday")
+            pack = service.assemble_pack(
+                opportunity_id, selections_for(evidence_ids), idea_id=idea.id
+            ).pack
+            session.commit()
+            ideas = IdeaService(session)
+            ideas.select_idea(other.id, reason="farklı aday seçildi")
+            session.commit()
+            reread = EvidencePackRepository(session).get_pack(pack.id)
+            assert reread is not None
+            assert reread.idea_id == idea.id

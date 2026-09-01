@@ -20,10 +20,10 @@ Reproducibility contract (authoritative, immutable):
 
 Semantic assembly identity (DB-unique per opportunity + assembler):
 SHA-256 over the canonical assembly input snapshot covering the selections
-(evidence id, role, claim cluster), the FULL policy snapshot, and canonical
-contradiction state. Display notes and handling recommendations are
-formally cosmetic/advisory — they never affect sufficiency — and are the
-only inputs excluded.
+(evidence id, role, claim cluster), the FULL policy snapshot, canonical
+contradiction state, and the optionally pinned exact idea version. Display
+notes and handling recommendations are formally cosmetic/advisory — they
+never affect sufficiency — and are the only inputs excluded.
 
 The service flushes; the caller commits.
 """
@@ -66,6 +66,7 @@ from contentos.evidence_packs.policy import (
 )
 from contentos.evidence_packs.repository import EvidencePackRepository
 from contentos.fetching.snapshots import FetchSnapshot
+from contentos.ideas.models import Idea
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.errors import OpportunityNotFoundError
 from contentos.opportunities.repository import OpportunityRepository
@@ -76,7 +77,8 @@ from contentos.workflow.models import EditorialWorkItem
 EVIDENCE_PACK_ASSEMBLER_NAME = "evidence-pack-assembler"
 EVIDENCE_PACK_ASSEMBLER_VERSION = "1"
 
-ASSEMBLY_INPUT_SCHEMA_VERSION = 1
+# Schema 2 added the pinned idea version to the semantic identity.
+ASSEMBLY_INPUT_SCHEMA_VERSION = 2
 
 MAX_SELECTIONS = 200
 MAX_CLAIM_CLUSTER_LENGTH = 100
@@ -164,8 +166,16 @@ class EvidencePackService:
         *,
         policy: EvidenceSufficiencyPolicy = DEFAULT_EVIDENCE_POLICY,
         contradictions: list[ContradictionDeclaration] | None = None,
+        idea_id: uuid.UUID | None = None,
     ) -> PackAssembly:
-        """Assemble a new pack version from explicit selections and inputs."""
+        """Assemble a new pack version from explicit selections and inputs.
+
+        `idea_id` optionally pins the EXACT idea version this pack is built
+        for (it must belong to the same opportunity) and participates in the
+        semantic assembly identity: the same evidence and policy with a
+        different pinned idea is a different pack.
+        """
+        self._validate_idea(opportunity_id, idea_id)
         cleaned = _validate_selections(selections)
         selected_ids = {selection.research_evidence_id for selection in cleaned}
         states = _states_from_declarations(contradictions or [], selected_ids)
@@ -184,7 +194,7 @@ class EvidencePackService:
                 )
             evidence_rows[evidence.id] = evidence
 
-        return self._persist_pack(opportunity_id, cleaned, states, policy, evidence_rows)
+        return self._persist_pack(opportunity_id, cleaned, states, policy, evidence_rows, idea_id)
 
     def reassemble_pack(
         self,
@@ -192,6 +202,8 @@ class EvidencePackService:
         *,
         policy: EvidenceSufficiencyPolicy | None = None,
         additional_contradictions: list[ContradictionDeclaration] | None = None,
+        idea_id: uuid.UUID | None = None,
+        replace_idea: bool = False,
     ) -> PackAssembly:
         """Produce a NEW pack version reflecting current contradiction state.
 
@@ -199,12 +211,24 @@ class EvidencePackService:
         stays CONFLICTED). The new version carries the source pack's
         contradiction definitions with their resolution state frozen at
         reassembly time into its OWN rows, plus any newly declared
-        contradictions. If nothing semantically changed, the identity hash
-        matches and the existing version is returned instead.
+        contradictions. The pinned idea version is carried forward unchanged
+        unless the caller explicitly passes ``replace_idea=True`` (with the
+        new ``idea_id``, or None to unpin). If nothing semantically changed,
+        the identity hash matches and the existing version is returned
+        instead.
         """
         old_pack = self._repository.get_pack(pack_id)
         if old_pack is None:
             raise PackNotFoundError(f"no evidence pack with id {pack_id}")
+        if not replace_idea:
+            if idea_id is not None:
+                raise InvalidPackInputError(
+                    "pass replace_idea=True to change the pinned idea version"
+                )
+            effective_idea_id = old_pack.idea_id
+        else:
+            effective_idea_id = idea_id
+            self._validate_idea(old_pack.opportunity_id, effective_idea_id)
         resolved_policy = (
             policy
             if policy is not None
@@ -235,7 +259,12 @@ class EvidencePackService:
             evidence_rows[evidence.id] = evidence
 
         return self._persist_pack(
-            old_pack.opportunity_id, selections, states, resolved_policy, evidence_rows
+            old_pack.opportunity_id,
+            selections,
+            states,
+            resolved_policy,
+            evidence_rows,
+            effective_idea_id,
         )
 
     def resolve_contradiction(
@@ -283,8 +312,9 @@ class EvidencePackService:
         states: list[_ContradictionState],
         policy: EvidenceSufficiencyPolicy,
         evidence_rows: dict[uuid.UUID, ResearchEvidence],
+        idea_id: uuid.UUID | None,
     ) -> PackAssembly:
-        assembly_snapshot = _assembly_input_snapshot(selections, states, policy)
+        assembly_snapshot = _assembly_input_snapshot(selections, states, policy, idea_id)
         assembly_hash = _assembly_input_hash(assembly_snapshot)
         existing = self._repository.get_pack_by_identity(
             opportunity_id,
@@ -308,6 +338,7 @@ class EvidencePackService:
                 pack = self._repository.insert_pack(
                     EvidencePack(
                         opportunity_id=opportunity_id,
+                        idea_id=idea_id,
                         version=self._repository.next_version(opportunity_id),
                         assembler_name=EVIDENCE_PACK_ASSEMBLER_NAME,
                         assembler_version=EVIDENCE_PACK_ASSEMBLER_VERSION,
@@ -361,6 +392,17 @@ class EvidencePackService:
                 "pack assembly conflicted with concurrently written state"
             ) from None
         return PackAssembly(pack=pack, created=True)
+
+    def _validate_idea(self, opportunity_id: uuid.UUID, idea_id: uuid.UUID | None) -> None:
+        if idea_id is None:
+            return
+        idea = self._session.get(Idea, idea_id)
+        if idea is None:
+            raise InvalidPackInputError(f"no idea version with id {idea_id}")
+        if idea.opportunity_id != opportunity_id:
+            raise InvalidPackInputError(
+                "the pinned idea version belongs to a different opportunity"
+            )
 
     def _input_document_ids(self, opportunity_id: uuid.UUID) -> set[uuid.UUID]:
         opportunity = self._opportunities.get_by_id(opportunity_id)
@@ -611,6 +653,7 @@ def _assembly_input_snapshot(
     selections: list[EvidenceSelection],
     states: list[_ContradictionState],
     policy: EvidenceSufficiencyPolicy,
+    idea_id: uuid.UUID | None,
 ) -> dict[str, Any]:
     """The WHOLE semantic assembly identity (stored for reproducibility).
 
@@ -621,6 +664,7 @@ def _assembly_input_snapshot(
         "schema": ASSEMBLY_INPUT_SCHEMA_VERSION,
         "assembler_name": EVIDENCE_PACK_ASSEMBLER_NAME,
         "assembler_version": EVIDENCE_PACK_ASSEMBLER_VERSION,
+        "idea_id": str(idea_id) if idea_id is not None else None,
         "policy": policy.snapshot(),
         "selections": sorted(
             [
