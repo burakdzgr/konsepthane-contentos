@@ -9,6 +9,7 @@ vi.mock("@/lib/editorial-api", async () => {
     ...actual,
     fetchWorkItemDetail: vi.fn(),
     fetchEligibleEvidence: vi.fn(),
+    fetchWorkItemDrafts: vi.fn(),
   };
 });
 
@@ -16,9 +17,13 @@ import EditorialDetailPage from "@/app/editorial/[id]/page";
 import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
+  fetchWorkItemDrafts,
 } from "@/lib/editorial-api";
 import {
   WORK_ITEM_ID,
+  briefView,
+  draftListPage,
+  draftSummary,
   eligibleEvidenceItem,
   eligiblePage,
   workItemDetail,
@@ -27,6 +32,7 @@ import {
 
 const detailMock = vi.mocked(fetchWorkItemDetail);
 const evidenceMock = vi.mocked(fetchEligibleEvidence);
+const draftsMock = vi.mocked(fetchWorkItemDrafts);
 
 async function renderPage(params: Record<string, string> = {}) {
   render(
@@ -42,6 +48,11 @@ beforeEach(() => {
   evidenceMock.mockResolvedValue({
     kind: "ok",
     data: eligiblePage([]),
+    requestId: null,
+  });
+  draftsMock.mockResolvedValue({
+    kind: "ok",
+    data: draftListPage([]),
     requestId: null,
   });
 });
@@ -64,6 +75,7 @@ describe("Editorial detail page", () => {
       "Evidence packs",
       "Search intent",
       "Briefs & claims",
+      "Writer drafts",
       "AI attempts",
       "Workflow history",
     ]) {
@@ -231,6 +243,98 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+
+  it("shows writer commands in DRAFTING with an accepted brief", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "drafting",
+        },
+        briefs: [briefView({ status: "accepted_for_drafting" })],
+      }),
+      requestId: null,
+    });
+    draftsMock.mockResolvedValue({
+      kind: "ok",
+      data: draftListPage([draftSummary()]),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("button", { name: "Generate writer draft" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Submit operator draft" }),
+    ).toBeTruthy();
+    // The listed draft keeps its truthful verdicts and links to detail.
+    expect(screen.getByText("evaluated")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open draft" })).toBeTruthy();
+    // No rework commands outside their states.
+    expect(screen.queryByRole("button", { name: "Request rework" })).toBeNull();
+  });
+
+  it("shows rework in EDITING and routing in CHANGES_REQUESTED", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "editing",
+        },
+      }),
+      requestId: null,
+    });
+    await renderPage();
+    expect(screen.getByRole("button", { name: "Request rework" })).toBeTruthy();
+
+    vi.mocked(detailMock).mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "changes_requested",
+        },
+      }),
+      requestId: null,
+    });
+    draftsMock.mockResolvedValue({
+      kind: "ok",
+      data: draftListPage([]),
+      requestId: null,
+    });
+    render(
+      await EditorialDetailPage({
+        params: Promise.resolve({ id: WORK_ITEM_ID }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Route rework" })).toBeTruthy();
+  });
+
+  it("renders UNKNOWN for drafts without persisted verdicts", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail(),
+      requestId: null,
+    });
+    draftsMock.mockResolvedValue({
+      kind: "ok",
+      data: draftListPage([
+        draftSummary({
+          uncertainty_coverage_status: null,
+          originality_outcome: null,
+        }),
+      ]),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getAllByText("UNKNOWN").length).toBe(2);
   });
 
   it("never renders the internal backend URL", async () => {

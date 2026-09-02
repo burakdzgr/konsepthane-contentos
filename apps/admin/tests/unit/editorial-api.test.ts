@@ -2,13 +2,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchDraftDetail,
   fetchEligibleEvidence,
   fetchWorkItemDetail,
+  fetchWorkItemDrafts,
   fetchWorkQueue,
 } from "@/lib/editorial-api";
 import {
   WORK_ITEM_ID,
   OPPORTUNITY_ID,
+  DRAFT_ID,
+  draftDetail,
+  draftListPage,
+  draftSummary,
   eligibleEvidenceItem,
   eligiblePage,
   queuePage,
@@ -134,5 +140,63 @@ describe("fetchEligibleEvidence", () => {
       expect(item?.statement).toContain("konsept");
       expect(item !== undefined && "excerpt" in item).toBe(false);
     }
+  });
+});
+
+describe("draft reads", () => {
+  it("parses the draft list with truthful null verdicts", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(
+        200,
+        draftListPage([
+          draftSummary({
+            uncertainty_coverage_status: null,
+            originality_outcome: null,
+          }),
+        ]),
+      ),
+    );
+
+    const result = await fetchWorkItemDrafts(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.drafts[0]?.uncertainty_coverage_status).toBeNull();
+      expect(result.data.drafts[0]?.originality_outcome).toBeNull();
+    }
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/drafts`,
+    );
+  });
+
+  it("parses the full draft detail with the provenance chain", async () => {
+    stubFetch(async () => jsonResponse(200, draftDetail()));
+
+    const result = await fetchDraftDetail(DRAFT_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.body.sections[0]?.blocks[0]?.kind).toBe("paragraph");
+      expect(result.data.claim_usages[0]?.research_evidence_ids.length).toBe(1);
+      expect(result.data.generation_attempts[0]?.purpose).toBe("writer_draft");
+    }
+  });
+
+  it("rejects an unknown draft status as malformed", async () => {
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        draftListPage([draftSummary({ status: "weird" as never })]),
+      ),
+    );
+    const result = await fetchWorkItemDrafts(WORK_ITEM_ID);
+    expect(result.kind).toBe("malformed");
+  });
+
+  it("maps 404s to not_found and bad ids never hit the network", async () => {
+    const fetchMock = stubFetch(async () => jsonResponse(404, {}));
+    const missing = await fetchDraftDetail(DRAFT_ID);
+    expect(missing.kind).toBe("not_found");
+    const invalid = await fetchWorkItemDrafts("not-a-uuid");
+    expect(invalid.kind).toBe("not_found");
+    expect(fetchMock.mock.calls.length).toBe(1);
   });
 });

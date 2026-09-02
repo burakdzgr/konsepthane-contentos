@@ -18,6 +18,10 @@ vi.mock("@/lib/editorial-control-api", async () => {
     buildEvidencePack: vi.fn(),
     acceptBriefForDrafting: vi.fn(),
     resolveWorkItemBlock: vi.fn(),
+    generateWriterDraft: vi.fn(),
+    submitOperatorDraft: vi.fn(),
+    requestWriterRework: vi.fn(),
+    resolveChangesRequested: vi.fn(),
   };
 });
 
@@ -25,13 +29,21 @@ import {
   acceptBriefAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
+  generateDraftAction,
+  requestReworkAction,
   resolveBlockAction,
+  resolveChangesRequestedAction,
+  submitDraftAction,
 } from "@/app/editorial/[id]/actions";
 import {
   acceptBriefForDrafting,
   buildEvidencePack,
   commissionOpportunity,
+  generateWriterDraft,
+  requestWriterRework,
+  resolveChangesRequested,
   resolveWorkItemBlock,
+  submitOperatorDraft,
 } from "@/lib/editorial-control-api";
 import {
   BRIEF_ID,
@@ -45,6 +57,10 @@ const commissionMock = vi.mocked(commissionOpportunity);
 const buildPackMock = vi.mocked(buildEvidencePack);
 const acceptMock = vi.mocked(acceptBriefForDrafting);
 const resolveBlockMock = vi.mocked(resolveWorkItemBlock);
+const generateDraftMock = vi.mocked(generateWriterDraft);
+const submitDraftMock = vi.mocked(submitOperatorDraft);
+const requestReworkMock = vi.mocked(requestWriterRework);
+const resolveChangesMock = vi.mocked(resolveChangesRequested);
 
 function form(entries: Record<string, string>): FormData {
   const data = new FormData();
@@ -245,5 +261,107 @@ describe("resolveBlockAction", () => {
       "/editorial?error=invalid",
     );
     expect(resolveBlockMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("writer draft actions", () => {
+  it("generateDraftAction queues with retry number and supersede reason", async () => {
+    generateDraftMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "queued",
+        task: "generate_writer_draft",
+        entity_id: BRIEF_ID,
+      },
+    });
+    await expectRedirect(
+      generateDraftAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          brief_id: BRIEF_ID,
+          retry_number: "1",
+          supersede_reason: "yeniden uretim",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=draft-queued`,
+    );
+    expect(generateDraftMock).toHaveBeenCalledWith(BRIEF_ID, {
+      retryNumber: 1,
+      supersedeReason: "yeniden uretim",
+    });
+  });
+
+  it("submitDraftAction parses the sections JSON and submits", async () => {
+    submitDraftMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "created",
+        content_draft_id: BRIEF_ID,
+        draft_version: 1,
+        draft_origin: "operator",
+        draft_status: "active",
+        work_item_id: WORK_ITEM_ID,
+        work_item_state: "editing",
+      },
+    });
+    await expectRedirect(
+      submitDraftAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          brief_id: BRIEF_ID,
+          reason: "operator taslagi",
+          title_proposal: "Baslik",
+          sections_json: '[{"key":"giris","heading":"Giris","blocks":[]}]',
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=draft-submitted`,
+    );
+    expect(submitDraftMock).toHaveBeenCalledWith(BRIEF_ID, {
+      reason: "operator taslagi",
+      titleProposal: "Baslik",
+      supersedeReason: undefined,
+      sections: [{ key: "giris", heading: "Giris", blocks: [] }],
+    });
+  });
+
+  it("submitDraftAction rejects malformed JSON without any backend call", async () => {
+    await expectRedirect(
+      submitDraftAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          brief_id: BRIEF_ID,
+          reason: "r",
+          sections_json: "not json",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(submitDraftMock).not.toHaveBeenCalled();
+  });
+
+  it("requestReworkAction requires a reason", async () => {
+    await expectRedirect(
+      requestReworkAction(form({ work_item_id: WORK_ITEM_ID })),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(requestReworkMock).not.toHaveBeenCalled();
+  });
+
+  it("resolveChangesRequestedAction routes with the reason", async () => {
+    resolveChangesMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "drafting",
+      },
+    });
+    await expectRedirect(
+      resolveChangesRequestedAction(
+        form({ work_item_id: WORK_ITEM_ID, reason: "yonlendir" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=changes-request-resolved`,
+    );
+    expect(resolveChangesMock).toHaveBeenCalledWith(WORK_ITEM_ID, "yonlendir");
   });
 });

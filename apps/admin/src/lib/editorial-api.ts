@@ -144,6 +144,19 @@ export const GENERATION_PURPOSES = [
   "intent_synthesis",
   "brief_composition",
   "evidence_organization",
+  "writer_draft",
+] as const;
+export const DRAFT_ORIGINS = ["writer_engine", "operator"] as const;
+export const DRAFT_STATUSES = ["active", "superseded"] as const;
+export const DRAFT_ACTOR_ORIGINS = ["operator", "system"] as const;
+export const DRAFT_BLOCK_KINDS = [
+  "paragraph",
+  "list",
+  "how_to_step",
+  "callout",
+  "faq_item",
+  "internal_link_need",
+  "media_need",
 ] as const;
 export const GENERATION_STATUSES = [
   "succeeded",
@@ -522,6 +535,90 @@ const workItemDetailSchema = z.object({
   ai_attempts: z.array(aiAttemptSchema),
 });
 
+const draftSummarySchema = z.object({
+  id: z.string().uuid(),
+  work_item_id: z.string().uuid(),
+  content_brief_id: z.string().uuid(),
+  version: z.number().int(),
+  origin: z.enum(DRAFT_ORIGINS),
+  status: z.enum(DRAFT_STATUSES),
+  engine_name: z.string(),
+  engine_version: z.string(),
+  title_proposal: z.string().nullable(),
+  generation_attempt_id: z.string().uuid().nullable(),
+  manual_input_hash: z.string().nullable(),
+  superseded_by_draft_id: z.string().uuid().nullable(),
+  body_schema_version: z.string(),
+  // null means the durable record carries no verdict: rendered UNKNOWN.
+  uncertainty_coverage_status: z.string().nullable(),
+  originality_outcome: z.string().nullable(),
+  content_hash: z.string(),
+  created_at: timestampSchema,
+});
+
+const draftListPageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  drafts: z.array(draftSummarySchema),
+  total: countSchema,
+  truncated: z.boolean(),
+});
+
+const draftBlockSchema = z.object({
+  block_id: z.string(),
+  kind: z.enum(DRAFT_BLOCK_KINDS),
+  text: z.string(),
+  claim_refs: z.array(z.string().uuid()),
+  uncertainty_refs: z.array(z.string()),
+  link_need_ref: z.number().int().optional(),
+  media_need_ref: z.number().int().optional(),
+});
+
+const draftBodySchema = z.object({
+  sections: z.array(
+    z.object({
+      key: z.string(),
+      heading: z.string(),
+      blocks: z.array(draftBlockSchema),
+    }),
+  ),
+});
+
+const draftClaimUsageSchema = z.object({
+  id: z.string().uuid(),
+  brief_claim_id: z.string().uuid(),
+  claim_key: z.string(),
+  claim_kind: z.enum(BRIEF_CLAIM_KINDS),
+  claim_text: z.string(),
+  handling: z.string().nullable(),
+  section_key: z.string(),
+  block_id: z.string(),
+  research_evidence_ids: z.array(z.string().uuid()),
+});
+
+const draftStatusEventSchema = z.object({
+  id: z.number().int(),
+  from_status: z.enum(DRAFT_STATUSES),
+  to_status: z.enum(DRAFT_STATUSES),
+  actor_origin: z.enum(DRAFT_ACTOR_ORIGINS),
+  reason: z.string(),
+  request_id: z.string().nullable(),
+  replacement_draft_id: z.string().uuid().nullable(),
+  occurred_at: timestampSchema,
+});
+
+const draftDetailSchema = z.object({
+  draft: draftSummarySchema,
+  body: draftBodySchema,
+  uncertainty_coverage: jsonRecordSchema,
+  validation_policy_snapshot: jsonRecordSchema,
+  originality_policy_snapshot: jsonRecordSchema,
+  originality_result: jsonRecordSchema,
+  claim_usages: z.array(draftClaimUsageSchema),
+  status_events: z.array(draftStatusEventSchema),
+  generation_attempts: z.array(aiAttemptSchema),
+  generation_attempts_truncated: z.boolean(),
+});
+
 const eligibleEvidenceSchema = z.object({
   items: z.array(
     z.object({
@@ -558,6 +655,10 @@ export type BriefView = z.infer<typeof briefSchema>;
 export type AiAttemptView = z.infer<typeof aiAttemptSchema>;
 export type EligibleEvidencePage = z.infer<typeof eligibleEvidenceSchema>;
 export type EligibleEvidenceItem = EligibleEvidencePage["items"][number];
+export type DraftSummaryView = z.infer<typeof draftSummarySchema>;
+export type DraftListPage = z.infer<typeof draftListPageSchema>;
+export type DraftDetail = z.infer<typeof draftDetailSchema>;
+export type DraftClaimUsageView = z.infer<typeof draftClaimUsageSchema>;
 
 export type WorkQueueFilters = {
   workflowState?: (typeof WORKFLOW_STATES)[number];
@@ -616,6 +717,48 @@ export async function fetchWorkItemDetail(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, workItemDetailSchema, [200]);
+}
+
+export type DraftListResult =
+  BackendResult<DraftListPage> | { kind: "not_found" };
+
+export async function fetchWorkItemDrafts(
+  workItemId: string,
+): Promise<DraftListResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/drafts`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, draftListPageSchema, [200]);
+}
+
+export type DraftDetailResult =
+  BackendResult<DraftDetail> | { kind: "not_found" };
+
+export async function fetchDraftDetail(
+  draftId: string,
+): Promise<DraftDetailResult> {
+  if (!isUuid(draftId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/drafts/${encodeURIComponent(draftId)}`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, draftDetailSchema, [200]);
 }
 
 export type EligibleEvidenceResult =

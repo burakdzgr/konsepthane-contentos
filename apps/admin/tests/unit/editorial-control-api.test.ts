@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   acceptBriefForDrafting,
+  generateWriterDraft,
+  requestWriterRework,
+  resolveChangesRequested,
+  submitOperatorDraft,
   analyzeSearchIntent,
   buildEvidencePack,
   commissionOpportunity,
@@ -17,6 +21,7 @@ import {
 import {
   ANALYSIS_ID,
   BRIEF_ID,
+  DRAFT_ID,
   CONTRADICTION_ID,
   DOCUMENT_ID,
   EVIDENCE_ID,
@@ -288,5 +293,107 @@ describe("direct commands", () => {
     const result = await selectIdea("junk", "sebep");
     expect(result).toEqual({ kind: "not_found" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("writer draft commands", () => {
+  it("generate-draft posts the exact bounded command", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        task: "generate_writer_draft",
+        entity_id: BRIEF_ID,
+      }),
+    );
+
+    const result = await generateWriterDraft(BRIEF_ID, {
+      retryNumber: 1,
+      supersedeReason: "yeniden uretim",
+    });
+    expect(result.kind).toBe("ok");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/briefs/${BRIEF_ID}/generate-draft`,
+    );
+    expect(request.body).toEqual({
+      retry_number: 1,
+      supersede_reason: "yeniden uretim",
+    });
+  });
+
+  it("submit-draft posts reason, title and sections verbatim", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "created",
+        content_draft_id: DRAFT_ID,
+        draft_version: 1,
+        draft_origin: "operator",
+        draft_status: "active",
+        work_item_id: WORK_ITEM_ID,
+        work_item_state: "editing",
+      }),
+    );
+
+    const sections = [{ key: "giris", heading: "Giris", blocks: [] }];
+    const result = await submitOperatorDraft(BRIEF_ID, {
+      reason: "operator taslagi",
+      titleProposal: "Baslik",
+      sections,
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.work_item_state).toBe("editing");
+    }
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/briefs/${BRIEF_ID}/submit-draft`,
+    );
+    expect(request.body).toEqual({
+      reason: "operator taslagi",
+      title_proposal: "Baslik",
+      sections,
+    });
+  });
+
+  it("submit-draft maps a 422 policy violation to invalid", async () => {
+    stubFetch(async () => jsonResponse(422, { detail: "policy" }));
+    const result = await submitOperatorDraft(BRIEF_ID, {
+      reason: "r",
+      sections: [],
+    });
+    expect(result.kind).toBe("invalid");
+  });
+
+  it("request-rework and resolve post to their exact paths", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "changes_requested",
+      }),
+    );
+    await requestWriterRework(WORK_ITEM_ID, "yeniden yazilmali");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/request-rework`,
+    );
+
+    const resolveFetch = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "drafting",
+      }),
+    );
+    const resolved = await resolveChangesRequested(WORK_ITEM_ID, "yonlendir");
+    expect(resolved.kind).toBe("ok");
+    expect(requestOf(resolveFetch).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/resolve-changes-requested`,
+    );
+  });
+
+  it("rework outside EDITING maps a 409 to conflict", async () => {
+    stubFetch(async () => jsonResponse(409, { detail: "not allowed" }));
+    const result = await requestWriterRework(WORK_ITEM_ID, "erken");
+    expect(result.kind).toBe("conflict");
   });
 });

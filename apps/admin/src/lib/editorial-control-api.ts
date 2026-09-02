@@ -7,6 +7,8 @@ import {
 } from "@/lib/contentos-api";
 import {
   BRIEF_STATUSES,
+  DRAFT_ORIGINS,
+  DRAFT_STATUSES,
   EVIDENCE_ITEM_ROLES,
   OPPORTUNITY_DISPOSITIONS,
   PACK_SUFFICIENCIES,
@@ -36,6 +38,7 @@ const EDITORIAL_TASKS = [
   "build_evidence_pack",
   "analyze_search_intent",
   "compose_content_brief",
+  "generate_writer_draft",
 ] as const;
 
 const queuedResponseSchema = z.object({
@@ -96,6 +99,16 @@ const workItemStateResponseSchema = z.object({
   current_state: z.enum(WORKFLOW_STATES),
 });
 
+const draftSubmissionResponseSchema = z.object({
+  status: z.enum(["created", "reused"]),
+  content_draft_id: z.string().uuid(),
+  draft_version: z.number().int(),
+  draft_origin: z.enum(DRAFT_ORIGINS),
+  draft_status: z.enum(DRAFT_STATUSES),
+  work_item_id: z.string().uuid(),
+  work_item_state: z.enum(WORKFLOW_STATES),
+});
+
 const briefAcceptanceResponseSchema = z.object({
   status: z.enum(["accepted", "already_accepted"]),
   brief_id: z.string().uuid(),
@@ -116,6 +129,9 @@ export type ReassembleResult = z.infer<typeof reassembleResponseSchema>;
 export type WorkItemStateResult = z.infer<typeof workItemStateResponseSchema>;
 export type BriefAcceptanceResult = z.infer<
   typeof briefAcceptanceResponseSchema
+>;
+export type DraftSubmissionResult = z.infer<
+  typeof draftSubmissionResponseSchema
 >;
 
 type ControlFailure =
@@ -428,6 +444,82 @@ export function acceptBriefForDrafting(
       `/internal/editorial/briefs/${encodeURIComponent(briefId)}/accept`,
       { reason },
       briefAcceptanceResponseSchema,
+    ),
+  );
+}
+
+export function generateWriterDraft(
+  briefId: string,
+  options: { retryNumber?: number; supersedeReason?: string } = {},
+): Promise<ControlResult<QueuedResult>> {
+  const body: Record<string, unknown> = {};
+  if (options.retryNumber !== undefined) {
+    body.retry_number = options.retryNumber;
+  }
+  if (options.supersedeReason !== undefined && options.supersedeReason !== "") {
+    body.supersede_reason = options.supersedeReason;
+  }
+  return guarded(briefId, () =>
+    postControl(
+      `/internal/editorial/briefs/${encodeURIComponent(briefId)}/generate-draft`,
+      body,
+      queuedResponseSchema,
+    ),
+  );
+}
+
+export function submitOperatorDraft(
+  briefId: string,
+  input: {
+    reason: string;
+    titleProposal?: string;
+    supersedeReason?: string;
+    // The bounded writer-draft-body/1 sections payload; the backend/domain
+    // is the authority on its structure and every content rule.
+    sections: unknown;
+  },
+): Promise<ControlResult<DraftSubmissionResult>> {
+  const body: Record<string, unknown> = {
+    reason: input.reason,
+    sections: input.sections,
+  };
+  if (input.titleProposal !== undefined && input.titleProposal !== "") {
+    body.title_proposal = input.titleProposal;
+  }
+  if (input.supersedeReason !== undefined && input.supersedeReason !== "") {
+    body.supersede_reason = input.supersedeReason;
+  }
+  return guarded(briefId, () =>
+    postControl(
+      `/internal/editorial/briefs/${encodeURIComponent(briefId)}/submit-draft`,
+      body,
+      draftSubmissionResponseSchema,
+    ),
+  );
+}
+
+export function requestWriterRework(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<WorkItemStateResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/request-rework`,
+      { reason },
+      workItemStateResponseSchema,
+    ),
+  );
+}
+
+export function resolveChangesRequested(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<WorkItemStateResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/resolve-changes-requested`,
+      { reason },
+      workItemStateResponseSchema,
     ),
   );
 }

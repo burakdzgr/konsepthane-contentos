@@ -5,6 +5,9 @@ import type {
   AiAttemptView,
   BriefView,
   ContradictionView,
+  DraftDetail,
+  DraftListPage,
+  DraftSummaryView,
   EligibleEvidenceItem,
   EligibleEvidencePage,
   IdeaView,
@@ -35,6 +38,8 @@ export const ATTEMPT_ID = "a5111111-2222-4333-8444-555555555555";
 export const DOCUMENT_ID = "a6111111-2222-4333-8444-555555555555";
 export const DECISION_ID = "a7111111-2222-4333-8444-555555555555";
 export const SOURCE_ID = "a8111111-2222-4333-8444-555555555555";
+export const DRAFT_ID = "a9111111-2222-4333-8444-555555555555";
+export const CLAIM_ID = "aa111111-2222-4333-8444-555555555555";
 
 const AT = "2026-09-01T12:00:00+00:00";
 
@@ -451,6 +456,92 @@ export function eligibleEvidenceItem(
     trust_tier: "general",
     fetched_at: AT,
     extracted_at: AT,
+    ...overrides,
+  };
+}
+
+export function draftSummary(
+  overrides: Partial<DraftSummaryView> = {},
+): DraftSummaryView {
+  return {
+    id: DRAFT_ID,
+    work_item_id: WORK_ITEM_ID,
+    content_brief_id: BRIEF_ID,
+    version: 1,
+    origin: "writer_engine",
+    status: "active",
+    engine_name: "writer",
+    engine_version: "1",
+    title_proposal: "Evde balon temali dogum gunu plani",
+    generation_attempt_id: ATTEMPT_ID,
+    manual_input_hash: null,
+    superseded_by_draft_id: null,
+    body_schema_version: "writer-draft-body/1",
+    uncertainty_coverage_status: "evaluated",
+    originality_outcome: "passed",
+    content_hash: "c".repeat(64),
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function draftListPage(
+  drafts: DraftSummaryView[] = [draftSummary()],
+): DraftListPage {
+  return {
+    work_item_id: WORK_ITEM_ID,
+    drafts,
+    total: drafts.length,
+    truncated: false,
+  };
+}
+
+export function draftDetail(overrides: Partial<DraftDetail> = {}): DraftDetail {
+  return {
+    draft: draftSummary(),
+    body: {
+      sections: [
+        {
+          key: "giris",
+          heading: "Neden evde parti?",
+          blocks: [
+            {
+              block_id: "giris-1",
+              kind: "paragraph",
+              text: "Evde parti hem samimi hem butce dostudur.",
+              claim_refs: [CLAIM_ID],
+              uncertainty_refs: ["note-0"],
+            },
+          ],
+        },
+      ],
+    },
+    uncertainty_coverage: { status: "evaluated" },
+    validation_policy_snapshot: { version: "writer-validation/1" },
+    originality_policy_snapshot: { version: "writer-originality/1" },
+    originality_result: { outcome: "passed" },
+    claim_usages: [
+      {
+        id: "ab111111-2222-4333-8444-555555555555",
+        brief_claim_id: CLAIM_ID,
+        claim_key: "konsept-detaylari",
+        claim_kind: "factual",
+        claim_text: "Kaynak konsept detaylarini belirtiyor.",
+        handling: "dogrudan kullan",
+        section_key: "giris",
+        block_id: "giris-1",
+        research_evidence_ids: [EVIDENCE_ID],
+      },
+    ],
+    status_events: [],
+    generation_attempts: [
+      attemptView({
+        purpose: "writer_draft",
+        schema_name: "writer-draft",
+        template_name: "writer-draft",
+      }),
+    ],
+    generation_attempts_truncated: false,
     ...overrides,
   };
 }

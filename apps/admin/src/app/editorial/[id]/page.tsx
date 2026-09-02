@@ -5,9 +5,11 @@ import {
   RESOLVED_CONTRADICTION_STATUSES,
   fetchEligibleEvidence,
   fetchWorkItemDetail,
+  fetchWorkItemDrafts,
   type AiAttemptView,
   type BriefView,
   type ContradictionView,
+  type DraftListPage,
   type EligibleEvidenceItem,
   type IdeaView,
   type IntentAnalysisView,
@@ -19,10 +21,13 @@ import {
   briefStatusTone,
   cannibalizationLabel,
   contradictionResolutionTone,
+  draftStatusTone,
   generationStatusTone,
   originalityTone,
   packSufficiencyTone,
   scoreEligibilityTone,
+  verdictLabel,
+  verdictTone,
   workflowStateTone,
 } from "@/lib/editorial-display";
 import { formatUtcTimestamp } from "@/lib/format";
@@ -36,13 +41,17 @@ import {
   composeBriefAction,
   deselectIdeaAction,
   evaluateOpportunityAction,
+  generateDraftAction,
   generateIdeasAction,
   reassemblePackAction,
   rejectBlockedAction,
   rejectOpportunityAction,
+  requestReworkAction,
   resolveBlockAction,
+  resolveChangesRequestedAction,
   resolveContradictionAction,
   selectIdeaAction,
+  submitDraftAction,
 } from "./actions";
 
 // One editorial work item's full explainability projection from durable
@@ -70,6 +79,14 @@ const DETAIL_NOTICES: Record<string, string> = {
   "brief-accepted":
     "Brief accepted for drafting. This does not publish content.",
   "duplicate-reopened": "Duplicate reopened as this operator work item.",
+  "draft-queued":
+    "Writer draft generation queued. The draft appears when the worker finishes.",
+  "draft-submitted":
+    "Operator draft stored through the full gates; the item moved to editing.",
+  "rework-requested":
+    "Rework recorded: changes requested with the writer stage responsible.",
+  "changes-request-resolved":
+    "Routed out of changes-requested to the recorded responsible state.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1164,6 +1181,186 @@ function BriefsSection({ detail }: { detail: WorkItemDetail }) {
   );
 }
 
+function DraftsSection({
+  detail,
+  drafts,
+}: {
+  detail: WorkItemDetail;
+  drafts: DraftListPage | null;
+}) {
+  const workItemId = detail.work_item.id;
+  const state = detail.work_item.current_state;
+  const acceptedBrief = detail.briefs.find(
+    (brief) => brief.status === "accepted_for_drafting",
+  );
+  const rows = drafts?.drafts ?? [];
+  const hasActiveDraft = rows.some((row) => row.status === "active");
+  const canProduce = state === "drafting" && acceptedBrief !== undefined;
+  return (
+    <section aria-labelledby="detail-drafts">
+      <h2 id="detail-drafts">Writer drafts</h2>
+      {drafts === null && (
+        <p className="muted" role="note">
+          Draft versions could not be loaded right now.
+        </p>
+      )}
+      {drafts !== null && rows.length === 0 && (
+        <p className="empty-note">No draft versions exist yet.</p>
+      )}
+      {rows.length > 0 && (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Version</th>
+                <th scope="col">Origin</th>
+                <th scope="col">Status</th>
+                <th scope="col">Title proposal</th>
+                <th scope="col">Coverage</th>
+                <th scope="col">Originality</th>
+                <th scope="col">Created</th>
+                <th scope="col">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>v{row.version}</td>
+                  <td>
+                    {row.origin === "operator" ? "operator" : "writer engine"}
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={draftStatusTone(row.status)}
+                    >
+                      {row.status}
+                    </span>
+                  </td>
+                  <td>{row.title_proposal ?? "—"}</td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={verdictTone(row.uncertainty_coverage_status)}
+                    >
+                      {verdictLabel(row.uncertainty_coverage_status)}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={verdictTone(row.originality_outcome)}
+                    >
+                      {verdictLabel(row.originality_outcome)}
+                    </span>
+                  </td>
+                  <td>{formatUtcTimestamp(row.created_at)}</td>
+                  <td>
+                    <Link href={`/editorial/${workItemId}/drafts/${row.id}`}>
+                      Open draft
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {canProduce && acceptedBrief !== undefined && (
+        <form action={generateDraftAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <input type="hidden" name="brief_id" value={acceptedBrief.id} />
+          <input
+            type="number"
+            name="retry_number"
+            min={0}
+            max={50}
+            defaultValue={0}
+            aria-label="Retry number"
+          />
+          {hasActiveDraft && (
+            <input
+              type="text"
+              name="supersede_reason"
+              maxLength={1000}
+              placeholder="supersede reason (active draft exists)"
+              aria-label="Draft supersede reason"
+            />
+          )}
+          <button type="submit">Generate writer draft</button>
+          <span className="muted">
+            Queues generation from accepted brief v{acceptedBrief.version}.
+            Regeneration is the same command with the next retry number and a
+            reason.
+          </span>
+        </form>
+      )}
+      {canProduce && acceptedBrief !== undefined && (
+        <form action={submitDraftAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <input type="hidden" name="brief_id" value={acceptedBrief.id} />
+          <input
+            type="text"
+            name="title_proposal"
+            maxLength={200}
+            placeholder="title proposal (optional)"
+            aria-label="Draft title proposal"
+          />
+          <textarea
+            name="sections_json"
+            required
+            rows={6}
+            placeholder='writer-draft-body/1 sections as JSON, e.g. [{"key":"giris","heading":"...","blocks":[...]}]'
+            aria-label="Draft sections JSON"
+          />
+          <input
+            type="text"
+            name="reason"
+            required
+            maxLength={1000}
+            placeholder="submission reason"
+            aria-label="Draft submission reason"
+          />
+          {hasActiveDraft && (
+            <input
+              type="text"
+              name="supersede_reason"
+              maxLength={1000}
+              placeholder="supersede reason (active draft exists)"
+              aria-label="Manual draft supersede reason"
+            />
+          )}
+          <button type="submit">Submit operator draft</button>
+          <span className="muted">
+            Human-authored draft through the SAME gates as the writer engine; a
+            valid draft moves the item to editing.
+          </span>
+        </form>
+      )}
+      {state === "editing" && (
+        <ReasonForm
+          action={requestReworkAction}
+          workItemId={workItemId}
+          hidden={{}}
+          label="Request rework"
+          placeholder="what must the writer stage change?"
+          helper="Records changes-requested with the writer stage responsible; the active draft is pinned."
+        />
+      )}
+      {state === "changes_requested" && (
+        <ReasonForm
+          action={resolveChangesRequestedAction}
+          workItemId={workItemId}
+          hidden={{}}
+          label="Route rework"
+          placeholder="route to the recorded responsible state"
+          helper="Routes to the durable recorded responsible state — no target can be chosen here."
+        />
+      )}
+    </section>
+  );
+}
+
 function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
   return (
     <section aria-labelledby="detail-attempts">
@@ -1308,6 +1505,8 @@ export default async function EditorialDetailPage({
   }
 
   const detail = result.data;
+  const draftsResult = await fetchWorkItemDrafts(detail.work_item.id);
+  const drafts = draftsResult.kind === "ok" ? draftsResult.data : null;
   // The pack builder needs the eligible evidence only while packs are built.
   let eligibleEvidence: EligibleEvidenceItem[] = [];
   if (
@@ -1344,6 +1543,7 @@ export default async function EditorialDetailPage({
       <EvidenceSection detail={detail} evidence={eligibleEvidence} />
       <SearchIntentSection detail={detail} />
       <BriefsSection detail={detail} />
+      <DraftsSection detail={detail} drafts={drafts} />
       <AiAttemptsSection attempts={detail.ai_attempts} />
       <WorkflowHistorySection detail={detail} />
     </section>

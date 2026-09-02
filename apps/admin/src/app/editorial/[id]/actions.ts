@@ -11,12 +11,16 @@ import {
   deselectIdea,
   evaluateOpportunity,
   generateIdeaCandidates,
+  generateWriterDraft,
   reassembleEvidencePack,
   rejectBlockedWorkItem,
   rejectOpportunity,
+  requestWriterRework,
+  resolveChangesRequested,
   resolveContradiction,
   resolveWorkItemBlock,
   selectIdea,
+  submitOperatorDraft,
   type ControlResult,
   type EvidenceSelectionInput,
 } from "@/lib/editorial-control-api";
@@ -285,4 +289,71 @@ export async function acceptBriefAction(formData: FormData): Promise<void> {
   }
   const result = await acceptBriefForDrafting(briefId, reason);
   finish(workItemId, result, "brief-accepted");
+}
+
+export async function generateDraftAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const briefId = field(formData, "brief_id");
+  const retryRaw = field(formData, "retry_number");
+  const retryNumber = /^([0-9]|[1-4][0-9]|50)$/.test(retryRaw)
+    ? Number(retryRaw)
+    : undefined;
+  const supersedeReason = field(formData, "supersede_reason");
+  const result = await generateWriterDraft(briefId, {
+    retryNumber,
+    supersedeReason: supersedeReason || undefined,
+  });
+  finish(workItemId, result, "draft-queued");
+}
+
+export async function submitDraftAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const briefId = field(formData, "brief_id");
+  const reason = field(formData, "reason");
+  const sectionsRaw = field(formData, "sections_json");
+  if (!reason || !sectionsRaw) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  // The operator pastes the bounded sections payload; only JSON shape is
+  // checked here — the backend/domain enforces every content rule.
+  let sections: unknown;
+  try {
+    sections = JSON.parse(sectionsRaw);
+  } catch {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  if (!Array.isArray(sections)) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const titleProposal = field(formData, "title_proposal");
+  const supersedeReason = field(formData, "supersede_reason");
+  const result = await submitOperatorDraft(briefId, {
+    reason,
+    titleProposal: titleProposal || undefined,
+    supersedeReason: supersedeReason || undefined,
+    sections,
+  });
+  finish(workItemId, result, "draft-submitted");
+}
+
+export async function requestReworkAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await requestWriterRework(workItemId, reason);
+  finish(workItemId, result, "rework-requested");
+}
+
+export async function resolveChangesRequestedAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await resolveChangesRequested(workItemId, reason);
+  finish(workItemId, result, "changes-request-resolved");
 }

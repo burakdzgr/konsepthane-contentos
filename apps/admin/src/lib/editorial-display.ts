@@ -91,6 +91,33 @@ export function generationStatusTone(value: string): BadgeTone {
   return GENERATION_STATUS_TONES[value] ?? "neutral";
 }
 
+const DRAFT_STATUS_TONES: Record<string, BadgeTone> = {
+  active: "ok",
+  superseded: "neutral",
+};
+
+export function draftStatusTone(value: string): BadgeTone {
+  return DRAFT_STATUS_TONES[value] ?? "neutral";
+}
+
+// A missing verdict is the truth "UNKNOWN", never a pass and never a zero.
+export function verdictLabel(value: string | null): string {
+  return value === null ? "UNKNOWN" : value;
+}
+
+export function verdictTone(value: string | null): BadgeTone {
+  if (value === null) {
+    return "neutral";
+  }
+  if (value === "passed" || value === "evaluated") {
+    return "ok";
+  }
+  if (value === "failed") {
+    return "bad";
+  }
+  return "neutral";
+}
+
 // Cannibalization truth-state wording (Task-10 semantics preserved): the
 // scoped claim only — never "no conflict" unless the durable status says so.
 export function cannibalizationLabel(status: string): string {

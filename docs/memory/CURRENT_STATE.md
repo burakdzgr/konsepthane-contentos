@@ -12,7 +12,9 @@ Task 2 Draft Persistence + Provenance Foundation COMPLETE;
 Task 3 Writer Validation & Originality Policies COMPLETE;
 Task 4 Writer Input Projection + Output Schema + Engine COMPLETE;
 Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE;
-Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE)
+Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE;
+Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
+COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2273,24 +2275,56 @@ access protection belongs to future deployment infrastructure.
   rework loop); suite is 1132 backend + 135 admin, gate green; schema
   head stays `0018`
 
+- PHASE 4 Task 7 (writer command surface, read models, admin) complete.
+  Commands (`/internal/editorial`, POST-only, no generic endpoints):
+  `briefs/{id}/generate-draft` queues the 7th editorial job through the
+  producer-only dispatcher (regeneration = the SAME command with
+  retry_number+1; the domain requires a supersede reason over an active
+  draft; transport failure is 503 never "queued");
+  `briefs/{id}/submit-draft` is the direct operator-authored path
+  through the FULL DraftService gates (bounded writer-draft-body/1
+  request shapes; policy violations 422 with zero rows) followed by the
+  artifact-gated OPERATOR DRAFTING -> EDITING transition with the draft
+  identity pinned (resubmission while still DRAFTING reuses via
+  manual-input idempotency and completes the transition; after full
+  success it conflicts truthfully); `work-items/{id}/request-rework`
+  enters CHANGES_REQUESTED with responsible=DRAFTING recorded durably
+  and the active draft pinned server-side;
+  `work-items/{id}/resolve-changes-requested` routes via the new
+  `WorkflowService.resolve_changes_requested` (durable-history-derived
+  target only — recorded responsible state, else origin; caller never
+  supplies a target). Read models (`api/read_models/drafts.py`):
+  `work-items/{id}/drafts` (all versions, truthful null verdicts) and
+  `drafts/{id}` (validated body, DraftClaimUsage -> BriefClaim ->
+  BriefClaimEvidence provenance chain with ResearchEvidence identities,
+  policy snapshots/verdicts as persisted, supersession audit, safe
+  writer attempt metadata incl. failed attempts — never hidden, never
+  raw provider data). Admin: Writer drafts section on the editorial
+  detail page (versions table with UNKNOWN-not-PASS verdicts,
+  state-gated generate/submit/rework/route forms with required reasons)
+  + read-only draft detail page
+  (`/editorial/[id]/drafts/[draftId]`) rendering body blocks with
+  claim/uncertainty/need annotations, the claim -> evidence chain,
+  audit trail, and attempts; leak tests assert no broker URL/prompt/
+  internal URL ever renders
+- Task 7 added no migration (head stays `0018`); GenerationPurpose
+  vocabulary in the admin gained `writer_draft`; suite is 1147 backend +
+  156 admin (21 files), gate green
+
 ## Next immediate task
 
-PHASE 4 TASK 7 (authorized under the autonomous continuation mandate) —
-WRITER REWORK + REGENERATION COMMAND SURFACE, READ MODELS, AND ADMIN,
-per accepted PHASE4_WRITER_ARCHITECTURE.md §22 Task 7 (dependencies:
-Tasks 5 AND 6, both COMPLETE): explicit operator commands (generate,
-regenerate with required reason via retry_number+1 semantics,
-operator-authored draft submission with the manual_input_hash
-idempotency identity, rework-return EDITING ->
-CHANGES_REQUESTED(responsible=DRAFTING) -> DRAFTING through
-WorkflowService); `/internal/editorial` draft read projections
-(versions, body, claim -> evidence chain, uncertainty coverage,
-attempts, workflow history) + private admin draft screens following the
-Phase 3 Task 14 patterns (server-only boundary, required reasons,
-truthful unknowns rendered as UNKNOWN never 0/PASS, no raw provider
-data, no provider keys in the browser). Migration: none. Acceptance:
-operator story inspectable and drivable end-to-end including
-rework/regeneration; leak tests. Non-goals: Editor UI, publication.
+PHASE 4 TASK 8 (authorized under the autonomous continuation mandate) —
+WRITER-STAGE CLOSURE AUDIT (docs-only), per accepted
+PHASE4_WRITER_ARCHITECTURE.md §22 Task 8: audit the implemented Writer
+stage (Tasks 2-7) against the §21 exit criteria with an explicit
+criterion-by-criterion matrix backed by actual code/tests/verification
+evidence; classify remaining limitations honestly (feature-completion
+vs production-readiness backlog, per the mandate's separation); record
+the disposition in docs (a PHASE4_WRITER_AUDIT.md or equivalent) and
+update CURRENT_STATE. No runtime changes expected. After the audit:
+Task 9 Editor architecture (design only), then Editor implementation,
+QA architecture + implementation, and the Phase 4 closure audit ending
+at AWAITING_HUMAN_REVIEW.
 
 Before implementing the affected integrations, resolve:
 
