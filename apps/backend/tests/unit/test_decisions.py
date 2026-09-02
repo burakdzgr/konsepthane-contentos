@@ -14,6 +14,11 @@ import contentos.decisions.models  # noqa: F401  (register tables before create_
 from contentos.auth.enums import UserRole
 from contentos.auth.service import AuthService
 from contentos.decisions.enums import DecisionKind
+from contentos.decisions.errors import (
+    DecisionConflictError,
+    DecisionPreconditionError,
+    StaleApprovalError,
+)
 from contentos.decisions.models import HumanDecision
 from contentos.decisions.service import DecisionService
 from contentos.drafts.models import ContentDraft
@@ -267,6 +272,110 @@ class TestDecisionReads:
             harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/decisions").status_code
             == 404
         )
+
+
+class TestApprovalValidity:
+    """Task G5: the validity guard + APPROVAL_EXPIRED wiring.
+
+    SCHEDULED is unreachable in normal operation (the publishing phase is
+    not built); tests drive it through WorkflowService directly to prove
+    the wiring exists and behaves before anything can reach it.
+    """
+
+    def approved_context(self, harness: Harness) -> tuple[object, uuid.UUID]:
+        accepted, draft_id, _ = awaiting_review_context(harness)
+        approve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/approve",
+            {"reason": "paket eksiksiz; onaylıyorum"},
+        )
+        assert approve.status_code == 200
+        return accepted, draft_id
+
+    def test_guard_passes_and_mirrors_the_primitive(self, harness: Harness) -> None:
+        accepted, _ = self.approved_context(harness)
+        with harness.session() as session:
+            service = DecisionService(session)
+            assert service.approval_is_current(accepted.context.work_item_id) is True
+            status = service.require_current_approval(accepted.context.work_item_id)
+            assert status.approved is True and status.current is True
+            assert status.decision_id is not None
+
+    def test_guard_refuses_missing_and_stale_approvals(self, harness: Harness) -> None:
+        accepted, draft_id, _ = awaiting_review_context(harness)
+        with harness.session() as session:
+            service = DecisionService(session)
+            assert service.approval_is_current(accepted.context.work_item_id) is False
+            with pytest.raises(StaleApprovalError, match="no approval is on record"):
+                service.require_current_approval(accepted.context.work_item_id)
+
+        approve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/approve",
+            {"reason": "onay"},
+        )
+        assert approve.status_code == 200
+        with harness.session() as session:
+            draft = session.get(ContentDraft, draft_id)
+            assert draft is not None
+            draft.content_hash = "e" * 64  # simulated drift (SQLite, no trigger)
+            session.commit()
+            service = DecisionService(session)
+            assert service.approval_is_current(accepted.context.work_item_id) is False
+            with pytest.raises(StaleApprovalError, match="no longer matches"):
+                service.require_current_approval(accepted.context.work_item_id)
+
+    def test_expire_surfaces_a_stale_approval_from_scheduled(self, harness: Harness) -> None:
+        accepted, draft_id = self.approved_context(harness)
+        with harness.session() as session:
+            WorkflowService(session).transition(
+                accepted.context.work_item_id,
+                WorkflowState.SCHEDULED,
+                actor_origin=WorkflowActorOrigin.SYSTEM,
+                reason="test: scheduling placeholder (publishing phase not built)",
+            )
+            session.commit()
+
+        # A still-current approval is NEVER expired.
+        with harness.session() as session:
+            with pytest.raises(DecisionConflictError, match="never expired"):
+                DecisionService(session).expire_stale_approval(
+                    accepted.context.work_item_id, reason="geçerli onayı düşürme denemesi"
+                )
+
+        with harness.session() as session:
+            draft = session.get(ContentDraft, draft_id)
+            assert draft is not None
+            draft.content_hash = "d" * 64  # simulated drift (SQLite, no trigger)
+            session.commit()
+            item = DecisionService(session).expire_stale_approval(
+                accepted.context.work_item_id,
+                reason="onaylanan içerik hash'i artık aktif taslakla eşleşmiyor",
+            )
+            session.commit()
+            assert item.current_state is WorkflowState.APPROVAL_EXPIRED
+            event = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert event is not None
+            assert event.to_state is WorkflowState.APPROVAL_EXPIRED
+            assert event.actor_origin is WorkflowActorOrigin.SYSTEM
+            assert event.actor_user_id is None  # a system detection, not a human act
+            assert event.artifact_refs["active_content_hash"] == "d" * 64
+            assert event.artifact_refs["approved_content_hash"] != "d" * 64
+            assert "human_decision_id" in event.artifact_refs
+
+    def test_expire_outside_scheduled_is_a_precondition_error(self, harness: Harness) -> None:
+        accepted, _ = self.approved_context(harness)  # APPROVED, not SCHEDULED
+        with harness.session() as session:
+            with pytest.raises(DecisionPreconditionError, match="scheduling time"):
+                DecisionService(session).expire_stale_approval(
+                    accepted.context.work_item_id, reason="erken düşürme denemesi"
+                )
 
 
 class TestRoleSeparation:

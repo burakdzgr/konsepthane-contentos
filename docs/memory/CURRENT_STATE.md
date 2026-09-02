@@ -2876,18 +2876,48 @@ access protection belongs to future deployment infrastructure.
   validity + history + UNKNOWN actor) — suite 1252 backend + 216 admin,
   gate green incl. next build; no migration (head stays `0022`)
 
+- PHASE 5 Task G5 (approval validity primitives + APPROVAL_EXPIRED
+  wiring) complete: `DecisionService.approval_is_current(work_item_id)`
+  (the §1 hash-bound validity primitive as a named boolean),
+  `require_current_approval(work_item_id)` — the guard every approval
+  consumer must pass (the future scheduling/publishing phase refuses
+  stale approvals through this, never by re-deriving the rule) raising
+  the new typed `StaleApprovalError` with truthful distinct messages
+  for missing vs hash-stale approvals and returning the status for
+  pinning — and `expire_stale_approval(work_item_id, reason)`: the
+  SCHEDULED -> APPROVAL_EXPIRED wiring (SYSTEM actor, actor_user_id
+  honestly NULL — a system detection, not a human act) that refuses to
+  run outside SCHEDULED (precondition) and NEVER expires a
+  still-current approval (conflict — the system must not fake an
+  editorial fact); the transition pins {human_decision_id,
+  approved_content_hash, active_content_hash}. No routes and no queue
+  task — SCHEDULED is unreachable until the publishing phase builds
+  the path into it (staleness surfacing in read models already shipped
+  in G4 via ApprovalStatusView current|stale)
+- Task G5 verified: 4 new unit tests (guard passes + mirrors the
+  primitive on a current approval; guard refuses missing and
+  hash-stale approvals with distinct truthful messages; the full
+  SCHEDULED wiring — current approval never expired, stale approval
+  expired with SYSTEM actor + NULL actor_user_id + pinned hashes;
+  expiry outside SCHEDULED is a precondition error) — suite 1256
+  backend + 216 admin, gate green; no migration (head stays `0022`)
+
 ## Next immediate task
 
-PHASE 5 TASK G5 (authorized under the autonomous continuation mandate)
-— APPROVAL VALIDITY SURFACING + APPROVAL_EXPIRED WIRING, per
-PHASE5_GOVERNANCE_ARCHITECTURE.md §5/§7 Task G5: the hash-bound
-`approval_status` primitive becomes the guard every future consumer
-must pass (publishing will refuse stale approvals); wire the
-APPROVAL_EXPIRED workflow path so a stale approval can be surfaced and
-routed truthfully instead of silently riding on (unreachable in normal
-operation until the publishing phase — implement the guard + tests,
-not a fake publishing trigger); then G6 the governance closure audit
-(docs-only, against PHASE5_GOVERNANCE_ARCHITECTURE.md §6).
+PHASE 5 TASK G6 (authorized under the autonomous continuation mandate)
+— GOVERNANCE CLOSURE AUDIT, docs-only, against
+PHASE5_GOVERNANCE_ARCHITECTURE.md §6 exit criteria: verify every
+criterion with concrete code/test references (auth foundation, admin
+authentication, decision records + gates, validity primitive +
+APPROVAL_EXPIRED wiring, read models + leak tests, real-PG
+verification), including re-verifying that Phase 4's "no fake
+approval" invariant is now correctly retired by real named approvals
+(the two governed reviewer routes are the ONLY approval surface).
+After G6: continue per roadmap — the media phase (image needs already
+land in QA media_needs), then publishing (Publishing API contract,
+service auth, idempotency — the open integration questions below),
+keeping the production-readiness backlog separate from feature
+completion.
 
 Before implementing the affected integrations, resolve:
 

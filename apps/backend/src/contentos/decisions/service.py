@@ -32,6 +32,7 @@ from contentos.decisions.errors import (
     DecisionConflictError,
     DecisionInputError,
     DecisionPreconditionError,
+    StaleApprovalError,
 )
 from contentos.decisions.models import HumanDecision
 from contentos.drafts.repository import DraftRepository
@@ -39,8 +40,10 @@ from contentos.qa.enums import QaOutcome
 from contentos.qa.models import QaReport
 from contentos.qa.repository import QaRepository
 from contentos.reviews.repository import ReviewRepository
-from contentos.workflow.enums import WorkflowState
+from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
+from contentos.workflow.models import EditorialWorkItem
 from contentos.workflow.repository import WorkflowRepository
+from contentos.workflow.service import WorkflowService
 
 MAX_REASON_LENGTH = 1000
 
@@ -206,6 +209,70 @@ class DecisionService:
             decision_id=approval.id,
             approved_content_hash=approval.content_hash,
             active_content_hash=active_hash,
+        )
+
+    def approval_is_current(self, work_item_id: uuid.UUID) -> bool:
+        """The hash-bound validity primitive (`approval_is_current`, §1):
+        an unrevoked approval exists AND the ACTIVE draft still carries
+        the approved content hash."""
+        return self.approval_status(work_item_id).current
+
+    def require_current_approval(self, work_item_id: uuid.UUID) -> ApprovalStatus:
+        """The guard every approval consumer must pass (the future
+        scheduling/publishing phase refuses stale approvals through this,
+        never by re-deriving the rule). Returns the status for pinning."""
+        status = self.approval_status(work_item_id)
+        if not status.approved:
+            raise StaleApprovalError("no approval is on record for this work item")
+        if not status.current:
+            raise StaleApprovalError(
+                "the approval is stale: the approved content hash "
+                f"{status.approved_content_hash} no longer matches the ACTIVE "
+                f"draft hash {status.active_content_hash}"
+            )
+        return status
+
+    def expire_stale_approval(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        reason: str,
+        request_id: str | None = None,
+    ) -> EditorialWorkItem:
+        """SCHEDULED -> APPROVAL_EXPIRED wiring (§1/§2): the SYSTEM act of
+        surfacing a stale approval detected at scheduling time. Unreachable
+        in normal operation until the publishing phase builds the path INTO
+        SCHEDULED; a still-current approval is NEVER expired (that would be
+        the system faking an editorial fact). The caller commits.
+        """
+        work_item = self._workflow.get_by_id(work_item_id)
+        if work_item is None:
+            raise DecisionPreconditionError(f"no editorial work item with id {work_item_id}")
+        if work_item.current_state is not WorkflowState.SCHEDULED:
+            raise DecisionPreconditionError(
+                "approval expiry is detected at scheduling time only "
+                f"(current: {work_item.current_state.value})"
+            )
+        status = self.approval_status(work_item_id)
+        if status.current:
+            raise DecisionConflictError(
+                "the approval on record still covers the ACTIVE draft; "
+                "a current approval is never expired"
+            )
+        artifact_refs: dict[str, Any] = {}
+        if status.decision_id is not None:
+            artifact_refs["human_decision_id"] = str(status.decision_id)
+        if status.approved_content_hash is not None:
+            artifact_refs["approved_content_hash"] = status.approved_content_hash
+        if status.active_content_hash is not None:
+            artifact_refs["active_content_hash"] = status.active_content_hash
+        return WorkflowService(self._session).transition(
+            work_item_id,
+            WorkflowState.APPROVAL_EXPIRED,
+            actor_origin=WorkflowActorOrigin.SYSTEM,
+            reason=reason,
+            artifact_refs=artifact_refs,
+            request_id=request_id,
         )
 
     def list_decisions(self, work_item_id: uuid.UUID) -> list[HumanDecision]:
