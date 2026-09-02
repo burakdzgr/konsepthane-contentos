@@ -27,6 +27,7 @@ from contentos.briefs.enums import BriefStatus
 from contentos.briefs.models import ContentBrief
 from contentos.briefs.repository import BriefRepository
 from contentos.core.context import is_valid_request_id
+from contentos.media.dimensions import extract_dimensions
 from contentos.media.enums import MediaOrigin, SatisfactionStatus
 from contentos.media.errors import (
     MediaConflictError,
@@ -127,11 +128,14 @@ class MediaService:
             return existing, False
 
         self._store.put(data)
+        width, height = extract_dimensions(data, media_type)
         asset = MediaAsset(
             origin=MediaOrigin.HUMAN_UPLOAD,
             content_sha256=digest,
             byte_size=len(data),
             media_type=media_type,
+            width=width,
+            height=height,
             title=cleaned_title,
             alt_text=cleaned_alt,
             license_note=cleaned_license,

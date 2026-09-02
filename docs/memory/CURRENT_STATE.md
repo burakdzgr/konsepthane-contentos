@@ -3355,6 +3355,16 @@ the inputs listed below.
   deliberate deferrals recorded in the audits, several dependent on
   the open integration inputs).
 
+- MEDIA DEFERRAL CLEARED: image dimension extraction complete:
+  `contentos.media.dimensions` — deterministic dependency-free header
+  parsing (PNG IHDR, JPEG SOF scan, WebP VP8/VP8L/VP8X) wired into
+  BOTH asset paths (upload + AI generation); unparseable content keeps
+  honest NULL dimensions (never guessed; dimensions are metadata,
+  never a gate). Verified: 3 new tests (all three formats parse;
+  unparseable stays unknown; upload persists extracted dimensions +
+  NULL for junk) — suite 1302 backend + 232 admin, gate green; no
+  migration (head stays `0026`)
+
 ## Current standing state (all phases 1–7 CLOSED)
 
 The full loop research → … → APPROVED → SCHEDULED → PUBLISHING →

@@ -28,6 +28,7 @@ from contentos.ai.protocol import StructuredGenerationProvider
 from contentos.ai.service import StructuredGenerationService
 from contentos.ai.validation import StructuredOutputSpec
 from contentos.auth.models import User
+from contentos.media.dimensions import extract_dimensions
 from contentos.media.enums import MediaOrigin
 from contentos.media.models import MediaAsset
 from contentos.media.service import MAX_MEDIA_BYTES, MediaService
@@ -190,11 +191,14 @@ class MediaImageEngine:
             )
         digest = self._store.put(data)
         alt_text = str(need.get("purpose") or need.get("role") or "").strip()
+        width, height = extract_dimensions(data, payload.media_type)
         asset = MediaAsset(
             origin=MediaOrigin.AI_GENERATED,
             content_sha256=digest,
             byte_size=len(data),
             media_type=payload.media_type,
+            width=width,
+            height=height,
             title=None,
             # A deterministic proposal from the durable need; the human can
             # replace the asset (new upload) if better alt text is needed.

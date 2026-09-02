@@ -754,3 +754,78 @@ class TestAiSpendBudget:
         assert provider.invocations == 0
         with harness.session() as session:
             assert session.execute(select(MediaAsset)).scalar_one_or_none() is None
+
+
+class TestImageDimensions:
+    """Deterministic dimension extraction; unparseable stays honest NULL."""
+
+    def test_png_jpeg_webp_headers_parse(self) -> None:
+        import struct
+
+        from contentos.media.dimensions import extract_dimensions
+
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + struct.pack(">I", 13)
+            + b"IHDR"
+            + struct.pack(">II", 640, 480)
+            + b"\x08\x06\x00\x00\x00"
+        )
+        assert extract_dimensions(png, "image/png") == (640, 480)
+
+        jpeg = b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", 480, 640) + b"\x03" * 12
+        assert extract_dimensions(jpeg, "image/jpeg") == (640, 480)
+
+        bits = (800 - 1) | ((600 - 1) << 14)
+        webp = (
+            b"RIFF"
+            + struct.pack("<I", 20)
+            + b"WEBP"
+            + b"VP8L"
+            + struct.pack("<I", 5)
+            + b"\x2f"
+            + bits.to_bytes(4, "little")
+            + bytes(10)  # real streams continue; the guard needs >= 30 bytes
+        )
+        assert extract_dimensions(webp, "image/webp") == (800, 600)
+
+    def test_unparseable_bytes_stay_unknown(self) -> None:
+        from contentos.media.dimensions import extract_dimensions
+
+        assert extract_dimensions(PNG_BYTES, "image/png") == (None, None)
+        assert extract_dimensions(b"", "image/jpeg") == (None, None)
+        assert extract_dimensions(WEBP_BYTES, "image/webp") == (None, None)
+
+    def test_upload_persists_extracted_dimensions(self, harness: Harness, tmp_path: Path) -> None:
+        import struct
+
+        real_png = (
+            b"\x89PNG\r\n\x1a\n"
+            + struct.pack(">I", 13)
+            + b"IHDR"
+            + struct.pack(">II", 320, 200)
+            + b"\x08\x06\x00\x00\x00"
+            + b"tail"
+        )
+        with harness.session() as session:
+            service = media_service(session, tmp_path)
+            asset, _ = service.register_upload(
+                real_png,
+                media_type="image/png",
+                alt_text="Boyutlu görsel",
+                license_note="Arşiv",
+                created_by=operator_user(session),
+            )
+            session.commit()
+            assert (asset.width, asset.height) == (320, 200)
+
+            # Unparseable content keeps honest NULL dimensions.
+            junk, _ = service.register_upload(
+                JPEG_BYTES,
+                media_type="image/jpeg",
+                alt_text="Bilinmeyen boyut",
+                license_note="Arşiv",
+                created_by=operator_user(session),
+            )
+            session.commit()
+            assert (junk.width, junk.height) == (None, None)
