@@ -33,6 +33,10 @@ from sqlalchemy.orm import Session
 from contentos.ai.enums import GenerationStatus
 from contentos.briefs.composition import BriefCompositionEngine
 from contentos.briefs.errors import BriefCompositionMaterializationError
+from contentos.briefs.repository import BriefRepository
+from contentos.drafts.errors import DraftGenerationMaterializationError
+from contentos.drafts.generation import WriterEngine
+from contentos.drafts.repository import DraftRepository
 from contentos.evidence_packs.enums import (
     ContradictionSeverity,
     EvidenceItemRole,
@@ -72,6 +76,7 @@ GENERATE_IDEA_CANDIDATES_TASK = "contentos.editorial.generate_idea_candidates"
 BUILD_EVIDENCE_PACK_TASK = "contentos.editorial.build_evidence_pack"
 ANALYZE_SEARCH_INTENT_TASK = "contentos.editorial.analyze_search_intent"
 COMPOSE_CONTENT_BRIEF_TASK = "contentos.editorial.compose_content_brief"
+GENERATE_WRITER_DRAFT_TASK = "contentos.editorial.generate_writer_draft"
 
 EDITORIAL_TASK_NAMES = (
     PROMOTE_RESEARCH_TASK,
@@ -80,6 +85,7 @@ EDITORIAL_TASK_NAMES = (
     BUILD_EVIDENCE_PACK_TASK,
     ANALYZE_SEARCH_INTENT_TASK,
     COMPOSE_CONTENT_BRIEF_TASK,
+    GENERATE_WRITER_DRAFT_TASK,
 )
 
 MAX_BLOCK_REASON_ITEMS = 5
@@ -521,6 +527,111 @@ def register_editorial_pipeline_tasks(
                 structure_guard=result.structure_guard_outcome,
             )
 
+    # --- generate_writer_draft ----------------------------------------------
+
+    def generate_writer_draft(
+        self: Any,
+        content_brief_id: str,
+        retry_number: int = 0,
+        supersede_reason: str | None = None,
+    ) -> dict[str, Any]:
+        parsed_brief = _parse_uuid(content_brief_id)
+        with task_session() as session:
+            engine = WriterEngine(session)
+            drafts = DraftRepository(session)
+            workflow_repo = WorkflowRepository(session)
+
+            # Redelivery after our own transition: durable history must pin
+            # the draft this brief produced; then the work is already done.
+            brief_row = BriefRepository(session).get_brief(parsed_brief)
+            if brief_row is not None:
+                work_item = workflow_repo.get_by_id(brief_row.work_item_id)
+                if work_item is not None and work_item.current_state is WorkflowState.EDITING:
+                    existing = drafts.list_by_work_item(work_item.id)
+                    latest = existing[-1] if existing else None
+                    if latest is None:
+                        raise WorkflowHistoryConflictError(
+                            "the work item is in EDITING but no draft exists"
+                        )
+                    _require_compatible_entry(
+                        workflow_repo,
+                        work_item.id,
+                        WorkflowState.EDITING,
+                        "content_draft_id",
+                        str(latest.id),
+                    )
+                    return _summary(
+                        self,
+                        "reused",
+                        content_brief_id=content_brief_id,
+                        content_draft_id=str(latest.id),
+                        draft_version=latest.version,
+                    )
+
+            # TRANSACTION A: durable draft (or durable failed attempt).
+            try:
+                result = engine.generate_draft(
+                    parsed_brief,
+                    provider=runtime.create_generation_provider(),
+                    retry_number=retry_number + int(self.request.retries),
+                    supersede_reason=supersede_reason,
+                    request_id=_current_request_id(self),
+                )
+            except DraftGenerationMaterializationError:
+                # The SUCCEEDED attempt is real audit history: keep it
+                # durable, then fail terminally (never relabeled).
+                session.commit()
+                raise
+            if handle_ai_outcome(self, session, result.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    content_brief_id=content_brief_id,
+                    attempt_id=str(result.attempt.id),
+                    attempt_status=result.status.value,
+                )
+            session.commit()
+            draft = result.draft
+            assert draft is not None
+
+            # TRANSACTION B: the WORKFLOW.md artifact gate — a durable valid
+            # draft exists, so DRAFTING -> EDITING via WorkflowService with
+            # the exact draft identity pinned. Queue completion itself never
+            # advances state; NO downstream dispatch (Editor does not exist).
+            work_item = workflow_repo.get_by_id_for_update(draft.work_item_id)
+            assert work_item is not None
+            if work_item.current_state is WorkflowState.DRAFTING:
+                WorkflowService(session).transition(
+                    work_item.id,
+                    WorkflowState.EDITING,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=f"writer draft {draft.id} v{draft.version} is durable and valid",
+                    artifact_refs={
+                        "content_brief_id": content_brief_id,
+                        "content_draft_id": str(draft.id),
+                        "draft_version": draft.version,
+                        "content_hash": draft.content_hash,
+                    },
+                    request_id=_current_request_id(self),
+                )
+                session.commit()
+            else:
+                _require_compatible_entry(
+                    workflow_repo,
+                    work_item.id,
+                    WorkflowState.EDITING,
+                    "content_draft_id",
+                    str(draft.id),
+                )
+            return _summary(
+                self,
+                "completed" if result.draft_created else "reused",
+                content_brief_id=content_brief_id,
+                content_draft_id=str(draft.id),
+                draft_version=draft.version,
+                attempt_id=str(result.attempt.id),
+            )
+
     common_options: dict[str, Any] = {
         "bind": True,
         "shared": False,
@@ -534,6 +645,7 @@ def register_editorial_pipeline_tasks(
     app.task(name=BUILD_EVIDENCE_PACK_TASK, **common_options)(build_evidence_pack)
     app.task(name=ANALYZE_SEARCH_INTENT_TASK, **common_options)(analyze_search_intent)
     app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(compose_content_brief)
+    app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(generate_writer_draft)
 
 
 def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:

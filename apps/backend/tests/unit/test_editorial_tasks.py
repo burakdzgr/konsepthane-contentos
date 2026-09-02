@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import contentos.drafts.models  # noqa: F401  (register draft tables for create_all)
 from contentos.ai.enums import GenerationStatus, ProviderFailureKind
 from contentos.ai.fake import FakeStructuredProvider
 from contentos.ai.models import AiGenerationAttempt
@@ -537,7 +538,7 @@ class TestRegistration:
         for name in RESEARCH_TASK_NAMES + EDITORIAL_TASK_NAMES:
             assert name in app.tasks
         assert len(RESEARCH_TASK_NAMES) == 5
-        assert len(EDITORIAL_TASK_NAMES) == 6
+        assert len(EDITORIAL_TASK_NAMES) == 7
 
 
 class TestPromotionAndScoring:
@@ -980,3 +981,140 @@ class TestTransport:
         outcome = pipeline.run(EVALUATE_OPPORTUNITY_TASK, opportunity_id="not-a-uuid")
         assert outcome.state == "FAILURE"
         assert "not-a-uuid" not in str(outcome.result)
+
+
+class TestWriterDraftTask:
+    """contentos.editorial.generate_writer_draft (Phase 4 Task 5)."""
+
+    def accepted(self, harness: Harness) -> Any:
+        from test_drafts import accepted_context
+
+        return accepted_context(harness)
+
+    def test_valid_draft_transitions_to_editing(self, harness: Harness) -> None:
+        from test_writer_generation import writer_payload
+
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        dispatcher = RecordingDispatcher()
+        app = harness.app(dispatcher)
+        accepted = self.accepted(harness)
+        harness.provider = FakeStructuredProvider(payload=writer_payload(accepted))
+
+        result = (
+            app.tasks[GENERATE_WRITER_DRAFT_TASK]
+            .apply(kwargs={"content_brief_id": str(accepted.context.brief_id)})
+            .get()
+        )
+        assert result["status"] == "completed"
+        draft_id = result["content_draft_id"]
+
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state is WorkflowState.EDITING
+            events = WorkflowRepository(session).list_events(accepted.context.work_item_id)
+            transition = events[-1]
+            assert transition.to_state is WorkflowState.EDITING
+            assert transition.actor_origin.value == "system"
+            assert transition.artifact_refs["content_draft_id"] == draft_id
+            assert transition.artifact_refs["content_brief_id"] == str(accepted.context.brief_id)
+            assert transition.artifact_refs["draft_version"] == 1
+        # Editor does not exist: nothing is dispatched downstream.
+        assert dispatcher.calls == []
+
+    def test_redelivery_reuses_draft_and_transition(self, harness: Harness) -> None:
+        from test_writer_generation import writer_payload
+
+        from contentos.drafts.models import ContentDraft
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        app = harness.app(RecordingDispatcher())
+        accepted = self.accepted(harness)
+        harness.provider = FakeStructuredProvider(payload=writer_payload(accepted))
+        kwargs = {"content_brief_id": str(accepted.context.brief_id)}
+
+        first = app.tasks[GENERATE_WRITER_DRAFT_TASK].apply(kwargs=kwargs).get()
+        with harness.session() as session:
+            events_before = len(
+                WorkflowRepository(session).list_events(accepted.context.work_item_id)
+            )
+        redelivered = app.tasks[GENERATE_WRITER_DRAFT_TASK].apply(kwargs=kwargs).get()
+        assert redelivered["status"] == "reused"
+        assert redelivered["content_draft_id"] == first["content_draft_id"]
+        assert harness.provider.invocations == 1
+        with harness.session() as session:
+            events_after = len(
+                WorkflowRepository(session).list_events(accepted.context.work_item_id)
+            )
+            drafts = session.execute(select(ContentDraft)).scalars().all()
+        assert events_after == events_before
+        assert len(drafts) == 1
+
+    def test_validation_failure_keeps_drafting(self, harness: Harness) -> None:
+        import uuid as _uuid
+
+        from test_writer_generation import writer_payload
+
+        from contentos.drafts.models import ContentDraft
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        app = harness.app(RecordingDispatcher())
+        accepted = self.accepted(harness)
+        bad = writer_payload(accepted)
+        bad["sections"][0]["blocks"][1]["claim_refs"] = [str(_uuid.uuid4())]
+        harness.provider = FakeStructuredProvider(payload=bad)
+
+        result = (
+            app.tasks[GENERATE_WRITER_DRAFT_TASK]
+            .apply(kwargs={"content_brief_id": str(accepted.context.brief_id)})
+            .get()
+        )
+        assert result["status"] == "ai_failed"
+        assert result["attempt_status"] == "validation_failed"
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state is WorkflowState.DRAFTING
+            assert session.execute(select(ContentDraft)).scalar_one_or_none() is None
+
+    def test_timeout_retries_within_bound_then_terminal(self, harness: Harness) -> None:
+        from contentos.drafts.models import ContentDraft
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        app = harness.app(RecordingDispatcher())
+        accepted = self.accepted(harness)
+        harness.provider = FakeStructuredProvider(
+            failure=ProviderFailureKind.TIMEOUT, failure_class="deadline"
+        )
+        result = (
+            app.tasks[GENERATE_WRITER_DRAFT_TASK]
+            .apply(kwargs={"content_brief_id": str(accepted.context.brief_id)})
+            .get()
+        )
+        assert result["status"] == "ai_failed"
+        assert result["attempt_status"] == "timeout"
+        assert harness.provider.invocations == 4  # 1 + MAX_RETRIES distinct attempts
+        with harness.session() as session:
+            attempts = session.execute(select(AiGenerationAttempt)).scalars().all()
+            writer_attempts = [a for a in attempts if a.purpose.value == "writer_draft"]
+            assert {a.retry_number for a in writer_attempts} == {0, 1, 2, 3}
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state is WorkflowState.DRAFTING
+            assert session.execute(select(ContentDraft)).scalar_one_or_none() is None
+
+    def test_unaccepted_brief_is_terminal_with_zero_invocations(self, harness: Harness) -> None:
+        from editorial_harness import Context as HContext
+        from editorial_harness import seed_draft_brief
+
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        app = harness.app(RecordingDispatcher())
+        with harness.session() as session:
+            context = HContext()
+            seed_draft_brief(session, context)  # brief stays DRAFT
+            session.commit()
+        harness.provider = FakeStructuredProvider(payload={})
+        outcome = app.tasks[GENERATE_WRITER_DRAFT_TASK].apply(
+            kwargs={"content_brief_id": str(context.brief_id)}
+        )
+        assert outcome.state == "FAILURE"
+        assert harness.provider.invocations == 0

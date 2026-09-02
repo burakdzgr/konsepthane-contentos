@@ -10,7 +10,8 @@ AWAITING_HUMAN_REVIEW) - IN PROGRESS
 accepted, including the operator-required architecture correction pass;
 Task 2 Draft Persistence + Provenance Foundation COMPLETE;
 Task 3 Writer Validation & Originality Policies COMPLETE;
-Task 4 Writer Input Projection + Output Schema + Engine COMPLETE)
+Task 4 Writer Input Projection + Output Schema + Engine COMPLETE;
+Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2214,23 +2215,53 @@ access protection belongs to future deployment infrastructure.
 - Task 4 verified: 1120 backend tests (1111 + 9 new writer-engine tests),
   135 admin tests, and the full root quality gate passed
 
+- PHASE 4 Task 5 (writer orchestration + DRAFTING->EDITING wiring)
+  complete: `contentos.editorial.generate_writer_draft` Celery task (7th
+  editorial task) under the inherited Phase 2/3 delivery contract
+  (WorkerRuntime provider seam, JSON-safe kwargs {content_brief_id,
+  retry_number, supersede_reason}, effective retry_number = base +
+  self.request.retries, handle_ai_outcome DOMAIN retry separation with
+  failed attempts committed BEFORE retries); redelivery-in-EDITING guard
+  resolves the latest durable draft and validates the pinned
+  `content_draft_id` in the validated EDITING entry event (compatible ->
+  reused, incompatible -> WorkflowHistoryConflictError, never a second
+  draft); TX A = engine + commit (DraftGenerationMaterializationError
+  commits the SUCCEEDED attempt then fails terminally — recovery only via
+  explicit retry_number+1); TX B = explicit SYSTEM WorkflowService
+  transition DRAFTING -> EDITING with artifact_refs {content_brief_id,
+  content_draft_id, draft_version, content_hash} (WORKFLOW.md's artifact
+  gate — queue completion itself never advances state), commit, NO
+  downstream dispatch (Editor does not exist yet); execution failures
+  (timeout/provider error) stay AI-layer truthful — work item remains
+  DRAFTING, never an editorial rejection; no rework/regeneration exposure
+  from EDITING (depends on the Task 6 routing foundation)
+- Task 5 verified on REAL PostgreSQL 16 + REAL Redis (pgvector:pg16 +
+  redis:7-alpine, head 0018): failure truthfulness (invalid claim ref ->
+  durable validation_failed attempt, zero draft rows, stays DRAFTING);
+  real broker delivery (send_task -> raw Redis message carries task name
+  + request_id header, no broker-URL/prompt leak -> apply -> durable
+  draft + SYSTEM DRAFTING->EDITING with the draft pinned); redelivery
+  idempotency (reused, same draft id, no new events, zero dispatches)
+- Task 5 added no migration (head stays `0018`), no API/admin, no
+  dependency changes; suite is 1125 backend + 135 admin, gate green
+
 ## Next immediate task
 
-PHASE 4 TASK 5 (authorized under the autonomous continuation mandate) —
-WRITER ORCHESTRATION + DRAFTING->EDITING WIRING (initial generation
-only), per accepted PHASE4_WRITER_ARCHITECTURE.md §22:
-`contentos.editorial.generate_writer_draft` Celery job under the
-inherited Phase 2/3 delivery contract (WorkerRuntime provider seam,
-DOMAIN vs DISPATCH retry separation with failed attempts committed
-before DOMAIN retries, redelivery-compatible-entry guards, JSON-safe
-kwargs {content_brief_id, retry_number, supersede_reason}); TX A durable
-draft commit, TX B explicit SYSTEM WorkflowService transition
-DRAFTING -> EDITING with the draft id/version/content-hash pinned in the
-event (WORKFLOW.md's own artifact gate), commit, NO downstream dispatch
-(Editor does not exist); no rework/regeneration-from-EDITING exposure
-(depends on the Task 6 routing foundation). Real PG + real Redis
-verification of generate -> durable draft -> EDITING, failure
-truthfulness, and redelivery idempotency. No migration, no API/admin.
+PHASE 4 TASK 6 (authorized under the autonomous continuation mandate) —
+NAMED CHANGES_REQUESTED RESPONSIBLE-STATE ROUTING FOUNDATION, the
+prerequisite the accepted Writer architecture names before any rework
+exposure (PHASE4_WRITER_ARCHITECTURE.md §22 Task 6): WorkflowService
+enhancement only — when a transition enters CHANGES_REQUESTED, the
+validated entry event's artifact_refs must durably carry the named
+responsible state (context-validated target; initially EDITING ->
+DRAFTING is the only legal rework route), and leaving CHANGES_REQUESTED
+must route to that recorded responsible state (history-derived, with
+return-to-origin fallback semantics only where the architecture allows
+it); BLOCKED semantics stay untouched; NEVER a generic state setter or
+free-target endpoint. Expected: no migration (artifact_refs is existing
+JSONB), no API/admin surface, unit tests over WorkflowService +
+history validation. Task 7 (rework/regeneration commands + read models +
+admin) depends on Tasks 5 AND 6 both being complete.
 
 Before implementing the affected integrations, resolve:
 
