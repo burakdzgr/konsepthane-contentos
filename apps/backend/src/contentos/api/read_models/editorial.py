@@ -194,6 +194,10 @@ class WorkflowEventView(_FrozenModel):
     reason: str
     artifact_refs: dict[str, Any]
     request_id: str | None
+    # The named authenticated human (Phase 5); None renders as UNKNOWN —
+    # historical rows and system-internal transitions carry no identity.
+    actor_user_id: uuid.UUID | None
+    actor_display_name: str | None
     occurred_at: datetime
 
 
@@ -805,6 +809,15 @@ def get_work_item_detail(session: Session, work_item_id: uuid.UUID) -> WorkItemD
         )
         or 0
     )
+    # Resolve named actors to display names (identity only, never
+    # credential material).
+    from contentos.auth.models import User as _User
+
+    actor_ids = {event.actor_user_id for event in events if event.actor_user_id is not None}
+    actor_names: dict[uuid.UUID | None, str] = {}
+    if actor_ids:
+        for user in session.execute(select(_User).where(_User.id.in_(actor_ids))).scalars():
+            actor_names[user.id] = user.display_name
 
     opportunity = session.execute(
         select(EditorialOpportunity).where(EditorialOpportunity.work_item_id == item.id)
@@ -877,6 +890,8 @@ def get_work_item_detail(session: Session, work_item_id: uuid.UUID) -> WorkItemD
                 reason=event.reason,
                 artifact_refs=event.artifact_refs,
                 request_id=event.request_id,
+                actor_user_id=event.actor_user_id,
+                actor_display_name=actor_names.get(event.actor_user_id),
                 occurred_at=event.occurred_at,
             )
             for event in events

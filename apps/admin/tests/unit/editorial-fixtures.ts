@@ -5,6 +5,9 @@ import type {
   AiAttemptView,
   BriefView,
   ContradictionView,
+  ApprovalStatusView,
+  DecisionListPage,
+  DecisionView,
   DraftDetail,
   DraftListPage,
   DraftSummaryView,
@@ -359,6 +362,8 @@ export function workItemDetail(
         reason: "search intent analysis ready",
         artifact_refs: { search_intent_analysis_id: ANALYSIS_ID },
         request_id: null,
+        actor_user_id: null,
+        actor_display_name: null,
         occurred_at: AT,
       },
       {
@@ -369,6 +374,8 @@ export function workItemDetail(
         reason: "operatör komisyonu",
         artifact_refs: { opportunity_id: OPPORTUNITY_ID },
         request_id: null,
+        actor_user_id: "b0000000-0000-4000-8000-00000000000b",
+        actor_display_name: "Smoke Reviewer",
         occurred_at: AT,
       },
     ],
@@ -672,6 +679,56 @@ export function qaReportListPage(
     waivers,
     total: reports.length,
     truncated: false,
+  };
+}
+
+export const REVIEWER_USER_ID = "b0000000-0000-4000-8000-00000000000b";
+export const DECISION_CONTENT_HASH = `sha256:${"d".repeat(64)}`;
+
+export function decisionView(
+  overrides: Partial<DecisionView> = {},
+): DecisionView {
+  return {
+    id: "d0000000-0000-4000-8000-00000000000d",
+    decision: "approved",
+    reviewer: {
+      id: REVIEWER_USER_ID,
+      username: "smoke-reviewer",
+      display_name: "Smoke Reviewer",
+    },
+    reason: "package is accurate and complete",
+    qa_report_id: "e0000000-0000-4000-8000-00000000000e",
+    content_draft_id: "f0000000-0000-4000-8000-00000000000f",
+    editorial_review_id: "a0000000-0000-4000-8000-00000000000a",
+    content_hash: DECISION_CONTENT_HASH,
+    revokes_decision_id: null,
+    request_id: null,
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function approvalStatus(
+  overrides: Partial<ApprovalStatusView> = {},
+): ApprovalStatusView {
+  return {
+    approved: false,
+    current: false,
+    decision_id: null,
+    approved_content_hash: null,
+    active_content_hash: null,
+    ...overrides,
+  };
+}
+
+export function decisionListPage(
+  decisions: DecisionView[] = [],
+  status: ApprovalStatusView = approvalStatus(),
+): DecisionListPage {
+  return {
+    work_item_id: WORK_ITEM_ID,
+    decisions,
+    approval_status: status,
   };
 }
 

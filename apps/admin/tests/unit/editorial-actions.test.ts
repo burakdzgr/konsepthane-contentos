@@ -26,6 +26,10 @@ vi.mock("@/lib/editorial-control-api", async () => {
     submitOperatorDraft: vi.fn(),
     requestWriterRework: vi.fn(),
     resolveChangesRequested: vi.fn(),
+    approvePackage: vi.fn(),
+    requestChangesDecision: vi.fn(),
+    rejectPackage: vi.fn(),
+    revokeApproval: vi.fn(),
   };
 });
 
@@ -35,6 +39,10 @@ import {
   generateEditorReviewAction,
   runQaAction,
   waiveQaGateAction,
+  approvePackageAction,
+  requestChangesDecisionAction,
+  rejectPackageAction,
+  revokeApprovalAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
   generateDraftAction,
@@ -46,15 +54,19 @@ import {
 import {
   acceptBriefForDrafting,
   acceptEditorReview,
+  approvePackage,
   buildEvidencePack,
   commissionOpportunity,
   generateEditorReview,
   generateWriterDraft,
   runQaGates,
   waiveQaGate,
+  rejectPackage,
+  requestChangesDecision,
   requestWriterRework,
   resolveChangesRequested,
   resolveWorkItemBlock,
+  revokeApproval,
   submitOperatorDraft,
 } from "@/lib/editorial-control-api";
 import {
@@ -77,6 +89,27 @@ const waiveMock = vi.mocked(waiveQaGate);
 const submitDraftMock = vi.mocked(submitOperatorDraft);
 const requestReworkMock = vi.mocked(requestWriterRework);
 const resolveChangesMock = vi.mocked(resolveChangesRequested);
+const approvePackageMock = vi.mocked(approvePackage);
+const requestChangesDecisionMock = vi.mocked(requestChangesDecision);
+const rejectPackageMock = vi.mocked(rejectPackage);
+const revokeApprovalMock = vi.mocked(revokeApproval);
+
+function decidedResult(
+  decision: "approved" | "changes_requested" | "rejected" | "approval_revoked",
+  state: "approved" | "changes_requested" | "rejected",
+) {
+  return {
+    kind: "ok" as const,
+    data: {
+      status: "decided" as const,
+      decision,
+      human_decision_id: "d0000000-0000-4000-8000-00000000000d",
+      work_item_id: WORK_ITEM_ID,
+      work_item_state: state,
+      reviewer_username: "smoke-reviewer",
+    },
+  };
+}
 
 function form(entries: Record<string, string>): FormData {
   const data = new FormData();
@@ -477,6 +510,94 @@ describe("qa actions", () => {
       WORK_ITEM_ID,
       "media_needs",
       "bilinçli erteleme",
+    );
+  });
+});
+
+describe("human decision actions", () => {
+  it("approvePackageAction requires a reason and never calls the backend without one", async () => {
+    await expectRedirect(
+      approvePackageAction(form({ work_item_id: WORK_ITEM_ID })),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(approvePackageMock).not.toHaveBeenCalled();
+  });
+
+  it("approvePackageAction records and redirects on success", async () => {
+    approvePackageMock.mockResolvedValue(decidedResult("approved", "approved"));
+    await expectRedirect(
+      approvePackageAction(
+        form({ work_item_id: WORK_ITEM_ID, reason: "paket eksiksiz" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=package-approved`,
+    );
+    expect(approvePackageMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      "paket eksiksiz",
+    );
+  });
+
+  it("requestChangesDecisionAction bounds the responsible state", async () => {
+    requestChangesDecisionMock.mockResolvedValue(
+      decidedResult("changes_requested", "changes_requested"),
+    );
+    await expectRedirect(
+      requestChangesDecisionAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          reason: "giris zayif",
+          responsible_state: "publishing" /* out of bounds -> drafting */,
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=decision-changes-requested`,
+    );
+    expect(requestChangesDecisionMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      "giris zayif",
+      "drafting",
+    );
+  });
+
+  it("rejectPackageAction and revokeApprovalAction route with their reasons", async () => {
+    rejectPackageMock.mockResolvedValue(decidedResult("rejected", "rejected"));
+    await expectRedirect(
+      rejectPackageAction(
+        form({ work_item_id: WORK_ITEM_ID, reason: "konu geçersiz" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=package-rejected`,
+    );
+    expect(rejectPackageMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      "konu geçersiz",
+    );
+
+    revokeApprovalMock.mockResolvedValue(
+      decidedResult("approval_revoked", "changes_requested"),
+    );
+    await expectRedirect(
+      revokeApprovalAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          reason: "kaynak güncellendi",
+          responsible_state: "qa_review",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=approval-revoked`,
+    );
+    expect(revokeApprovalMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      "kaynak güncellendi",
+      "qa_review",
+    );
+  });
+
+  it("maps a decision conflict to the error redirect", async () => {
+    approvePackageMock.mockResolvedValue({ kind: "conflict" });
+    await expectRedirect(
+      approvePackageAction(
+        form({ work_item_id: WORK_ITEM_ID, reason: "gerekce" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?error=conflict`,
     );
   });
 });

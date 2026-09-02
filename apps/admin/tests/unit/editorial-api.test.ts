@@ -6,6 +6,7 @@ import {
   fetchQaReportDetail,
   fetchReviewDetail,
   fetchEligibleEvidence,
+  fetchWorkItemDecisions,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
   fetchWorkItemQaReports,
@@ -13,7 +14,11 @@ import {
   fetchWorkQueue,
 } from "@/lib/editorial-api";
 import {
+  DECISION_CONTENT_HASH,
   WORK_ITEM_ID,
+  approvalStatus,
+  decisionListPage,
+  decisionView,
   OPPORTUNITY_ID,
   DRAFT_ID,
   QA_REPORT_ID,
@@ -292,5 +297,54 @@ describe("qa report reads", () => {
     );
     const result = await fetchWorkItemQaReports(WORK_ITEM_ID);
     expect(result.kind).toBe("malformed");
+  });
+});
+
+describe("decision reads", () => {
+  it("parses decisions with reviewer names and hash-bound status", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(
+        200,
+        decisionListPage(
+          [decisionView()],
+          approvalStatus({
+            approved: true,
+            current: true,
+            decision_id: decisionView().id,
+            approved_content_hash: DECISION_CONTENT_HASH,
+            active_content_hash: DECISION_CONTENT_HASH,
+          }),
+        ),
+      ),
+    );
+    const result = await fetchWorkItemDecisions(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.decisions[0]?.reviewer.display_name).toBe(
+        "Smoke Reviewer",
+      );
+      expect(result.data.approval_status.current).toBe(true);
+    }
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/decisions`,
+    );
+  });
+
+  it("rejects an unknown decision kind as malformed", async () => {
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        decisionListPage([decisionView({ decision: "published" as never })]),
+      ),
+    );
+    const result = await fetchWorkItemDecisions(WORK_ITEM_ID);
+    expect(result.kind).toBe("malformed");
+  });
+
+  it("maps 404s to not_found and bad ids never hit the network", async () => {
+    const fetchMock = stubFetch(async () => jsonResponse(404, {}));
+    expect((await fetchWorkItemDecisions(WORK_ITEM_ID)).kind).toBe("not_found");
+    expect((await fetchWorkItemDecisions("junk")).kind).toBe("not_found");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

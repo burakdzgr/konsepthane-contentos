@@ -7,6 +7,7 @@ import {
 } from "@/lib/contentos-api";
 import {
   BRIEF_STATUSES,
+  DECISION_KINDS,
   DRAFT_ORIGINS,
   DRAFT_STATUSES,
   EVIDENCE_ITEM_ROLES,
@@ -127,6 +128,15 @@ const waiverResponseSchema = z.object({
   note: z.string(),
 });
 
+const decisionResponseSchema = z.object({
+  status: z.literal("decided"),
+  decision: z.enum(DECISION_KINDS),
+  human_decision_id: z.string().uuid(),
+  work_item_id: z.string().uuid(),
+  work_item_state: z.enum(WORKFLOW_STATES),
+  reviewer_username: z.string(),
+});
+
 const briefAcceptanceResponseSchema = z.object({
   status: z.enum(["accepted", "already_accepted"]),
   brief_id: z.string().uuid(),
@@ -153,6 +163,7 @@ export type DraftSubmissionResult = z.infer<
 >;
 export type AcceptReviewResult = z.infer<typeof acceptReviewResponseSchema>;
 export type WaiverResult = z.infer<typeof waiverResponseSchema>;
+export type DecisionResult = z.infer<typeof decisionResponseSchema>;
 
 type ControlFailure =
   | { kind: "not_found" }
@@ -604,6 +615,60 @@ export function resolveChangesRequested(
       `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/resolve-changes-requested`,
       { reason },
       workItemStateResponseSchema,
+    ),
+  );
+}
+
+export function approvePackage(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<DecisionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/approve`,
+      { reason },
+      decisionResponseSchema,
+    ),
+  );
+}
+
+export function requestChangesDecision(
+  workItemId: string,
+  reason: string,
+  responsibleState: "drafting" | "editing" | "qa_review",
+): Promise<ControlResult<DecisionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/request-changes`,
+      { reason, responsible_state: responsibleState },
+      decisionResponseSchema,
+    ),
+  );
+}
+
+export function rejectPackage(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<DecisionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/reject-package`,
+      { reason },
+      decisionResponseSchema,
+    ),
+  );
+}
+
+export function revokeApproval(
+  workItemId: string,
+  reason: string,
+  responsibleState: "drafting" | "editing" | "qa_review",
+): Promise<ControlResult<DecisionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/revoke-approval`,
+      { reason, responsible_state: responsibleState },
+      decisionResponseSchema,
     ),
   );
 }

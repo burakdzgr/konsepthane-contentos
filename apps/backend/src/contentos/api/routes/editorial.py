@@ -12,6 +12,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from contentos.api.read_models.decisions import (
+    DecisionListPage,
+    list_work_item_decisions,
+)
 from contentos.api.read_models.drafts import (
     DraftDetail,
     DraftListPage,
@@ -138,6 +142,19 @@ def get_editorial_review(
     if detail is None:
         raise HTTPException(status_code=404, detail="editorial review not found")
     return detail
+
+
+@router.get("/work-items/{work_item_id}/decisions", response_model=DecisionListPage)
+def list_editorial_work_item_decisions(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> DecisionListPage:
+    """Every human decision event of one work item plus the derived
+    hash-bound approval status."""
+    page = list_work_item_decisions(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
 
 
 @router.get("/work-items/{work_item_id}/qa-reports", response_model=QaReportListPage)

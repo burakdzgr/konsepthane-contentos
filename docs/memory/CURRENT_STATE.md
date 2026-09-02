@@ -2838,26 +2838,56 @@ access protection belongs to future deployment infrastructure.
   approval -> APPROVED with pins + actor, revocation -> CHANGES_
   REQUESTED via qa_review, append-only trigger); schema head `0022`
 
+- PHASE 5 Task G4 (decision read models + admin decision surface)
+  complete: backend — `api/read_models/decisions.py` (DecisionListPage:
+  decision EVENTS exactly as recorded with reviewer identities resolved
+  to display names — the users join carries names only, credential and
+  token material unreachable by construction — plus the derived
+  hash-bound ApprovalStatusView) behind GET
+  `/internal/editorial/work-items/{id}/decisions`; WorkflowEventView
+  gained `actor_user_id` + `actor_display_name` (batch users lookup in
+  the detail projection; NULL stays NULL); decisions `created_at` now
+  also stamps a microsecond ORM-side timestamp (SQLite CURRENT_TIMESTAMP
+  truncates to seconds, which made the (created_at, id) decision
+  ordering nondeterministic under a random-UUID tiebreak — DB default
+  kept for raw inserts). Admin — decisions/approval-status zod schemas +
+  `fetchWorkItemDecisions`, decision command functions (approve /
+  request-changes with the bounded three-way responsible choice /
+  reject-package / revoke-approval) + actions; the detail page gained
+  the "Human decisions" section: append-only decision history table
+  (reviewer display name, pinned draft + hash, revocation references),
+  the approval record with hash-bound validity badge (current | stale
+  with honest wording), the reviewer DECISION forms gated on
+  AWAITING_HUMAN_REVIEW + reviewer role (approve / request-changes /
+  reject), the revoke form on APPROVED, and an honest "signed in
+  without the reviewer role" note for non-reviewers; workflow history
+  actor column renders `operator · <name>` and `operator · UNKNOWN`
+  for pre-governance NULLs (system events stay `system`); deferred G2
+  chrome done — the header shows the authenticated identity + roles
+  (best-effort via /internal/auth/me, only when a session cookie
+  exists, so build-time prerender makes no backend call)
+- Task G4 verified: 3 new backend read tests (reviewer names +
+  approval_status current + named actor on the APPROVED event with
+  SYSTEM events NULL; stale approval current=False after hash change;
+  404) and 17 new admin tests (decision read parsing/malformed/404,
+  the four command functions incl. bounded routing + conflict mapping,
+  the four actions incl. required-reason and out-of-bounds responsible
+  fallback, page: decision surface + role gating + stale/current
+  validity + history + UNKNOWN actor) — suite 1252 backend + 216 admin,
+  gate green incl. next build; no migration (head stays `0022`)
+
 ## Next immediate task
 
-PHASE 5 TASK G4 (authorized under the autonomous continuation mandate)
-— DECISION READ MODELS + ADMIN DECISION SURFACE, per
-PHASE5_GOVERNANCE_ARCHITECTURE.md §5/§7 Task G4:
-`work-items/{id}/decisions` read model (decision events with reviewer
-display names — password/token material never reachable by
-construction) + approval status (approved/current/stale with hashes);
-workflow event read models surface actor_user_id resolved to a display
-name (NULL renders UNKNOWN); admin: the AWAITING_HUMAN_REVIEW view
-becomes the reviewer DECISION surface (full pinned package links +
-approve / request-changes with the bounded three-way choice / reject
-forms with required reasons; non-reviewer users see the package
-read-only with an honest "not an authorized reviewer" note — requires
-surfacing the current user's roles via /internal/auth/me in the admin,
-completing the deferred G2 chrome: username display + role awareness);
-APPROVED items show the approval record, its hash-bound validity
-(current | stale), and the revoke command; decisions history section;
-leak tests. No migration. After G4: G5 approval-validity surfacing +
-APPROVAL_EXPIRED wiring, then G6 the governance audit.
+PHASE 5 TASK G5 (authorized under the autonomous continuation mandate)
+— APPROVAL VALIDITY SURFACING + APPROVAL_EXPIRED WIRING, per
+PHASE5_GOVERNANCE_ARCHITECTURE.md §5/§7 Task G5: the hash-bound
+`approval_status` primitive becomes the guard every future consumer
+must pass (publishing will refuse stale approvals); wire the
+APPROVAL_EXPIRED workflow path so a stale approval can be surfaced and
+routed truthfully instead of silently riding on (unreachable in normal
+operation until the publishing phase — implement the guard + tests,
+not a fake publishing trigger); then G6 the governance closure audit
+(docs-only, against PHASE5_GOVERNANCE_ARCHITECTURE.md §6).
 
 Before implementing the affected integrations, resolve:
 

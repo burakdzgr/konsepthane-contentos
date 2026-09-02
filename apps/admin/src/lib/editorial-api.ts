@@ -161,6 +161,12 @@ export const FINDING_ORIGINS = ["model_signal", "deterministic"] as const;
 export const QA_OUTCOMES = ["ready_for_human_review", "not_ready"] as const;
 export const QA_REPORT_STATUSES = ["active", "superseded"] as const;
 export const QA_WAIVABLE_GATES = ["media_needs"] as const;
+export const DECISION_KINDS = [
+  "approved",
+  "changes_requested",
+  "rejected",
+  "approval_revoked",
+] as const;
 export const DRAFT_ORIGINS = ["writer_engine", "operator"] as const;
 export const DRAFT_STATUSES = ["active", "superseded"] as const;
 export const DRAFT_ACTOR_ORIGINS = ["operator", "system"] as const;
@@ -255,6 +261,9 @@ const workflowEventSchema = z.object({
   reason: z.string(),
   artifact_refs: jsonRecordSchema,
   request_id: z.string().nullable(),
+  // Phase 5: the named authenticated human; null renders as UNKNOWN.
+  actor_user_id: z.string().uuid().nullable(),
+  actor_display_name: z.string().nullable(),
   occurred_at: timestampSchema,
 });
 
@@ -748,6 +757,38 @@ const qaReportDetailSchema = z.object({
   status_events: z.array(qaReportStatusEventSchema),
 });
 
+const decisionSchema = z.object({
+  id: z.string().uuid(),
+  decision: z.enum(DECISION_KINDS),
+  reviewer: z.object({
+    id: z.string().uuid(),
+    username: z.string(),
+    display_name: z.string(),
+  }),
+  reason: z.string(),
+  qa_report_id: z.string().uuid(),
+  content_draft_id: z.string().uuid(),
+  editorial_review_id: z.string().uuid(),
+  content_hash: z.string(),
+  revokes_decision_id: z.string().uuid().nullable(),
+  request_id: z.string().nullable(),
+  created_at: timestampSchema,
+});
+
+const approvalStatusSchema = z.object({
+  approved: z.boolean(),
+  current: z.boolean(),
+  decision_id: z.string().uuid().nullable(),
+  approved_content_hash: z.string().nullable(),
+  active_content_hash: z.string().nullable(),
+});
+
+const decisionListPageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  decisions: z.array(decisionSchema),
+  approval_status: approvalStatusSchema,
+});
+
 const eligibleEvidenceSchema = z.object({
   items: z.array(
     z.object({
@@ -796,6 +837,9 @@ export type QaReportSummaryView = z.infer<typeof qaReportSummarySchema>;
 export type QaReportListPage = z.infer<typeof qaReportListPageSchema>;
 export type QaReportDetail = z.infer<typeof qaReportDetailSchema>;
 export type QaWaiverView = z.infer<typeof qaWaiverSchema>;
+export type DecisionView = z.infer<typeof decisionSchema>;
+export type ApprovalStatusView = z.infer<typeof approvalStatusSchema>;
+export type DecisionListPage = z.infer<typeof decisionListPageSchema>;
 
 export type WorkQueueFilters = {
   workflowState?: (typeof WORKFLOW_STATES)[number];
@@ -980,6 +1024,27 @@ export async function fetchQaReportDetail(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, qaReportDetailSchema, [200]);
+}
+
+export type DecisionListResult =
+  BackendResult<DecisionListPage> | { kind: "not_found" };
+
+export async function fetchWorkItemDecisions(
+  workItemId: string,
+): Promise<DecisionListResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/decisions`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, decisionListPageSchema, [200]);
 }
 
 export type EligibleEvidenceResult =

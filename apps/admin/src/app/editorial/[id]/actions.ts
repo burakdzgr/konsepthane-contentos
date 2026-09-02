@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   acceptBriefForDrafting,
   acceptEditorReview,
+  approvePackage,
   analyzeSearchIntent,
   buildEvidencePack,
   commissionOpportunity,
@@ -17,6 +18,9 @@ import {
   reassembleEvidencePack,
   rejectBlockedWorkItem,
   rejectOpportunity,
+  rejectPackage,
+  requestChangesDecision,
+  revokeApproval,
   requestWriterRework,
   resolveChangesRequested,
   runQaGates,
@@ -407,4 +411,61 @@ export async function acceptReviewAction(formData: FormData): Promise<void> {
   }
   const result = await acceptEditorReview(workItemId, reason);
   finish(workItemId, result, "review-accepted");
+}
+
+function boundedResponsible(
+  formData: FormData,
+): "drafting" | "editing" | "qa_review" {
+  const raw = field(formData, "responsible_state");
+  return raw === "editing" || raw === "qa_review" ? raw : "drafting";
+}
+
+export async function approvePackageAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await approvePackage(workItemId, reason);
+  finish(workItemId, result, "package-approved");
+}
+
+export async function requestChangesDecisionAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await requestChangesDecision(
+    workItemId,
+    reason,
+    boundedResponsible(formData),
+  );
+  finish(workItemId, result, "decision-changes-requested");
+}
+
+export async function rejectPackageAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await rejectPackage(workItemId, reason);
+  finish(workItemId, result, "package-rejected");
+}
+
+export async function revokeApprovalAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await revokeApproval(
+    workItemId,
+    reason,
+    boundedResponsible(formData),
+  );
+  finish(workItemId, result, "approval-revoked");
 }

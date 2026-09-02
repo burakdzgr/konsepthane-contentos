@@ -12,20 +12,32 @@ vi.mock("@/lib/editorial-api", async () => {
     fetchWorkItemDrafts: vi.fn(),
     fetchWorkItemReviews: vi.fn(),
     fetchWorkItemQaReports: vi.fn(),
+    fetchWorkItemDecisions: vi.fn(),
   };
 });
 
+vi.mock("@/lib/auth-api", () => ({
+  fetchCurrentUser: vi.fn(),
+}));
+
 import EditorialDetailPage from "@/app/editorial/[id]/page";
+import { fetchCurrentUser } from "@/lib/auth-api";
 import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
+  fetchWorkItemDecisions,
   fetchWorkItemDrafts,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
 } from "@/lib/editorial-api";
 import {
+  DECISION_CONTENT_HASH,
+  REVIEWER_USER_ID,
   WORK_ITEM_ID,
+  approvalStatus,
   briefView,
+  decisionListPage,
+  decisionView,
   draftListPage,
   draftSummary,
   qaReportListPage,
@@ -43,6 +55,8 @@ const evidenceMock = vi.mocked(fetchEligibleEvidence);
 const draftsMock = vi.mocked(fetchWorkItemDrafts);
 const reviewsMock = vi.mocked(fetchWorkItemReviews);
 const qaMock = vi.mocked(fetchWorkItemQaReports);
+const decisionsMock = vi.mocked(fetchWorkItemDecisions);
+const currentUserMock = vi.mocked(fetchCurrentUser);
 
 async function renderPage(params: Record<string, string> = {}) {
   render(
@@ -75,6 +89,21 @@ beforeEach(() => {
     data: qaReportListPage([]),
     requestId: null,
   });
+  decisionsMock.mockResolvedValue({
+    kind: "ok",
+    data: decisionListPage(),
+    requestId: null,
+  });
+  currentUserMock.mockResolvedValue({
+    kind: "ok",
+    data: {
+      id: REVIEWER_USER_ID,
+      username: "smoke-reviewer",
+      display_name: "Smoke Reviewer",
+      roles: ["operator", "reviewer"],
+    },
+    requestId: null,
+  });
 });
 
 describe("Editorial detail page", () => {
@@ -98,6 +127,7 @@ describe("Editorial detail page", () => {
       "Writer drafts",
       "Editor reviews",
       "QA reports",
+      "Human decisions",
       "AI attempts",
       "Workflow history",
     ]) {
@@ -454,11 +484,190 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(screen.getByText("Human decision pending.")).toBeTruthy();
-    expect(
-      screen.getByText(/approval surface does not exist yet/i),
-    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Run QA gates" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
+
+    // The reviewer decision surface, gated on the reviewer role.
+    expect(
+      screen.getByRole("button", { name: "Approve package" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Request changes" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject package" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Revoke approval" }),
+    ).toBeNull();
+    // The routing choice is bounded to the three named responsible states.
+    const select = screen.getByLabelText(
+      "Decision responsible state",
+    ) as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.value)).toEqual([
+      "drafting",
+      "editing",
+      "qa_review",
+    ]);
+  });
+
+  it("hides decision commands without the reviewer role and says why", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "awaiting_human_review",
+        },
+      }),
+      requestId: null,
+    });
+    currentUserMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        id: REVIEWER_USER_ID,
+        username: "smoke-operator",
+        display_name: "Smoke Operator",
+        roles: ["operator"],
+      },
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(
+      screen.getByText(/signed in without the reviewer role/i),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Approve package" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Request changes" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject package" })).toBeNull();
+  });
+
+  it("shows the approval record, its validity, and revoke on APPROVED", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "approved",
+        },
+      }),
+      requestId: null,
+    });
+    decisionsMock.mockResolvedValue({
+      kind: "ok",
+      data: decisionListPage(
+        [decisionView()],
+        approvalStatus({
+          approved: true,
+          current: true,
+          decision_id: decisionView().id,
+          approved_content_hash: DECISION_CONTENT_HASH,
+          active_content_hash: DECISION_CONTENT_HASH,
+        }),
+      ),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText("Approval on record")).toBeTruthy();
+    expect(screen.getByText("current")).toBeTruthy();
+    expect(screen.getByText("Smoke Reviewer")).toBeTruthy();
+    expect(screen.getAllByText("approved").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "Revoke approval" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Approve package" }),
+    ).toBeNull();
+  });
+
+  it("renders a stale approval honestly when the hash no longer matches", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "approved",
+        },
+      }),
+      requestId: null,
+    });
+    decisionsMock.mockResolvedValue({
+      kind: "ok",
+      data: decisionListPage(
+        [decisionView()],
+        approvalStatus({
+          approved: true,
+          current: false,
+          decision_id: decisionView().id,
+          approved_content_hash: DECISION_CONTENT_HASH,
+          active_content_hash: `sha256:${"e".repeat(64)}`,
+        }),
+      ),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText("stale")).toBeTruthy();
+    expect(
+      screen.getByText(/no longer matches the approved content hash/i),
+    ).toBeTruthy();
+  });
+
+  it("shows the decision history including revocations", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail(),
+      requestId: null,
+    });
+    decisionsMock.mockResolvedValue({
+      kind: "ok",
+      data: decisionListPage([
+        decisionView({
+          id: "d1000000-0000-4000-8000-00000000000d",
+          decision: "approval_revoked",
+          reason: "kaynak güncellendi",
+          revokes_decision_id: decisionView().id,
+        }),
+        decisionView(),
+      ]),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText("approval_revoked")).toBeTruthy();
+    expect(screen.getByText("kaynak güncellendi")).toBeTruthy();
+    expect(
+      screen.getByText(new RegExp(`revokes=${decisionView().id}`)),
+    ).toBeTruthy();
+  });
+
+  it("names the human actor in workflow history and keeps UNKNOWN honest", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail(),
+      requestId: null,
+    });
+
+    await renderPage();
+    // Fixture: the operator event carries a resolved name; a hypothetical
+    // pre-governance operator event without one must render UNKNOWN.
+    expect(screen.getByText("operator · Smoke Reviewer")).toBeTruthy();
+
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        workflow_events: workItemDetail().workflow_events.map((event) => ({
+          ...event,
+          actor_user_id: null,
+          actor_display_name: null,
+        })),
+      }),
+      requestId: null,
+    });
+    await renderPage();
+    expect(screen.getByText("operator · UNKNOWN")).toBeTruthy();
   });
 
   it("never renders the internal backend URL", async () => {

@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptBriefForDrafting,
   acceptEditorReview,
+  approvePackage,
+  rejectPackage,
+  requestChangesDecision,
+  revokeApproval,
   generateEditorReview,
   generateWriterDraft,
   runQaGates,
@@ -512,5 +516,91 @@ describe("qa commands", () => {
       reason: "editore donmeli",
       responsible_state: "editing",
     });
+  });
+});
+
+describe("human decision commands", () => {
+  function decidedResponse(decision: string, state: string) {
+    return jsonResponse(200, {
+      status: "decided",
+      decision,
+      human_decision_id: "d0000000-0000-4000-8000-00000000000d",
+      work_item_id: WORK_ITEM_ID,
+      work_item_state: state,
+      reviewer_username: "smoke-reviewer",
+    });
+  }
+
+  it("approve posts the reason to the exact governed path", async () => {
+    const fetchMock = stubFetch(async () =>
+      decidedResponse("approved", "approved"),
+    );
+    const result = await approvePackage(
+      WORK_ITEM_ID,
+      "paket dogru ve eksiksiz",
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.work_item_state).toBe("approved");
+      expect(result.data.reviewer_username).toBe("smoke-reviewer");
+    }
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/approve`,
+    );
+    expect(request.body).toEqual({ reason: "paket dogru ve eksiksiz" });
+  });
+
+  it("request-changes carries the bounded responsible state", async () => {
+    const fetchMock = stubFetch(async () =>
+      decidedResponse("changes_requested", "changes_requested"),
+    );
+    const result = await requestChangesDecision(
+      WORK_ITEM_ID,
+      "giris bolumu zayif",
+      "editing",
+    );
+    expect(result.kind).toBe("ok");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/request-changes`,
+    );
+    expect(request.body).toEqual({
+      reason: "giris bolumu zayif",
+      responsible_state: "editing",
+    });
+  });
+
+  it("reject and revoke post to their exact paths", async () => {
+    let fetchMock = stubFetch(async () =>
+      decidedResponse("rejected", "rejected"),
+    );
+    await rejectPackage(WORK_ITEM_ID, "konu artik geçerli degil");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/reject-package`,
+    );
+
+    fetchMock = stubFetch(async () =>
+      decidedResponse("approval_revoked", "changes_requested"),
+    );
+    await revokeApproval(WORK_ITEM_ID, "kaynak guncellendi", "qa_review");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/revoke-approval`,
+    );
+    expect(request.body).toEqual({
+      reason: "kaynak guncellendi",
+      responsible_state: "qa_review",
+    });
+  });
+
+  it("maps a decision gate 409 to conflict and junk ids stay local", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(409, { detail: "approval requires a ready QA report" }),
+    );
+    const conflicted = await approvePackage(WORK_ITEM_ID, "gerekce");
+    expect(conflicted.kind).toBe("conflict");
+    expect((await approvePackage("junk", "gerekce")).kind).toBe("not_found");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

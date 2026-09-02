@@ -201,6 +201,74 @@ class TestRoutedDecisions:
         assert response.status_code == 409
 
 
+class TestDecisionReads:
+    """Task G4: the decision read model + named actors in event views."""
+
+    def test_decisions_read_model_with_reviewer_names_and_status(self, harness: Harness) -> None:
+        accepted, draft_id, report_id = awaiting_review_context(harness)
+        approve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/approve",
+            {"reason": "paket eksiksiz; onaylıyorum"},
+        )
+        assert approve.status_code == 200
+
+        page = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/decisions"
+        )
+        assert page.status_code == 200
+        body = page.json()
+        [decision] = body["decisions"]
+        assert decision["decision"] == "approved"
+        assert decision["reviewer"]["username"] == TEST_OPERATOR_USERNAME
+        assert decision["reviewer"]["display_name"] == "Test Operator"
+        assert decision["qa_report_id"] == str(report_id)
+        assert decision["content_draft_id"] == str(draft_id)
+        assert body["approval_status"]["approved"] is True
+        assert body["approval_status"]["current"] is True
+        # Never any credential/token material.
+        lowered = page.text.lower()
+        assert "password" not in lowered and "token" not in lowered
+
+        # The detail view names the actor on the APPROVED event; SYSTEM
+        # events honestly stay without one.
+        detail = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+        ).json()
+        approved_event = next(
+            event for event in detail["workflow_events"] if event["to_state"] == "approved"
+        )
+        assert approved_event["actor_display_name"] == "Test Operator"
+        system_event = next(
+            event for event in detail["workflow_events"] if event["actor_origin"] == "system"
+        )
+        assert system_event["actor_user_id"] is None
+        assert system_event["actor_display_name"] is None
+
+    def test_stale_approval_status_is_truthful(self, harness: Harness) -> None:
+        accepted, draft_id, _ = awaiting_review_context(harness)
+        approve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/approve",
+            {"reason": "onay"},
+        )
+        assert approve.status_code == 200
+        with harness.session() as session:
+            draft = session.get(ContentDraft, draft_id)
+            assert draft is not None
+            draft.content_hash = "e" * 64  # simulated drift (SQLite, no trigger)
+            session.commit()
+        body = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/decisions"
+        ).json()
+        assert body["approval_status"]["approved"] is True
+        assert body["approval_status"]["current"] is False
+
+    def test_unknown_work_item_404(self, harness: Harness) -> None:
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/decisions").status_code
+            == 404
+        )
+
+
 class TestRoleSeparation:
     def login_as(self, harness: Harness, username: str, password: str) -> str:
         response = harness.post(

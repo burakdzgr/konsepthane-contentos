@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { fetchCurrentUser } from "@/lib/auth-api";
 import {
   RESOLVED_CONTRADICTION_STATUSES,
   fetchEligibleEvidence,
   fetchWorkItemDetail,
+  fetchWorkItemDecisions,
   fetchWorkItemDrafts,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
   type AiAttemptView,
   type BriefView,
   type ContradictionView,
+  type DecisionListPage,
   type DraftListPage,
   type QaReportListPage,
   type ReviewListPage,
@@ -42,6 +45,7 @@ import {
   acceptBriefAction,
   acceptReviewAction,
   analyzeSearchIntentAction,
+  approvePackageAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
   composeBriefAction,
@@ -53,7 +57,10 @@ import {
   reassemblePackAction,
   rejectBlockedAction,
   rejectOpportunityAction,
+  rejectPackageAction,
+  requestChangesDecisionAction,
   requestReworkAction,
+  revokeApprovalAction,
   resolveBlockAction,
   resolveChangesRequestedAction,
   resolveContradictionAction,
@@ -103,6 +110,13 @@ const DETAIL_NOTICES: Record<string, string> = {
   "qa-queued": "QA gate run queued. Re-runs are idempotent.",
   "qa-gate-waived":
     "Waiver recorded and audited. Gates were NOT re-run — run QA explicitly.",
+  "package-approved":
+    "Package approved by you, on the record. Scheduling belongs to a later phase.",
+  "decision-changes-requested":
+    "Change request recorded and routed to the responsible stage.",
+  "package-rejected": "Package rejected, on the record.",
+  "approval-revoked":
+    "Approval revoked (the original record stays) and routed for rework.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1697,10 +1711,196 @@ function QaSection({
       {state === "awaiting_human_review" && (
         <p role="note">
           <strong>Human decision pending.</strong> The full package (draft,
-          editor review, QA report) is pinned in the workflow history. An
-          approval surface does not exist yet by design — approval belongs to
-          the governance phase with authenticated, authorized reviewers.
+          editor review, QA report) is pinned in the workflow history. The
+          decision itself is recorded in the Human decisions section below by an
+          authenticated reviewer.
         </p>
+      )}
+    </section>
+  );
+}
+
+function DecisionsSection({
+  detail,
+  decisions,
+  isReviewer,
+}: {
+  detail: WorkItemDetail;
+  decisions: DecisionListPage | null;
+  isReviewer: boolean;
+}) {
+  const workItemId = detail.work_item.id;
+  const state = detail.work_item.current_state;
+  const status = decisions?.approval_status ?? null;
+  return (
+    <section aria-labelledby="detail-decisions">
+      <h2 id="detail-decisions">Human decisions</h2>
+      <p className="muted">
+        Append-only record of named human decisions. Every decision pins the
+        exact package (draft, editor review, QA report) by id and content hash.
+      </p>
+      {decisions === null && (
+        <p className="empty-note">The decision record cannot be loaded.</p>
+      )}
+      {decisions !== null && (
+        <>
+          {status !== null && status.approved && (
+            <p role="note">
+              <strong>Approval on record</strong>
+              {": "}
+              <span
+                className="badge"
+                data-tone={status.current ? "positive" : "warning"}
+              >
+                {status.current ? "current" : "stale"}
+              </span>{" "}
+              {status.current
+                ? "The active draft still carries the approved content hash."
+                : "The active draft no longer matches the approved content hash — the approval does not cover the current content."}
+            </p>
+          )}
+          {decisions.decisions.length === 0 && (
+            <p className="empty-note">No human decisions are recorded.</p>
+          )}
+          {decisions.decisions.length > 0 && (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">When</th>
+                    <th scope="col">Decision</th>
+                    <th scope="col">Reviewer</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Pinned package</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {decisions.decisions.map((decision) => (
+                    <tr key={decision.id}>
+                      <td>{formatUtcTimestamp(decision.created_at)}</td>
+                      <td>
+                        <span
+                          className="badge"
+                          data-tone={
+                            decision.decision === "approved"
+                              ? "positive"
+                              : decision.decision === "changes_requested"
+                                ? "warning"
+                                : "negative"
+                          }
+                        >
+                          {decision.decision}
+                        </span>
+                      </td>
+                      <td>{decision.reviewer.display_name}</td>
+                      <td>{decision.reason}</td>
+                      <td className="mono muted">
+                        draft={decision.content_draft_id} hash=
+                        {decision.content_hash.slice(0, 12)}…
+                        {decision.revokes_decision_id !== null
+                          ? ` revokes=${decision.revokes_decision_id}`
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+      {(state === "awaiting_human_review" || state === "approved") &&
+        !isReviewer && (
+          <p role="note">
+            You are signed in without the reviewer role. Decisions can only be
+            recorded by an authorized reviewer.
+          </p>
+        )}
+      {state === "awaiting_human_review" && isReviewer && (
+        <div className="control-stack">
+          <form action={approvePackageAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <input
+              type="text"
+              name="reason"
+              required
+              maxLength={1000}
+              placeholder="why this package is approved"
+              aria-label="Approval reason"
+            />
+            <button type="submit">Approve package</button>
+            <span className="muted">
+              Recorded under your name and bound to the active content hash.
+            </span>
+          </form>
+          <form action={requestChangesDecisionAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <select
+              name="responsible_state"
+              defaultValue="drafting"
+              aria-label="Decision responsible state"
+            >
+              <option value="drafting">writer stage (drafting)</option>
+              <option value="editing">editor stage (editing)</option>
+              <option value="qa_review">qa stage (qa_review)</option>
+            </select>
+            <input
+              type="text"
+              name="reason"
+              required
+              maxLength={1000}
+              placeholder="what must change and who is responsible"
+              aria-label="Requested changes reason"
+            />
+            <button type="submit">Request changes</button>
+            <span className="muted">
+              Routes via the recorded responsible state; the choice is bounded,
+              never arbitrary.
+            </span>
+          </form>
+          <form action={rejectPackageAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <input
+              type="text"
+              name="reason"
+              required
+              maxLength={1000}
+              placeholder="why the package is rejected outright"
+              aria-label="Rejection reason"
+            />
+            <button type="submit">Reject package</button>
+            <span className="muted">
+              WARNING: an editorial rejection of the package, on the record.
+            </span>
+          </form>
+        </div>
+      )}
+      {state === "approved" && isReviewer && (
+        <form action={revokeApprovalAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <select
+            name="responsible_state"
+            defaultValue="drafting"
+            aria-label="Revocation responsible state"
+          >
+            <option value="drafting">writer stage (drafting)</option>
+            <option value="editing">editor stage (editing)</option>
+            <option value="qa_review">qa stage (qa_review)</option>
+          </select>
+          <input
+            type="text"
+            name="reason"
+            required
+            maxLength={1000}
+            placeholder="why the approval no longer stands"
+            aria-label="Revocation reason"
+          />
+          <button type="submit">Revoke approval</button>
+          <span className="muted">
+            WARNING: the approval record stays; a revocation event is appended
+            and the item routes back for rework.
+          </span>
+        </form>
       )}
     </section>
   );
@@ -1797,7 +1997,13 @@ function WorkflowHistorySection({ detail }: { detail: WorkItemDetail }) {
                 <td>
                   {event.from_state ?? "created"} → {event.to_state}
                 </td>
-                <td>{event.actor_origin}</td>
+                <td>
+                  {event.actor_display_name !== null
+                    ? `${event.actor_origin} · ${event.actor_display_name}`
+                    : event.actor_origin === "operator"
+                      ? "operator · UNKNOWN"
+                      : event.actor_origin}
+                </td>
                 <td>{event.reason}</td>
                 <td className="mono muted">
                   {Object.entries(event.artifact_refs)
@@ -1856,6 +2062,12 @@ export default async function EditorialDetailPage({
   const reviews = reviewsResult.kind === "ok" ? reviewsResult.data : null;
   const qaResult = await fetchWorkItemQaReports(detail.work_item.id);
   const qaReports = qaResult.kind === "ok" ? qaResult.data : null;
+  const decisionsResult = await fetchWorkItemDecisions(detail.work_item.id);
+  const decisions = decisionsResult.kind === "ok" ? decisionsResult.data : null;
+  const currentUserResult = await fetchCurrentUser();
+  const isReviewer =
+    currentUserResult.kind === "ok" &&
+    currentUserResult.data.roles.includes("reviewer");
   // The pack builder needs the eligible evidence only while packs are built.
   let eligibleEvidence: EligibleEvidenceItem[] = [];
   if (
@@ -1895,6 +2107,11 @@ export default async function EditorialDetailPage({
       <DraftsSection detail={detail} drafts={drafts} />
       <ReviewsSection detail={detail} reviews={reviews} />
       <QaSection detail={detail} qaReports={qaReports} />
+      <DecisionsSection
+        detail={detail}
+        decisions={decisions}
+        isReviewer={isReviewer}
+      />
       <AiAttemptsSection attempts={detail.ai_attempts} />
       <WorkflowHistorySection detail={detail} />
     </section>

@@ -7,7 +7,7 @@ and the draft's content hash at decision time) and the named reviewer.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     CheckConstraint,
@@ -78,6 +78,12 @@ class HumanDecision(Base):
         Uuid(), ForeignKey("human_decisions.id", ondelete="RESTRICT"), nullable=True
     )
     request_id: Mapped[str | None] = mapped_column(String(length=128), nullable=True)
+    # ORM inserts stamp a microsecond-precision timestamp so the decision
+    # ordering (created_at, id) is deterministic even where the database
+    # default (kept for raw inserts) truncates to whole seconds.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
