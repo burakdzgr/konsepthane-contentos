@@ -258,3 +258,58 @@ class TestApiEnforcement:
     def test_authenticated_operator_reaches_the_pipeline(self, harness: Harness) -> None:
         response = harness.get("/internal/editorial/work-items")
         assert response.status_code == 200
+
+
+class TestSessionPruning:
+    """Production-readiness: dead-session pruning (live sessions untouchable)."""
+
+    def test_prune_removes_only_old_dead_sessions(self, harness: Harness) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        from contentos.auth.models import AuthSession
+
+        with harness.session() as session:
+            service = AuthService(session)
+            live = service.issue_session(TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+            old_expired = service.issue_session(TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+            recent_expired = service.issue_session(TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+            old_revoked = service.issue_session(TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+            session.commit()
+            now = datetime.now(UTC)
+            # SQLite has no immutability trigger: simulate aged rows directly.
+            old_expired.session.expires_at = now - timedelta(days=90)
+            recent_expired.session.expires_at = now - timedelta(days=2)
+            old_revoked.session.revoked_at = now - timedelta(days=90)
+            session.commit()
+
+            pruned = service.prune_sessions(retention_days=30)
+            session.commit()
+            assert pruned == 2  # the two OLD dead sessions only
+            remaining = {row.token_hash for row in session.query(AuthSession).all()}
+            assert live.session.token_hash in remaining  # live untouched
+            assert recent_expired.session.token_hash in remaining  # inside retention
+            assert old_expired.session.token_hash not in remaining
+            assert old_revoked.session.token_hash not in remaining
+            # The live session still authenticates after pruning.
+            assert service.verify_session(live.token).username == TEST_OPERATOR_USERNAME
+
+    def test_prune_validates_retention_and_is_idempotent(self, harness: Harness) -> None:
+        with harness.session() as session:
+            service = AuthService(session)
+            with pytest.raises(AuthInputError, match="retention_days"):
+                service.prune_sessions(retention_days=-1)
+            assert service.prune_sessions(retention_days=0) == 0
+            assert service.prune_sessions(retention_days=0) == 0
+
+    def test_cli_prune_command_reports_the_count(self, harness: Harness) -> None:
+        import argparse
+
+        from contentos.auth.cli import run_command
+
+        with harness.session() as session:
+            message = run_command(
+                session,
+                argparse.Namespace(command="prune-sessions", retention_days=30),
+            )
+            session.commit()
+            assert message == "pruned 0 dead session(s) older than 30 day(s)"

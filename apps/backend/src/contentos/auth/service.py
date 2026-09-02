@@ -207,6 +207,38 @@ class AuthService:
             raise InvalidSessionError("invalid session")
         return user
 
+    def prune_sessions(self, *, retention_days: int = 30) -> int:
+        """Delete DEAD sessions (revoked, or expired) whose end lies more
+        than ``retention_days`` in the past. Live sessions are untouchable
+        (the DB trigger enforces that independently); the retention window
+        keeps recent operational history inspectable. Returns the count.
+        The caller commits."""
+        if not isinstance(retention_days, int) or retention_days < 0:
+            raise AuthInputError("retention_days must be a non-negative integer")
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=retention_days)
+        rows = list(self._session.execute(select(AuthSession)).scalars())
+        pruned = 0
+        for row in rows:
+            expires_at = (
+                row.expires_at
+                if row.expires_at.tzinfo is not None
+                else row.expires_at.replace(tzinfo=UTC)
+            )
+            revoked_at = (
+                row.revoked_at
+                if row.revoked_at is None or row.revoked_at.tzinfo is not None
+                else row.revoked_at.replace(tzinfo=UTC)
+            )
+            ended_at = revoked_at if revoked_at is not None else None
+            if ended_at is None and expires_at <= now:
+                ended_at = expires_at
+            if ended_at is not None and ended_at < cutoff:
+                self._session.delete(row)
+                pruned += 1
+        self._session.flush()
+        return pruned
+
     def revoke_session(self, token: str) -> None:
         """Logout: one-shot revocation; unknown tokens fail closed."""
         row = self._session.execute(

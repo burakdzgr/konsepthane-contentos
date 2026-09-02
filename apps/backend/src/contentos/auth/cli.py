@@ -7,10 +7,14 @@ Usage (from apps/backend, against the configured CONTENTOS_DATABASE_URL):
     uv run python -m contentos.auth.cli set-password <username> --reason "..."
     uv run python -m contentos.auth.cli set-roles <username> --roles reviewer --reason "..."
     uv run python -m contentos.auth.cli set-active <username> --active false --reason "..."
+    uv run python -m contentos.auth.cli prune-sessions --retention-days 30
 
 Passwords are read from the CONTENTOS_NEW_PASSWORD environment variable
 or prompted interactively — never taken as a command-line argument
-(process lists leak). Every action writes an audited user_events row.
+(process lists leak). Every user-directed action writes an audited
+user_events row; prune-sessions is operational maintenance that can
+only ever remove DEAD sessions (the DB trigger protects live ones
+independently of the retention policy).
 """
 
 import argparse
@@ -63,6 +67,9 @@ def run_command(session: Session, args: argparse.Namespace) -> str:
             reason=args.reason,
         )
         return f"set {user.username} active={user.is_active}"
+    if args.command == "prune-sessions":
+        pruned = service.prune_sessions(retention_days=args.retention_days)
+        return f"pruned {pruned} dead session(s) older than {args.retention_days} day(s)"
     raise AuthError(f"unknown command {args.command!r}")  # pragma: no cover
 
 
@@ -89,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
     active.add_argument("username")
     active.add_argument("--active", required=True, choices=["true", "false"])
     active.add_argument("--reason", required=True)
+
+    prune = sub.add_parser("prune-sessions")
+    prune.add_argument("--retention-days", type=int, default=30)
 
     return parser
 

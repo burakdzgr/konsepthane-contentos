@@ -3288,18 +3288,37 @@ the inputs listed below.
   every push/PR. Verified locally TWICE against fresh ephemeral
   containers (including after ruff formatting) before commit.
 
+- PRODUCTION-READINESS: session hygiene complete: migration `0026`
+  upgrades the auth-session guard trigger — DEAD sessions (revoked, or
+  past expiry) become deletable while LIVE sessions stay undeletable
+  and the one-shot-revocation/content-immutability rules are unchanged
+  (downgrade restores the v1 total ban);
+  `AuthService.prune_sessions(retention_days=30)` deletes dead
+  sessions whose end lies beyond the retention window (UTC-normalized,
+  input-validated, idempotent); CLI `prune-sessions
+  --retention-days N`. Verified: 3 new unit tests (selection matrix —
+  live + recent-expired survive, old expired/revoked go, live still
+  authenticates after; validation + idempotency; the CLI report) + the
+  0026 offline-SQL test — suite 1294 backend + 232 admin, gate green;
+  REAL PostgreSQL verification passed (0026 cycle with the v1 guard
+  proven while downgraded, v2 live-undeletable + immutability
+  negatives, the prune removing exactly the dead row); schema head
+  `0026`. NOTE (documented acceptance): login rate-limiting remains
+  absent by design for the single-tenant internal tool and is REQUIRED
+  before any wider exposure.
+
 ## Next production-readiness task
 
-SESSION HYGIENE — an audited `prune-sessions` management command
-(delete expired+revoked auth_sessions rows older than a retention
-window; expired rows currently accumulate forever), CLI-invoked like
-the user commands; document the login rate-limiting acceptance
-(single-tenant internal tool — required before any exposure). Then:
-capped listings in draft/review/report/decision/media/publication
-read models; provider spend controls; secrets-management
-documentation. Feature phases (Distribution/Analytics/Refresh + the
-publishing live integration) remain blocked on the operator inputs
-listed below and resume the moment they arrive.
+CAPPED LISTINGS — the per-work-item list read models
+(drafts/reviews/qa-reports/decisions/media history/publication
+attempts) return unbounded lists today (bounded in practice by
+supersession/retry caps, but not by contract); add explicit caps with
+truthful `truncated`/total signals where missing, mirroring the
+work-queue paging pattern. Then: provider spend controls;
+secrets-management documentation. Feature phases
+(Distribution/Analytics/Refresh + the publishing live integration)
+remain blocked on the operator inputs listed below and resume the
+moment they arrive.
 
 Before implementing the affected integrations, resolve:
 

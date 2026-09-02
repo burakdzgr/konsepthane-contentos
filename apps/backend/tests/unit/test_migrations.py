@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0025"]
+    assert script.get_heads() == ["0026"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0026").down_revision == "0025"
     assert script.get_revision("0025").down_revision == "0024"
     assert script.get_revision("0024").down_revision == "0023"
     assert script.get_revision("0023").down_revision == "0022"
@@ -427,6 +428,15 @@ def test_publication_migration_contains_identity_and_protection() -> None:
     assert "CREATE TRIGGER trg_publication_attempts_append_only" in sql
     # Execution facts only: no editorial vocabulary in the attempt statuses.
     assert "'rejected'" not in sql and "'approved'" not in sql
+
+
+def test_session_pruning_migration_keeps_live_sessions_undeletable() -> None:
+    sql = offline_sql("upgrade", "0025:0026")
+    assert "live auth_sessions rows cannot be deleted" in sql
+    assert "auth_sessions permits only the one-shot revocation" in sql
+
+    down = offline_sql("downgrade", "0026:0025")
+    assert "auth_sessions rows cannot be deleted" in down
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:
