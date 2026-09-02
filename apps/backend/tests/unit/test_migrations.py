@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0018"]
+    assert script.get_heads() == ["0019"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0019").down_revision == "0018"
     assert script.get_revision("0018").down_revision == "0017"
 
 
@@ -293,6 +294,29 @@ def test_content_draft_migration_contains_identity_and_protection() -> None:
     assert sql.count("ON DELETE RESTRICT") == 8
     # A draft is structured content, never article HTML.
     for forbidden in ("html_body", "article_html", "raw_output", "prompt"):
+        assert forbidden not in sql
+
+
+def test_editorial_review_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0018:0019")
+
+    assert "CREATE TABLE editorial_reviews" in sql
+    assert "CREATE TABLE editorial_review_findings" in sql
+    assert "CREATE TABLE editorial_review_status_events" in sql
+    assert "uq_editorial_reviews_version" in sql
+    assert "uq_editorial_reviews_attempt" in sql
+    assert "uq_editorial_reviews_active" in sql
+    assert "uq_editorial_review_findings_key" in sql
+    assert "ck_editorial_reviews_verdict" in sql
+    assert "ck_editorial_reviews_hash_format" in sql
+    assert "CREATE TRIGGER trg_editorial_reviews_guarded" in sql
+    assert "CREATE TRIGGER trg_editorial_review_findings_append_only" in sql
+    assert "CREATE TRIGGER trg_editorial_review_status_events_append_only" in sql
+    # The attempt purpose vocabulary gains the Editor purpose.
+    assert "editor_review" in sql
+    assert sql.count("ON DELETE RESTRICT") == 9
+    # A review is findings + a computed verdict, never content or raw output.
+    for forbidden in ("html_body", "article_html", "raw_output", "prompt", "'reject'"):
         assert forbidden not in sql
 
 

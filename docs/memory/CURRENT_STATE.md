@@ -15,7 +15,8 @@ Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE;
 Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE;
 Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
 COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
-CLOSED; Task 9 Editor Architecture (design only) COMPLETE)
+CLOSED; Task 9 Editor Architecture (design only) COMPLETE;
+Task 10 Editor Review Persistence + Provenance Foundation COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2354,29 +2355,58 @@ access protection belongs to future deployment infrastructure.
   truthfully by the QA architecture — no silent pass). Exit criteria
   (§11) and atomic implementation order Tasks 10-15 (§12) recorded.
 
+- PHASE 4 Task 10 (editor review persistence + provenance foundation)
+  complete: migration `0019` — `editorial_reviews` (verdict pass|revise,
+  UNIQUE(work_item_id, version), UNIQUE(generation_attempt_id),
+  partial-unique ACTIVE row, RESTRICT FKs to work item/draft/brief/
+  attempt/self, the proven two-shape guarded trigger: content immutable,
+  status only active->superseded with one-shot replacement pointer,
+  DELETE forbidden), `editorial_review_findings` (finding_key unique per
+  review, dimension/severity/origin CHECK vocabularies, optional
+  block_id + brief_claim_id anchors, bounded safe text, append-only
+  trigger), `editorial_review_status_events` (draft-status-event
+  pattern, append-only), and the `ck_ai_generation_attempts_purpose`
+  CHECK widened for `editor_review` with the downgrade REFUSING while
+  editor_review attempt rows exist; `contentos.reviews` module (enums/
+  errors/values/models/repository/policies/service):
+  `EditorVerdictPolicy` (`editor-verdict/1`: blocking/major -> revise,
+  else pass — pulled forward from Task 11 because a review row REQUIRES
+  a computed verdict; the Task 11 remainder is the Writer-envelope
+  drift recomputation) and `ReviewService.create_review` with
+  deterministic gates only (EDITING under row lock, EDITING entry event
+  must PIN the draft and the pin must equal the ACTIVE draft, brief
+  must still be the accepted contract, finding anchors must resolve to
+  THAT draft's block ids and relational claim usages, verdict computed
+  never supplied, identical re-review idempotent via content_hash,
+  supersession requires reason + audited event, IntegrityError race
+  convergence); `integrity_gate_result` honestly records
+  `writer_envelope_recomputed: False`
+- Task 10 verified: 16 new unit tests (verdict policy, creation/
+  idempotency/supersession audit, anchor + safety validation,
+  preconditions, repository surface, draft immutability under review
+  creation) — suite 1163 backend + 156 admin, gate green; REAL
+  PostgreSQL 16 verification passed (0018->0019->0018->0019 cycle over
+  populated data with the widened purpose CHECK, service ops, trigger
+  negatives incl. reverse-status and append-only, concurrent
+  supersession race -> exactly one ACTIVE, downgrade guard refusal
+  with head staying 0019); schema head is now `0019`; no API/admin/
+  Celery changes
+
 ## Next immediate task
 
-PHASE 4 TASK 10 (authorized under the autonomous continuation mandate)
-— EDITOR REVIEW PERSISTENCE + PROVENANCE FOUNDATION, per accepted
-PHASE4_EDITOR_ARCHITECTURE.md §12 Task 10: migration 0019 creating
-`editorial_reviews` (version >=1, verdict pass|revise CHECK,
-integrity_gate_result/verdict_policy_snapshot/review_scope JSONB,
-engine identity, status active|superseded with the proven two-shape
-guarded trigger, `UNIQUE(work_item_id, version)`,
-`UNIQUE(generation_attempt_id)`, partial-unique ACTIVE row, RESTRICT
-FKs to work item/draft/brief/attempt),
-`editorial_review_findings` (finding_key unique per review,
-dimension/severity/origin CHECK vocabularies, optional block_id +
-brief_claim_id anchor, bounded safe text, append-only) and
-`editorial_review_status_events` (draft-status-event pattern,
-append-only) + `ck_ai_generation_attempts_purpose` widened for
-`editor_review` with the downgrade refusing while editor_review rows
-exist; drafts-style enums/errors/values/repository and a ReviewService
-with deterministic gates only (entry-pin resolution, ACTIVE draft,
-exact accepted brief, supersession with required reason, race
-convergence) — NO engine, NO Celery, NO API/admin. Unit tests + real-PG
-verification (migration cycle, trigger negatives, race, downgrade
-guard).
+PHASE 4 TASK 11 (authorized under the autonomous continuation mandate)
+— EDITOR INTEGRITY-GATE RECOMPUTATION (the Task 11 remainder after the
+verdict policy shipped in Task 10), per PHASE4_EDITOR_ARCHITECTURE.md
+§3/§12: a deterministic drift guard that recomputes the Writer-stage
+envelope against durable rows before a review is created — structure
+contract vs the accepted brief, claim-ref integrity vs relational
+usages, handling-coverage presence — recording the results truthfully
+in `integrity_gate_result` (with `writer_envelope_recomputed: True`)
+and emitting DETERMINISTIC findings (origin `deterministic`) for
+detected drift instead of silent failure where the architecture calls
+for findings; hard impossibilities stay typed errors. Unit tests over
+drifted/consistent states. No provider involvement, no migration, no
+API/admin.
 
 Before implementing the affected integrations, resolve:
 

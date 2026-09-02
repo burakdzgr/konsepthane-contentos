@@ -11,6 +11,7 @@ class GenerationPurpose(StrEnum):
     BRIEF_COMPOSITION = "brief_composition"
     EVIDENCE_ORGANIZATION = "evidence_organization"
     WRITER_DRAFT = "writer_draft"
+    EDITOR_REVIEW = "editor_review"
 
 
 class GenerationStatus(StrEnum):
