@@ -22,7 +22,7 @@ Task 12 Editor Projection + Output Schema + Engine COMPLETE;
 Task 13 Editor Orchestration + Commands COMPLETE;
 Task 14 Editor Read Models + Admin COMPLETE; Task 15 Editor-Stage
 Closure Audit COMPLETE — EDITOR STAGE CLOSED; QA Architecture (design
-only) COMPLETE)
+only) COMPLETE; Task 16 QA Report Persistence Foundation COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2569,25 +2569,59 @@ access protection belongs to future deployment infrastructure.
   and implementation order Tasks 16-21 (§8) recorded — ending with the
   QA-stage audit and the PHASE 4 CLOSURE AUDIT.
 
+- PHASE 4 Task 16 (QA report persistence foundation) complete:
+  migration `0020` — `qa_reports` (outcome
+  ready_for_human_review|not_ready CHECK, gate_results/policy JSONB,
+  engine qa/1, RESTRICT FKs to work item/draft/review/brief/self,
+  UNIQUE(work_item_id, version), partial-unique ACTIVE row, the proven
+  two-shape guarded trigger), `qa_gate_waivers` (work-item-scoped,
+  gate_key CHECK vocabulary v1 = media_needs, required reason,
+  append-only trigger) and `qa_report_status_events` (established
+  pattern, append-only); `contentos.qa` module — QaService with the
+  deterministic package-resolution gates (QA_REVIEW state, entry event
+  MUST pin editorial_review_id + content_draft_id, pins must equal the
+  ACTIVE pass review covering the ACTIVE draft over the accepted
+  brief; typed QaPreconditionError/QaPackageError otherwise incl. the
+  forced-revise-pin case), idempotent report persistence by
+  content_hash (identical re-run reuses; a changed re-run supersedes
+  with an audited SYSTEM event + one-shot replacement pointer,
+  IntegrityError race convergence), and audited human waivers
+  (QA_REVIEW-only, required reason, never self-re-running); no AI
+  attempts, no purpose widening — QA v1 is fully deterministic; the
+  gate ENGINE computing qa-gates/1 is Task 17
+- Task 16 verified: 13 new unit tests (package resolution incl.
+  pin-missing and revise-pin fail-closed, report pinning/snapshots,
+  idempotent re-run, SYSTEM-audited supersession, waiver gates,
+  repository surface, outcome vocabulary has no approval/failure
+  label) — suite 1205 backend + 171 admin, gate green; REAL PostgreSQL
+  16 verification passed (0019->0020->0019->0020 cycle over populated
+  data, full package build to QA_REVIEW with pins, service ops incl.
+  waiver flow, trigger negatives, concurrent changed re-run race ->
+  exactly one ACTIVE report); schema head is now `0020`
+
 ## Next immediate task
 
-PHASE 4 TASK 16 (authorized under the autonomous continuation mandate)
-— QA REPORT PERSISTENCE FOUNDATION, per accepted
-PHASE4_QA_ARCHITECTURE.md §8 Task 16: migration 0020 creating
-`qa_reports` (version >=1, outcome ready_for_human_review|not_ready
-CHECK, gate_results/gate_policy_snapshot JSONB, engine qa/1, status
-active|superseded with the proven two-shape guarded trigger,
-UNIQUE(work_item_id, version), partial-unique ACTIVE row, RESTRICT FKs
-to work item/draft/review/brief), `qa_gate_waivers` (work-item-scoped,
-gate_key CHECK vocabulary v1 = media_needs, required reason,
-append-only) and `qa_report_status_events` (established pattern,
-append-only); `contentos.qa` module (enums/errors/values/models/
-repository) and a `QaService` with package-resolution gates
-(QA_REVIEW entry pins resolve to the ACTIVE draft + ACTIVE pass review
-+ accepted brief) and idempotent report persistence by content_hash
-with audited SYSTEM supersession — the gate ENGINE itself is Task 17.
-Unit tests + real-PG verification (0019->0020 cycle, trigger
-negatives, race, idempotent re-run). No API/admin/Celery.
+PHASE 4 TASK 17 (authorized under the autonomous continuation mandate)
+— QA GATE ENGINE, per accepted PHASE4_QA_ARCHITECTURE.md §3/§8 Task 17:
+`qa-gates/1` — the seven deterministic gates computed from durable rows
+over the resolved package: package_integrity (pins/hashes/statuses —
+largely re-proven by resolve_package, recorded explicitly),
+provenance_chain (ADR 0007 re-proof: every DraftClaimUsage ->
+BriefClaim -> BriefClaimEvidence -> ResearchEvidence with >=1 evidence
+link per used claim, broken links reported), writer_envelope (reuse
+`recompute_writer_envelope` verbatim), content_safety (the
+deterministic URL/HTML/script ban re-run over the durable body +
+title), editorial_review_currency (review integrity record has
+writer_envelope_recomputed True and review_scope hashes still match),
+media_needs (not_applicable | unsatisfied default-blocking |
+waived_by_human via consumed waivers — needs stay visible),
+internal_link_needs (none | pending, non-blocking); deterministic
+outcome (ready when every blocking gate is
+pass/not_applicable/waived_by_human); a `run_gates(work_item_id)`
+engine entry that resolves the package, computes results, and persists
+via QaService. Unit tests over ready/not_ready/waived/broken-provenance
+/unsafe-content/drifted states. No provider involvement, no migration,
+no API/admin/Celery (Task 18).
 
 Before implementing the affected integrations, resolve:
 

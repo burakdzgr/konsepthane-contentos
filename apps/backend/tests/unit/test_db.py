@@ -98,6 +98,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.normalization.models  # noqa: F401
     import contentos.opportunities.models  # noqa: F401
     import contentos.payloads.postgres  # noqa: F401
+    import contentos.qa.models  # noqa: F401
     import contentos.research.models  # noqa: F401
     import contentos.reviews.models  # noqa: F401
     import contentos.search_intent.models  # noqa: F401
@@ -138,6 +139,9 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "editorial_reviews",
         "editorial_review_findings",
         "editorial_review_status_events",
+        "qa_reports",
+        "qa_gate_waivers",
+        "qa_report_status_events",
     }
 
 

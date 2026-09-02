@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0019"]
+    assert script.get_heads() == ["0020"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0020").down_revision == "0019"
     assert script.get_revision("0019").down_revision == "0018"
     assert script.get_revision("0018").down_revision == "0017"
 
@@ -317,6 +318,27 @@ def test_editorial_review_migration_contains_identity_and_protection() -> None:
     assert sql.count("ON DELETE RESTRICT") == 9
     # A review is findings + a computed verdict, never content or raw output.
     for forbidden in ("html_body", "article_html", "raw_output", "prompt", "'reject'"):
+        assert forbidden not in sql
+
+
+def test_qa_report_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0019:0020")
+
+    assert "CREATE TABLE qa_reports" in sql
+    assert "CREATE TABLE qa_gate_waivers" in sql
+    assert "CREATE TABLE qa_report_status_events" in sql
+    assert "uq_qa_reports_version" in sql
+    assert "uq_qa_reports_active" in sql
+    assert "ck_qa_reports_outcome" in sql
+    assert "ck_qa_reports_hash_format" in sql
+    assert "ck_qa_gate_waivers_key" in sql
+    assert "ck_qa_gate_waivers_reason_nonempty" in sql
+    assert "CREATE TRIGGER trg_qa_reports_guarded" in sql
+    assert "CREATE TRIGGER trg_qa_gate_waivers_append_only" in sql
+    assert "CREATE TRIGGER trg_qa_report_status_events_append_only" in sql
+    assert sql.count("ON DELETE RESTRICT") == 8
+    # QA v1 is deterministic and never an approval or a model surface.
+    for forbidden in ("'approved'", "'rejected'", "generation_attempt", "prompt", "raw_output"):
         assert forbidden not in sql
 
 
