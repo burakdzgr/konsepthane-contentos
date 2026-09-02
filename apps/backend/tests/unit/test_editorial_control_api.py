@@ -605,16 +605,24 @@ class TestNoGenericEndpoints:
         paths = set(harness.app.openapi()["paths"])
         assert paths
         for path in paths:
-            for banned in ("publish", "schedule", "pinterest", "release"):
+            for banned in ("publish", "pinterest", "release"):
                 assert banned not in path.lower(), path
         # Phase 5 governance: approval exists ONLY as the reviewer decision
-        # surface — never as any other command shape.
+        # surface plus the governed expiry-resolution command.
         approval_paths = {
             path for path in paths if "approve" in path.lower() or "approval" in path.lower()
         }
         assert approval_paths == {
             "/internal/editorial/work-items/{work_item_id}/approve",
             "/internal/editorial/work-items/{work_item_id}/revoke-approval",
+            "/internal/editorial/work-items/{work_item_id}/resolve-approval-expired",
+        }
+        # Phase 7 P2: scheduling exists ONLY as the governed operator
+        # command gated on a current approval + a durable package. The
+        # publish execution command itself does not exist yet (P3).
+        schedule_paths = {path for path in paths if "schedule" in path.lower()}
+        assert schedule_paths == {
+            "/internal/editorial/work-items/{work_item_id}/schedule-publication",
         }
 
 

@@ -11,8 +11,9 @@ Every endpoint is one named business action — thin adapters only:
   dispatcher — the worker/domain remains authoritative, and a transport
   failure is a 503, never reported as queued;
 - there is deliberately NO generic /action, /execute, /state, /transition,
-  or /command endpoint, and NO publication/approval/scheduling command —
-  ACCEPTED_FOR_DRAFTING is a Phase-3 writing-contract acceptance only.
+  or /command endpoint; approval lives ONLY on the reviewer decisions
+  router, and scheduling exists ONLY as the Phase-7 governed operator
+  command gated on a current approval + a durable publication package.
 
 Server-side request correlation: the RequestContextMiddleware request id is
 passed into audited domain commands and queue headers; a client-supplied
@@ -51,6 +52,7 @@ from contentos.briefs.repository import BriefRepository
 from contentos.briefs.service import BriefService
 from contentos.core.context import get_request_id, is_valid_request_id
 from contentos.db.session import get_db_session
+from contentos.decisions.errors import DecisionPreconditionError, StaleApprovalError
 from contentos.drafts.enums import DraftBlockKind, DraftOrigin, DraftStatus
 from contentos.drafts.errors import (
     DraftConflictError,
@@ -123,6 +125,12 @@ from contentos.opportunities.service import (
     OpportunityRejectionService,
     ResearchPromotionService,
 )
+from contentos.publishing.assembler import PublicationAssembler
+from contentos.publishing.errors import (
+    PublicationInputError,
+    PublicationPreconditionError,
+)
+from contentos.publishing.service import PublishingService
 from contentos.qa.enums import WaivableGateKey
 from contentos.qa.errors import QaInputError, QaPreconditionError
 from contentos.qa.repository import QaRepository
@@ -1562,4 +1570,129 @@ def unsatisfy_media_need(
         need_index=need_index,
         satisfaction_id=withdrawn.id,
         media_asset_id=withdrawn.media_asset_id,
+    )
+
+
+# --- Phase 7 P2: publication package + scheduling commands -------------------
+
+
+class PublicationPackageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["assembled", "already_exists"]
+    publication_package_id: uuid.UUID
+    work_item_id: uuid.UUID
+    version: int
+    package_hash: str
+    content_hash: str
+
+
+class SchedulePublicationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publication_package_id: uuid.UUID
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+
+
+@router.post(
+    "/work-items/{work_item_id}/assemble-publication-package",
+    response_model=PublicationPackageResponse,
+)
+def assemble_publication_package(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> PublicationPackageResponse:
+    """Assemble the immutable publication package from the pinned APPROVED
+    artifacts under the current-approval guard. Identical content
+    converges on the existing package; nothing is enriched."""
+    try:
+        result = PublicationAssembler(session).assemble(
+            work_item_id,
+            assembled_by=_current_user(request),
+            request_id=_current_request_id(),
+        )
+    except StaleApprovalError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except DecisionPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except PublicationPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except PublicationInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return PublicationPackageResponse(
+        status="assembled" if result.created else "already_exists",
+        publication_package_id=result.package.id,
+        work_item_id=work_item_id,
+        version=result.package.version,
+        package_hash=result.package.package_hash,
+        content_hash=result.package.content_hash,
+    )
+
+
+@router.post(
+    "/work-items/{work_item_id}/schedule-publication",
+    response_model=WorkItemStateResponse,
+)
+def schedule_publication(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: SchedulePublicationRequest,
+) -> WorkItemStateResponse:
+    """OPERATOR command APPROVED -> SCHEDULED: requires the CURRENT
+    approval and an explicit durable package covering exactly the
+    approved content. Scheduling publishes NOTHING by itself."""
+    try:
+        item = PublishingService(session).schedule_publication(
+            work_item_id,
+            body.publication_package_id,
+            reason=body.reason,
+            actor_user_id=_current_user_id(request),
+            request_id=_current_request_id(),
+        )
+    except StaleApprovalError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except PublicationPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return WorkItemStateResponse(
+        status="updated", work_item_id=item.id, current_state=item.current_state
+    )
+
+
+@router.post(
+    "/work-items/{work_item_id}/resolve-approval-expired",
+    response_model=WorkItemStateResponse,
+)
+def resolve_approval_expired(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: ReasonRequest,
+) -> WorkItemStateResponse:
+    """Route out of APPROVAL_EXPIRED to the DERIVED target: back to
+    AWAITING_HUMAN_REVIEW while the ACTIVE ready report still covers the
+    ACTIVE draft, else back to QA_REVIEW — the caller never chooses."""
+    try:
+        item = PublishingService(session).resolve_approval_expired(
+            work_item_id,
+            reason=body.reason,
+            actor_user_id=_current_user_id(request),
+            request_id=_current_request_id(),
+        )
+    except PublicationPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return WorkItemStateResponse(
+        status="updated", work_item_id=item.id, current_state=item.current_state
     )

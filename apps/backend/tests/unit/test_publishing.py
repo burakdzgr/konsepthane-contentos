@@ -207,3 +207,145 @@ class TestAssembly:
         # is defense in depth behind that gate.
         assert approve.status_code == 409
         assert "ready_for_human_review" in approve.json()["error"]["message"]
+
+
+class TestScheduling:
+    """P2: humans schedule, gated on the current approval + the package."""
+
+    def assembled(self, harness: Harness) -> tuple[uuid.UUID, str]:
+        accepted, _ = approved_context(harness)
+        work_item_id = accepted.context.work_item_id
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/assemble-publication-package"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "assembled"
+        return work_item_id, response.json()["publication_package_id"]
+
+    def test_schedule_pins_the_package_and_the_named_actor(self, harness: Harness) -> None:
+        from contentos.workflow.models import EditorialWorkflowEvent
+
+        work_item_id, package_id = self.assembled(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "yayın planına alındı"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["current_state"] == "scheduled"
+        with harness.session() as session:
+            event = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert event is not None
+            assert event.to_state.value == "scheduled"
+            assert event.artifact_refs["publication_package_id"] == package_id
+            assert event.artifact_refs["human_decision_id"]
+            assert event.artifact_refs["package_hash"]
+            assert event.actor_user_id is not None  # the named human scheduler
+
+    def test_schedule_refusals(self, harness: Harness) -> None:
+        work_item_id, package_id = self.assembled(harness)
+
+        unknown = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": str(uuid.uuid4()), "reason": "yanlış paket"},
+        )
+        assert unknown.status_code == 409
+
+        ok = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "planla"},
+        )
+        assert ok.status_code == 200
+        again = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "tekrar planla"},
+        )
+        assert again.status_code == 409  # SCHEDULED is not APPROVED
+
+    def test_schedule_refuses_a_stale_approval(self, harness: Harness) -> None:
+        work_item_id, package_id = self.assembled(harness)
+        with harness.session() as session:
+            draft = session.execute(select(ContentDraft)).scalars().first()
+            assert draft is not None
+            draft.content_hash = "e" * 64  # simulated drift (SQLite, no trigger)
+            session.commit()
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "bayat onayla planla"},
+        )
+        assert response.status_code == 409
+        assert "no longer matches" in response.json()["error"]["message"]
+
+
+class TestExpiryResolution:
+    """P2: the derived route out of APPROVAL_EXPIRED."""
+
+    def expired_context(self, harness: Harness) -> uuid.UUID:
+        from contentos.decisions.service import DecisionService
+
+        scheduler = TestScheduling()
+        work_item_id, package_id = scheduler.assembled(harness)
+        ok = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "planla"},
+        )
+        assert ok.status_code == 200
+        with harness.session() as session:
+            draft = session.execute(select(ContentDraft)).scalars().first()
+            assert draft is not None
+            draft.content_hash = "d" * 64  # drift: the approval goes stale
+            session.commit()
+            DecisionService(session).expire_stale_approval(
+                work_item_id, reason="onaylanan içerik artık aktif taslak değil"
+            )
+            session.commit()
+        return work_item_id
+
+    def test_routes_back_to_awaiting_when_the_report_still_covers(self, harness: Harness) -> None:
+        work_item_id = self.expired_context(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/resolve-approval-expired",
+            {"reason": "paket yeniden insan incelemesine dönsün"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["current_state"] == "awaiting_human_review"
+
+        # The re-entry pins are real: a fresh approval works immediately.
+        approve = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/approve",
+            {"reason": "güncel içerik yeniden onaylandı"},
+        )
+        assert approve.status_code == 200, approve.text
+
+    def test_routes_to_qa_review_when_the_report_no_longer_covers(self, harness: Harness) -> None:
+        from contentos.qa.enums import QaReportStatus
+        from contentos.qa.models import QaReport
+
+        work_item_id = self.expired_context(harness)
+        with harness.session() as session:
+            report = session.execute(select(QaReport)).scalars().first()
+            assert report is not None
+            report.status = QaReportStatus.SUPERSEDED  # test knob (no trigger)
+            session.commit()
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/resolve-approval-expired",
+            {"reason": "rapor artık geçerli değil; kalite kontrole dön"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["current_state"] == "qa_review"
+
+    def test_resolution_requires_the_expired_state(self, harness: Harness) -> None:
+        accepted, _ = approved_context(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+            "/resolve-approval-expired",
+            {"reason": "erken çözüm denemesi"},
+        )
+        assert response.status_code == 409

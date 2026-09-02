@@ -3145,22 +3145,55 @@ access protection belongs to future deployment infrastructure.
   attempt trigger negatives + the remote-ref CHECK); schema head
   `0025`
 
+- PHASE 7 Task P2 (scheduling + expiry resolution) complete:
+  `PublishingService` — `schedule_publication` (APPROVED → SCHEDULED,
+  OPERATOR actor: the current-approval guard FIRST, then the EXPLICIT
+  durable package whose content hash must equal the approved hash — a
+  package over different content can never ride an approval; pins
+  {publication_package_id, package_hash, human_decision_id,
+  content_hash} + the named actor) and `resolve_approval_expired`
+  (the DERIVED route out of APPROVAL_EXPIRED — the caller never
+  chooses: AWAITING_HUMAN_REVIEW with the full re-entry pins while the
+  ACTIVE ready report still covers the ACTIVE draft, else QA_REVIEW
+  with the review/draft pins the QA engine requires; typed refusal
+  when no coherent package remains); operator routes
+  `assemble-publication-package` (direct assembler command with
+  bounded 409/422 mapping), `schedule-publication`,
+  `resolve-approval-expired`; the route-space pin test evolved
+  truthfully (scheduling exists ONLY as the governed command; the
+  approval surface set gained exactly the resolution route; "publish"
+  remains banned until P3); the stale control-router docstring updated
+- Task P2 verified: 6 new tests (schedule pins + named actor; refusal
+  matrix — unknown package / re-schedule from SCHEDULED / stale
+  approval with the truthful hash message; the FULL expiry loop:
+  schedule → drift → `expire_stale_approval` → resolution back to
+  AWAITING with WORKING re-entry pins proven by an immediate fresh
+  approval; the QA_REVIEW derivation when the report no longer covers;
+  wrong-state resolution 409) — suite 1283 backend + 227 admin, gate
+  green; no migration (head stays `0025`)
+
 ## Next immediate task
 
-PHASE 7 TASK P2 (authorized under the autonomous continuation mandate)
-— SCHEDULING + EXPIRY RESOLUTION, per
-PHASE7_PUBLISHING_ARCHITECTURE.md §2/§7: operator commands
-`assemble-publication-package` (direct, durable package) and
-`schedule-publication` (APPROVED → SCHEDULED gated on the current
-approval + a durable package whose hash equals the approved hash;
-pins {publication_package_id, package_hash, human_decision_id}; the
-named actor recorded); the APPROVAL_EXPIRED resolution commands
-(deterministic target gate: QA_REVIEW when the ACTIVE QA report no
-longer covers the ACTIVE draft, else AWAITING_HUMAN_REVIEW — with the
-re-entry pins carried so downstream package resolution keeps working);
-tests incl. the stale-at-scheduling path through
-`expire_stale_approval`. No migration. Then P3 transport + publish
-task.
+PHASE 7 TASK P3 (authorized under the autonomous continuation mandate)
+— TRANSPORT + PUBLISH TASK, per PHASE7_PUBLISHING_ARCHITECTURE.md
+§4/§7: `PublishingTransport` protocol (identity + publish(payload,
+media_provider, idempotency_key) → TransportResult) with the
+deterministic `FakePublishingTransport` (records invocations,
+configurable failures) and the configuration-gated HTTP adapter
+skeleton (new settings `publishing_api_url`/`publishing_api_key`,
+both default-None; construction without them is a TYPED error — no
+default endpoint, ever); the `publish_package` queue task (11th
+editorial task): SCHEDULED → re-check the approval (stale →
+`expire_stale_approval` fires instead) → SYSTEM → PUBLISHING →
+transport dispatch with the derived idempotency key → durable
+publication_attempt → on success SYSTEM → PUBLISHED with
+{publication_package_id, package_hash, remote_publication_ref}
+pinned; failures = durable attempts → bounded retries → SYSTEM →
+BLOCKED (truthful reason; REJECTED unreachable); redelivery guards
+mirror the QA task incl. remote-ref reuse; the operator `publish`
+queue command (SCHEDULED only; the banned-word pin test gains the
+exact governed publish path); real-PG + real-Redis verification with
+the fake transport. Then P4 read models + admin publication surface.
 
 Before implementing the affected integrations, resolve:
 
