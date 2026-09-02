@@ -762,6 +762,46 @@ class TestResponsibleStateRouting:
             session.commit()
             assert resolved.current_state is WorkflowState.EDITING
 
+    def test_qa_review_context_permits_drafting_and_editing(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.QA_REVIEW,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="kalite kontrole geç",
+            )
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="paket editöre dönmeli",
+                responsible_state=WorkflowState.EDITING,
+            )
+            session.commit()
+            resolved = service.resolve_changes_requested(item.id, reason="editöre yönlendirildi")
+            session.commit()
+            assert resolved.current_state is WorkflowState.EDITING
+
+            # From QA_REVIEW an arbitrary state stays impossible.
+            service.transition(
+                item.id,
+                WorkflowState.QA_REVIEW,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="tekrar kalite kontrol",
+            )
+            with pytest.raises(InvalidWorkflowTransitionError):
+                service.transition(
+                    item.id,
+                    WorkflowState.CHANGES_REQUESTED,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="keyfî hedef",
+                    responsible_state=WorkflowState.BRIEFING,
+                )
+
     def test_resolve_changes_requested_requires_the_state(
         self, session_factory: sessionmaker[Session]
     ) -> None:

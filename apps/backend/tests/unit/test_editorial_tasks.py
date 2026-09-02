@@ -538,7 +538,7 @@ class TestRegistration:
         for name in RESEARCH_TASK_NAMES + EDITORIAL_TASK_NAMES:
             assert name in app.tasks
         assert len(RESEARCH_TASK_NAMES) == 5
-        assert len(EDITORIAL_TASK_NAMES) == 8
+        assert len(EDITORIAL_TASK_NAMES) == 9
 
 
 class TestPromotionAndScoring:
@@ -1235,3 +1235,135 @@ class TestEditorReviewTask:
         )
         assert outcome.state == "FAILURE"
         assert harness.provider.invocations == 0
+
+
+class TestQaGatesTask:
+    """contentos.editorial.run_qa_gates (Phase 4 Task 18)."""
+
+    def in_qa_review(self, harness: Harness) -> Any:
+        """Writer -> pass editor review -> OPERATOR accept-review transition."""
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        from contentos.reviews.repository import ReviewRepository
+        from contentos.worker.editorial_tasks import (
+            GENERATE_EDITOR_REVIEW_TASK,
+            GENERATE_WRITER_DRAFT_TASK,
+        )
+        from contentos.workflow.enums import WorkflowActorOrigin
+        from contentos.workflow.service import WorkflowService
+
+        dispatcher = RecordingDispatcher()
+        app = harness.app(dispatcher)
+        accepted = accepted_context(harness)
+        harness.provider = FakeStructuredProvider(payload=writer_payload(accepted))
+        writer = (
+            app.tasks[GENERATE_WRITER_DRAFT_TASK]
+            .apply(kwargs={"content_brief_id": str(accepted.context.brief_id)})
+            .get()
+        )
+        assert writer["status"] == "completed"
+        harness.provider = FakeStructuredProvider(payload={"findings": []})
+        editor = (
+            app.tasks[GENERATE_EDITOR_REVIEW_TASK]
+            .apply(kwargs={"work_item_id": str(accepted.context.work_item_id)})
+            .get()
+        )
+        assert editor["review_verdict"] == "pass"
+        with harness.session() as session:
+            review = ReviewRepository(session).get_active_review(accepted.context.work_item_id)
+            assert review is not None
+            WorkflowService(session).transition(
+                accepted.context.work_item_id,
+                WorkflowState.QA_REVIEW,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="inceleme temiz; kalite kontrole geç",
+                artifact_refs={
+                    "editorial_review_id": str(review.id),
+                    "content_draft_id": writer["content_draft_id"],
+                    "review_verdict": review.verdict.value,
+                    "content_hash": "0" * 64,
+                },
+            )
+            session.commit()
+        return app, dispatcher, accepted
+
+    def test_not_ready_default_is_truthful_and_stays_qa_review(self, harness: Harness) -> None:
+        from contentos.qa.models import QaReport
+        from contentos.worker.editorial_tasks import RUN_QA_GATES_TASK
+
+        app, dispatcher, accepted = self.in_qa_review(harness)
+        calls_before = len(dispatcher.calls)
+        result = (
+            app.tasks[RUN_QA_GATES_TASK]
+            .apply(kwargs={"work_item_id": str(accepted.context.work_item_id)})
+            .get()
+        )
+        assert result["status"] == "completed"
+        assert result["qa_outcome"] == "not_ready"
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state is WorkflowState.QA_REVIEW
+            report = session.execute(select(QaReport)).scalar_one()
+            assert report.gate_results["media_needs"]["result"] == "unsatisfied"
+        assert len(dispatcher.calls) == calls_before  # nothing dispatched
+
+    def test_ready_after_waiver_advances_with_pins_and_redelivery_reuses(
+        self, harness: Harness
+    ) -> None:
+        from contentos.qa.enums import WaivableGateKey
+        from contentos.qa.service import QaService
+        from contentos.worker.editorial_tasks import RUN_QA_GATES_TASK
+
+        app, dispatcher, accepted = self.in_qa_review(harness)
+        kwargs = {"work_item_id": str(accepted.context.work_item_id)}
+        first = app.tasks[RUN_QA_GATES_TASK].apply(kwargs=kwargs).get()
+        assert first["qa_outcome"] == "not_ready"
+
+        with harness.session() as session:
+            QaService(session).add_waiver(
+                accepted.context.work_item_id,
+                WaivableGateKey.MEDIA_NEEDS,
+                reason="görsel gereksinimi bilinçli olarak ertelendi",
+            )
+            session.commit()
+
+        second = app.tasks[RUN_QA_GATES_TASK].apply(kwargs=kwargs).get()
+        assert second["status"] == "completed"
+        assert second["qa_outcome"] == "ready_for_human_review"
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None
+            # PHASE 4 TERMINAL: the next step is an exclusively HUMAN decision.
+            assert item.current_state is WorkflowState.AWAITING_HUMAN_REVIEW
+            events = WorkflowRepository(session).list_events(accepted.context.work_item_id)
+            transition = events[-1]
+            assert transition.to_state is WorkflowState.AWAITING_HUMAN_REVIEW
+            assert transition.actor_origin.value == "system"
+            assert transition.artifact_refs["qa_report_id"] == second["qa_report_id"]
+            assert transition.artifact_refs["editorial_review_id"]
+            assert transition.artifact_refs["content_draft_id"]
+            events_after = len(events)
+
+        redelivered = app.tasks[RUN_QA_GATES_TASK].apply(kwargs=kwargs).get()
+        assert redelivered["status"] == "reused"
+        assert redelivered["qa_report_id"] == second["qa_report_id"]
+        with harness.session() as session:
+            assert (
+                len(WorkflowRepository(session).list_events(accepted.context.work_item_id))
+                == events_after
+            )
+        # No downstream dispatch anywhere: humans hold the next step.
+        assert not any(call[0] == RUN_QA_GATES_TASK for call in dispatcher.calls)
+
+    def test_not_in_qa_review_is_terminal(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        from contentos.worker.editorial_tasks import RUN_QA_GATES_TASK
+
+        app = harness.app(RecordingDispatcher())
+        accepted = accepted_context(harness)  # work item stays DRAFTING
+        outcome = app.tasks[RUN_QA_GATES_TASK].apply(
+            kwargs={"work_item_id": str(accepted.context.work_item_id)}
+        )
+        assert outcome.state == "FAILURE"

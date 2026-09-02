@@ -57,6 +57,9 @@ PERMITTED_RESPONSIBLE_STATES: dict[WorkflowState, frozenset[WorkflowState]] = {
     # (responsible=DRAFTING) -> DRAFTING). Later review loops extend this
     # map explicitly; contexts absent here permit NO named responsible state.
     WorkflowState.EDITING: frozenset({WorkflowState.DRAFTING}),
+    # From QA_REVIEW, a failed package may be routed back to the writer
+    # stage (content problems) or to the editor stage (re-review).
+    WorkflowState.QA_REVIEW: frozenset({WorkflowState.DRAFTING, WorkflowState.EDITING}),
 }
 
 # The structural canonical transition matrix from docs/WORKFLOW.md. BLOCKED

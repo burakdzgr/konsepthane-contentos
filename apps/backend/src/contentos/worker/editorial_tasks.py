@@ -55,6 +55,9 @@ from contentos.opportunities.errors import OpportunityNotFoundError
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.opportunities.scoring_service import OpportunityScoringService
 from contentos.opportunities.service import ResearchPromotionService
+from contentos.qa.enums import QaOutcome
+from contentos.qa.gates import QaGateEngine
+from contentos.qa.repository import QaRepository
 from contentos.reviews.errors import ReviewGenerationMaterializationError
 from contentos.reviews.generation import EditorEngine
 from contentos.reviews.repository import ReviewRepository
@@ -81,6 +84,7 @@ ANALYZE_SEARCH_INTENT_TASK = "contentos.editorial.analyze_search_intent"
 COMPOSE_CONTENT_BRIEF_TASK = "contentos.editorial.compose_content_brief"
 GENERATE_WRITER_DRAFT_TASK = "contentos.editorial.generate_writer_draft"
 GENERATE_EDITOR_REVIEW_TASK = "contentos.editorial.generate_editor_review"
+RUN_QA_GATES_TASK = "contentos.editorial.run_qa_gates"
 
 EDITORIAL_TASK_NAMES = (
     PROMOTE_RESEARCH_TASK,
@@ -91,6 +95,7 @@ EDITORIAL_TASK_NAMES = (
     COMPOSE_CONTENT_BRIEF_TASK,
     GENERATE_WRITER_DRAFT_TASK,
     GENERATE_EDITOR_REVIEW_TASK,
+    RUN_QA_GATES_TASK,
 )
 
 MAX_BLOCK_REASON_ITEMS = 5
@@ -721,6 +726,87 @@ def register_editorial_pipeline_tasks(
                 attempt_id=str(result.attempt.id),
             )
 
+    # --- run_qa_gates -------------------------------------------------------
+
+    def run_qa_gates(self: Any, work_item_id: str) -> dict[str, Any]:
+        parsed_item = _parse_uuid(work_item_id)
+        with task_session() as session:
+            workflow_repo = WorkflowRepository(session)
+
+            # Redelivery after our own transition: durable history must pin
+            # the report; then the work is already done.
+            item = workflow_repo.get_by_id(parsed_item)
+            if item is not None and (item.current_state is WorkflowState.AWAITING_HUMAN_REVIEW):
+                report = QaRepository(session).get_active_report(parsed_item)
+                if report is None:
+                    raise WorkflowHistoryConflictError(
+                        "the work item is in AWAITING_HUMAN_REVIEW but no QA report exists"
+                    )
+                _require_compatible_entry(
+                    workflow_repo,
+                    parsed_item,
+                    WorkflowState.AWAITING_HUMAN_REVIEW,
+                    "qa_report_id",
+                    str(report.id),
+                )
+                return _summary(
+                    self,
+                    "reused",
+                    work_item_id=work_item_id,
+                    qa_report_id=str(report.id),
+                    qa_outcome=report.outcome.value,
+                )
+
+            # TRANSACTION A: deterministic gates -> durable report (idempotent
+            # by content hash). No provider is involved anywhere.
+            result = QaGateEngine(session).run_gates(
+                parsed_item, request_id=_current_request_id(self)
+            )
+            session.commit()
+
+            if result.outcome is QaOutcome.READY_FOR_HUMAN_REVIEW:
+                # TRANSACTION B: the artifact gate — a durable ready report
+                # exists, so QA_REVIEW -> AWAITING_HUMAN_REVIEW via
+                # WorkflowService with the exact package pinned. This is the
+                # PHASE 4 TERMINAL: the next step is a HUMAN decision, so
+                # there is NO downstream dispatch.
+                item = workflow_repo.get_by_id_for_update(parsed_item)
+                assert item is not None
+                if item.current_state is WorkflowState.QA_REVIEW:
+                    WorkflowService(session).transition(
+                        parsed_item,
+                        WorkflowState.AWAITING_HUMAN_REVIEW,
+                        actor_origin=WorkflowActorOrigin.SYSTEM,
+                        reason=(
+                            f"qa report {result.report.id} v{result.report.version} "
+                            "passed all hard gates"
+                        ),
+                        artifact_refs={
+                            "qa_report_id": str(result.report.id),
+                            "editorial_review_id": str(result.package.review.id),
+                            "content_draft_id": str(result.package.draft.id),
+                            "content_hash": result.package.draft.content_hash,
+                        },
+                        request_id=_current_request_id(self),
+                    )
+                    session.commit()
+                else:
+                    _require_compatible_entry(
+                        workflow_repo,
+                        parsed_item,
+                        WorkflowState.AWAITING_HUMAN_REVIEW,
+                        "qa_report_id",
+                        str(result.report.id),
+                    )
+            return _summary(
+                self,
+                "completed" if result.created else "reused",
+                work_item_id=work_item_id,
+                qa_report_id=str(result.report.id),
+                qa_outcome=result.outcome.value,
+                report_version=result.report.version,
+            )
+
     common_options: dict[str, Any] = {
         "bind": True,
         "shared": False,
@@ -736,6 +822,7 @@ def register_editorial_pipeline_tasks(
     app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(compose_content_brief)
     app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(generate_writer_draft)
     app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(generate_editor_review)
+    app.task(name=RUN_QA_GATES_TASK, **common_options)(run_qa_gates)
 
 
 def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:

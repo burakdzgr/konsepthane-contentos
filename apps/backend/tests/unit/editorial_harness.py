@@ -236,6 +236,9 @@ class FakeEditorialControlDispatcher:
             )
         )
 
+    def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None:
+        self.calls.append(("run_qa_gates", {"work_item_id": work_item_id}, request_id))
+
 
 class FailingEditorialDispatcher(FakeEditorialControlDispatcher):
     def __getattribute__(self, name: str) -> Any:

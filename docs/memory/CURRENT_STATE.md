@@ -23,7 +23,9 @@ Task 13 Editor Orchestration + Commands COMPLETE;
 Task 14 Editor Read Models + Admin COMPLETE; Task 15 Editor-Stage
 Closure Audit COMPLETE — EDITOR STAGE CLOSED; QA Architecture (design
 only) COMPLETE; Task 16 QA Report Persistence Foundation COMPLETE;
-Task 17 QA Gate Engine COMPLETE)
+Task 17 QA Gate Engine COMPLETE; Task 18 QA Orchestration +
+Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
+AWAITING_HUMAN_REVIEW END-TO-END)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2625,27 +2627,58 @@ access protection belongs to future deployment infrastructure.
   currency failure); suite 1211 backend + 171 admin, gate green; no
   migration (head stays `0020`), no API/admin/Celery
 
+- PHASE 4 Task 18 (QA orchestration + commands + routing extension)
+  complete: `contentos.editorial.run_qa_gates` Celery task (9th
+  editorial task; kwargs {work_item_id} only — deterministic, no
+  provider, no retry_number): TX A gates -> durable idempotent report
+  -> commit; when ready_for_human_review and still QA_REVIEW, TX B
+  SYSTEM WorkflowService transition to AWAITING_HUMAN_REVIEW with
+  {qa_report_id, editorial_review_id, content_draft_id, content_hash}
+  pinned (the PHASE 4 TERMINAL — no downstream dispatch: the next step
+  is an exclusively HUMAN decision); redelivery after the terminal
+  transition validates the pinned report and reuses; not_ready =>
+  truthful report and no transition; not-in-QA_REVIEW deliveries are
+  typed terminal failures. `accept-review` dispatches run_qa_gates
+  post-commit (best-effort, logged). New commands:
+  `work-items/{id}/run-qa` (queued; label added) and
+  `work-items/{id}/waive-qa-gate` (direct, gate_key bounded to the
+  waivable vocabulary, audited, explicitly does NOT re-run gates).
+  `request-rework` generalized to a BOUNDED responsible-state choice
+  (`drafting` default | `editing`) validated by WorkflowService via the
+  new QA_REVIEW entry in PERMITTED_RESPONSIBLE_STATES ({DRAFTING,
+  EDITING}); EDITING context still permits only DRAFTING; QA rework
+  pins report + review + draft
+- Task 18 verified: 11 new/updated unit tests (workflow QA_REVIEW
+  responsible vocabulary incl. arbitrary-target impossibility; worker
+  trio: truthful not_ready stays QA_REVIEW, waiver -> ready -> SYSTEM
+  advance with pins + redelivery reuse + zero dispatch, not-in-state
+  terminal; control API: run-qa queued, waiver audited/never-reruns/
+  409-outside-QA/422-unknown-gate, accept-review post-commit dispatch,
+  QA rework to editing with pins + EDITING-context refusal); REAL
+  PostgreSQL 16 + REAL Redis verification passed — the COMPLETE
+  pipeline (writer -> pass editor review -> accept -> QA not_ready ->
+  audited waiver -> ready -> SYSTEM AWAITING_HUMAN_REVIEW with the
+  package pinned; broker message inspection; redelivery reuse); suite
+  1222 backend + 171 admin, gate green; no migration (head `0020`)
+
 ## Next immediate task
 
-PHASE 4 TASK 18 (authorized under the autonomous continuation mandate)
-— QA ORCHESTRATION + COMMANDS + ROUTING EXTENSION, per accepted
-PHASE4_QA_ARCHITECTURE.md §5/§8 Task 18: Celery task
-`contentos.editorial.run_qa_gates` (9th editorial task; kwargs
-{work_item_id} only — deterministic and free, redelivery absorbed by
-report idempotency): TX A gates -> durable report -> commit; when
-ready_for_human_review AND still QA_REVIEW: TX B SYSTEM transition to
-AWAITING_HUMAN_REVIEW with {qa_report_id, editorial_review_id,
-content_draft_id, content_hash} pinned -> commit (redelivery validates
-via _require_compatible_entry); not_ready => truthful report and no
-transition; `accept-review` dispatches run_qa_gates post-commit
-(best-effort, logged); commands `work-items/{id}/run-qa` (queued) and
-`work-items/{id}/waive-qa-gate` (direct {gate_key, reason} bounded to
-the waivable vocabulary); `request-rework` gains the QA_REVIEW context
-(PERMITTED_RESPONSIBLE_STATES += QA_REVIEW: {DRAFTING, EDITING}) with a
-bounded operator responsible_state choice defaulting to drafting and
-report/review/draft pins; real-PG + real-Redis verification (ready
-advance with pins after waiver, not_ready truthfulness, redelivery
-idempotency, rework routing from QA_REVIEW). No migration.
+PHASE 4 TASK 19 (authorized under the autonomous continuation mandate)
+— QA READ MODELS + ADMIN, per accepted PHASE4_QA_ARCHITECTURE.md §6/§8
+Task 19: `/internal/editorial` GET projections —
+`work-items/{id}/qa-reports` (report versions: outcome, per-gate result
+summary, waiver presence, package pins) and `qa-reports/{id}` (full
+detail: gate_results with bounded details, gate policy snapshot,
+waivers, status events); admin: QA section on the editorial detail
+page (report table with per-gate badges — unsatisfied/UNKNOWN never
+rendered as pass — run-qa / waive-media / rework forms with required
+reasons and an explicit waiver warning, plus the bounded
+responsible-state choice on rework from QA_REVIEW) + read-only report
+detail page; AWAITING_HUMAN_REVIEW items render the full pinned
+package with the explicit "human decision pending; approval surface
+does not exist yet" statement; leak tests on both sides. No migration,
+no new workflow semantics. After Task 19: Task 20 QA-stage audit
+(docs-only), then Task 21 the PHASE 4 CLOSURE AUDIT.
 
 Before implementing the affected integrations, resolve:
 

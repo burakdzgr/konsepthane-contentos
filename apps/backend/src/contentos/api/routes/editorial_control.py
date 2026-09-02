@@ -107,6 +107,10 @@ from contentos.opportunities.service import (
     OpportunityRejectionService,
     ResearchPromotionService,
 )
+from contentos.qa.enums import WaivableGateKey
+from contentos.qa.errors import QaInputError, QaPreconditionError
+from contentos.qa.repository import QaRepository
+from contentos.qa.service import QaService
 from contentos.reviews.enums import ReviewVerdict
 from contentos.reviews.repository import ReviewRepository
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
@@ -141,6 +145,7 @@ EDITORIAL_TASK_LABELS = Literal[
     "compose_content_brief",
     "generate_writer_draft",
     "generate_editor_review",
+    "run_qa_gates",
 ]
 
 # Contradiction resolution: "unresolved" is not a resolution — excluding it
@@ -292,6 +297,32 @@ class DraftSubmissionResponse(BaseModel):
     draft_status: DraftStatus
     work_item_id: uuid.UUID
     work_item_state: WorkflowState
+
+
+class ReworkRequest(BaseModel):
+    """Rework with a BOUNDED responsible-state choice: the vocabulary is
+    fixed per review context by WorkflowService, never caller-extensible."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+    responsible_state: Literal["drafting", "editing"] = "drafting"
+
+
+class WaiveQaGateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    gate_key: Literal["media_needs"]
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+
+
+class WaiverResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["waived"]
+    work_item_id: uuid.UUID
+    gate_key: Literal["media_needs"]
+    note: str
 
 
 class AcceptReviewResponse(BaseModel):
@@ -1110,6 +1141,7 @@ def generate_editor_review(
 
 @router.post("/work-items/{work_item_id}/accept-review", response_model=AcceptReviewResponse)
 def accept_editor_review(
+    request: Request,
     session: Annotated[Session, Depends(get_db_session)],
     work_item_id: uuid.UUID,
     body: ReasonRequest,
@@ -1160,6 +1192,17 @@ def accept_editor_review(
     except InvalidWorkflowInputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
     session.commit()
+    # Post-commit downstream dispatch of the deterministic QA run
+    # (best-effort by design: state already advanced truthfully).
+    try:
+        _dispatcher(request).enqueue_run_qa(str(work_item_id), request_id=_current_request_id())
+    except Exception as error:
+        _logger.warning(
+            "editorial_control_post_commit_dispatch_failed",
+            operation="run_qa_gates",
+            entity_id=str(work_item_id),
+            error_type=type(error).__name__,
+        )
     return AcceptReviewResponse(
         status="accepted",
         work_item_id=item.id,
@@ -1173,12 +1216,14 @@ def accept_editor_review(
 def request_writer_rework(
     session: Annotated[Session, Depends(get_db_session)],
     work_item_id: uuid.UUID,
-    body: ReasonRequest,
+    body: ReworkRequest,
 ) -> WorkItemStateResponse:
-    """EDITING -> CHANGES_REQUESTED with responsible=DRAFTING recorded
-    durably (the Task 6 routing foundation); the current active draft —
-    and the ACTIVE editor review, when one exists — are pinned
-    server-side. Never an arbitrary target."""
+    """Enter CHANGES_REQUESTED with a durably recorded responsible state
+    (the Task 6 routing foundation). The choice is BOUNDED: WorkflowService
+    validates it against the fixed per-context vocabulary (from EDITING
+    only DRAFTING; from QA_REVIEW, DRAFTING or EDITING). The current
+    active draft — and the ACTIVE editor review / QA report, when they
+    exist — are pinned server-side. Never an arbitrary target."""
     if WorkflowRepository(session).get_by_id(work_item_id) is None:
         raise HTTPException(
             status_code=404, detail=f"no editorial work item with id {work_item_id}"
@@ -1194,6 +1239,9 @@ def request_writer_rework(
         active_review = ReviewRepository(session).get_active_review(work_item_id)
         if active_review is not None:
             refs["editorial_review_id"] = str(active_review.id)
+        active_report = QaRepository(session).get_active_report(work_item_id)
+        if active_report is not None:
+            refs["qa_report_id"] = str(active_report.id)
     try:
         item = WorkflowService(session).transition(
             work_item_id,
@@ -1202,7 +1250,7 @@ def request_writer_rework(
             reason=body.reason,
             artifact_refs=refs,
             request_id=_current_request_id(),
-            responsible_state=WorkflowState.DRAFTING,
+            responsible_state=WorkflowState(body.responsible_state),
         )
     except WorkItemNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from None
@@ -1213,6 +1261,60 @@ def request_writer_rework(
     session.commit()
     return WorkItemStateResponse(
         status="updated", work_item_id=item.id, current_state=item.current_state
+    )
+
+
+@router.post("/work-items/{work_item_id}/run-qa", response_model=QueuedResponse)
+def run_qa_gates(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> QueuedResponse:
+    """Queue the deterministic `run_qa_gates` re-run; the worker/domain owns
+    every gate rule, and re-runs are idempotent by content hash."""
+    if WorkflowRepository(session).get_by_id(work_item_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"no editorial work item with id {work_item_id}"
+        )
+    dispatcher = _dispatcher(request)
+    request_id = _current_request_id()
+    _enqueue_or_503(
+        "run_qa_gates",
+        work_item_id,
+        lambda: dispatcher.enqueue_run_qa(str(work_item_id), request_id=request_id),
+    )
+    return QueuedResponse(status="queued", task="run_qa_gates", entity_id=work_item_id)
+
+
+@router.post("/work-items/{work_item_id}/waive-qa-gate", response_model=WaiverResponse)
+def waive_qa_gate(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: WaiveQaGateRequest,
+) -> WaiverResponse:
+    """Audited HUMAN waiver of one waivable gate (v1: media only). The
+    waiver limits scope honestly — needs stay visible — and does NOT
+    re-run the gates by itself: run-qa is the explicit next step."""
+    try:
+        QaService(session).add_waiver(
+            work_item_id,
+            WaivableGateKey(body.gate_key),
+            reason=body.reason,
+            request_id=_current_request_id(),
+        )
+    except QaPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except QaInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return WaiverResponse(
+        status="waived",
+        work_item_id=work_item_id,
+        gate_key=body.gate_key,
+        note=(
+            "The waiver is recorded and audited; gates were NOT re-run. "
+            "Run QA explicitly to produce a new report that consumes it."
+        ),
     )
 
 

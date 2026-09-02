@@ -22,6 +22,7 @@ from contentos.worker.editorial_tasks import (
     GENERATE_IDEA_CANDIDATES_TASK,
     GENERATE_WRITER_DRAFT_TASK,
     PROMOTE_RESEARCH_TASK,
+    RUN_QA_GATES_TASK,
 )
 from contentos.worker.research_tasks import (
     DISCOVER_SOURCE_TASK,
@@ -135,6 +136,8 @@ class EditorialControlDispatcher(Protocol):
         supersede_reason: str | None,
         request_id: str | None = None,
     ) -> None: ...
+
+    def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None: ...
 
 
 class CeleryEditorialControlDispatcher:
@@ -291,3 +294,6 @@ class CeleryEditorialControlDispatcher:
             },
             request_id,
         )
+
+    def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None:
+        self._send(RUN_QA_GATES_TASK, {"work_item_id": work_item_id}, request_id)

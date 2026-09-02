@@ -950,6 +950,18 @@ class TestEditorReviewCommands:
         assert "revise" in response.json()["error"]["message"]
         assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.EDITING
 
+    def test_accept_review_dispatches_qa_run_post_commit(self, harness: Harness) -> None:
+        accepted, _ = self.submitted(harness)
+        self.pass_review(harness, accepted.context.work_item_id)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/accept-review",
+            {"reason": "inceleme temiz; kalite kontrole geç"},
+        )
+        assert response.status_code == 200
+        qa_calls = [call for call in harness.dispatcher.calls if call[0] == "run_qa_gates"]
+        assert len(qa_calls) == 1
+        assert qa_calls[0][1] == {"work_item_id": str(accepted.context.work_item_id)}
+
     def test_request_rework_pins_active_review(self, harness: Harness) -> None:
         accepted, draft_id = self.submitted(harness)
         review_id = self.pass_review(harness, accepted.context.work_item_id)
@@ -972,3 +984,110 @@ class TestEditorReviewCommands:
             assert last.artifact_refs["editorial_review_id"] == review_id
             assert last.artifact_refs["content_draft_id"] == draft_id
             assert last.artifact_refs["responsible_state"] == "drafting"
+
+
+class TestQaCommands:
+    """Phase 4 Task 18: run-qa, waivers, bounded QA rework routing."""
+
+    def in_qa_review(self, harness: Harness) -> Any:
+        commands = TestEditorReviewCommands()
+        accepted, draft_id = commands.submitted(harness)
+        review_id = commands.pass_review(harness, accepted.context.work_item_id)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/accept-review",
+            {"reason": "inceleme temiz; kalite kontrole geç"},
+        )
+        assert response.status_code == 200
+        assert response.json()["work_item_state"] == "qa_review"
+        return accepted, draft_id, review_id
+
+    def test_run_qa_queues_exact_task(self, harness: Harness) -> None:
+        accepted, _, _ = self.in_qa_review(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/run-qa",
+            headers={"X-Request-ID": "operator-req-91"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "queued"
+        assert body["task"] == "run_qa_gates"
+        assert harness.dispatcher.calls[-1] == (
+            "run_qa_gates",
+            {"work_item_id": str(accepted.context.work_item_id)},
+            "operator-req-91",
+        )
+
+    def test_waive_qa_gate_is_audited_and_never_reruns(self, harness: Harness) -> None:
+        from contentos.qa.repository import QaRepository
+
+        accepted, _, _ = self.in_qa_review(harness)
+        calls_before = len(harness.dispatcher.calls)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/waive-qa-gate",
+            {"gate_key": "media_needs", "reason": "görsel bilinçli olarak ertelendi"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "waived"
+        assert "NOT re-run" in body["note"]
+        assert len(harness.dispatcher.calls) == calls_before  # no implicit run
+        with harness.session() as session:
+            waivers = QaRepository(session).list_waivers(accepted.context.work_item_id)
+            assert len(waivers) == 1
+            assert waivers[0].reason == "görsel bilinçli olarak ertelendi"
+
+    def test_waive_qa_gate_outside_qa_review_conflicts(self, harness: Harness) -> None:
+        commands = TestEditorReviewCommands()
+        accepted, _ = commands.submitted(harness)  # EDITING
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/waive-qa-gate",
+            {"gate_key": "media_needs", "reason": "erken feragat"},
+        )
+        assert response.status_code == 409
+
+    def test_unknown_gate_key_is_422(self, harness: Harness) -> None:
+        accepted, _, _ = self.in_qa_review(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/waive-qa-gate",
+            {"gate_key": "provenance_chain", "reason": "asla"},
+        )
+        assert response.status_code == 422
+
+    def test_qa_rework_routes_to_the_chosen_bounded_state(self, harness: Harness) -> None:
+        accepted, _, review_id = self.in_qa_review(harness)
+        rework = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/request-rework",
+            {"reason": "paket editöre dönmeli", "responsible_state": "editing"},
+        )
+        assert rework.status_code == 200
+        assert rework.json()["current_state"] == "changes_requested"
+        with harness.session() as session:
+            last = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert last is not None
+            assert last.artifact_refs["responsible_state"] == "editing"
+            assert last.artifact_refs["editorial_review_id"] == review_id
+
+        resolve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+            "/resolve-changes-requested",
+            {"reason": "editöre yönlendirildi"},
+        )
+        assert resolve.status_code == 200
+        assert resolve.json()["current_state"] == "editing"
+
+    def test_editing_context_still_rejects_editing_responsibility(self, harness: Harness) -> None:
+        commands = TestEditorReviewCommands()
+        accepted, _ = commands.submitted(harness)  # EDITING
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/request-rework",
+            {"reason": "kendi kendine dönemez", "responsible_state": "editing"},
+        )
+        assert response.status_code == 409
