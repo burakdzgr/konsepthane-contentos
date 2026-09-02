@@ -20,7 +20,8 @@ Task 10 Editor Review Persistence + Provenance Foundation COMPLETE;
 Task 11 Editor Writer-Envelope Drift Guard COMPLETE;
 Task 12 Editor Projection + Output Schema + Engine COMPLETE;
 Task 13 Editor Orchestration + Commands COMPLETE;
-Task 14 Editor Read Models + Admin COMPLETE)
+Task 14 Editor Read Models + Admin COMPLETE; Task 15 Editor-Stage
+Closure Audit COMPLETE — EDITOR STAGE CLOSED)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2525,22 +2526,44 @@ access protection belongs to future deployment infrastructure.
   actions coverage, zod verdict rejection); suite 1192 backend + 171
   admin (22 files), gate green; no migration (head stays `0019`)
 
+- PHASE 4 Task 15 (Editor-stage closure audit, docs-only) complete:
+  `docs/PHASE4_EDITOR_AUDIT.md` audits Tasks 10-14 against the
+  PHASE4_EDITOR_ARCHITECTURE.md §11 exit criteria with a
+  criterion-by-criterion evidence matrix — **10/10 MET, Editor stage
+  CLOSED**. Honest limitations recorded: deferred-by-design (QA does
+  not exist yet — accept-review lands items in QA_REVIEW where nothing
+  runs, and the WORKFLOW.md media gate must be defined truthfully by
+  the QA architecture; model-finding QUALITY is a signal not a proof —
+  hence human-held exits; ACTIVE-draft-only reviews; no
+  operator-authored findings channel) vs production-readiness backlog
+  (Writer backlog carries over; one recorded evidence gap: the
+  superseded-brief review precondition is code-enforced but lacks a
+  dedicated unit test). No runtime changes.
+
 ## Next immediate task
 
-PHASE 4 TASK 15 (authorized under the autonomous continuation mandate)
-— EDITOR-STAGE CLOSURE AUDIT (docs-only), per accepted
-PHASE4_EDITOR_ARCHITECTURE.md §11/§12: audit the implemented Editor
-stage (Tasks 10-14) against the §11 exit criteria with an explicit
-criterion-by-criterion evidence matrix (actual code/tests/real-
-infrastructure runs); classify remaining limitations honestly
-(deferred-by-design vs production-readiness backlog); record the
-disposition in docs (PHASE4_EDITOR_AUDIT.md) and update CURRENT_STATE.
-No runtime changes expected. After the audit: the QA architecture
-(design only) — which must define the QA_REVIEW stage truthfully,
-including the WORKFLOW.md "eligible media set" entry gate (no media
-pipeline exists: an explicit UNKNOWN/failing gate, never a silent
-pass), QA hard gates, and the QA_REVIEW -> AWAITING_HUMAN_REVIEW
-artifact-gated advance that closes Phase 4.
+PHASE 4 QA ARCHITECTURE (design only; authorized under the autonomous
+continuation mandate) — the next stage document
+(PHASE4_QA_ARCHITECTURE.md) per the mandate's order (Writer -> Editor
+-> QA -> Phase 4 closure at AWAITING_HUMAN_REVIEW). Binding
+constraints: QA validates the EXACT package pinned at QA_REVIEW entry
+(editorial_review_id + content_draft_id + content_hash) with
+deterministic HARD gates (absence of a result is never a pass); the
+WORKFLOW.md QA_REVIEW entry condition "eligible media set" must be
+handled truthfully — no media pipeline exists, so the media gate
+reports an explicit UNKNOWN/failing-or-waived-by-human state, never a
+silent pass; execution failure is never a QA verdict; workflow
+authority stays WorkflowService-only (QA_REVIEW ->
+AWAITING_HUMAN_REVIEW artifact-gated; QA_REVIEW -> CHANGES_REQUESTED
+via the Task 6 routing foundation with a context-validated responsible
+state; BLOCKED semantics untouched); append-only persistence with
+provenance to the exact reviewed versions; model-assisted signals (if
+any) follow the Editor pattern (policy signal, never Evidence, verdict
+computed deterministically); Phase 4 ENDS at AWAITING_HUMAN_REVIEW —
+APPROVED belongs to the later governance phase (ADR 0004). The design
+must end with §11/§12-style exit criteria and atomic
+dependency-correct implementation tasks, followed by QA implementation
+and the Phase 4 closure audit.
 
 Before implementing the affected integrations, resolve:
 
