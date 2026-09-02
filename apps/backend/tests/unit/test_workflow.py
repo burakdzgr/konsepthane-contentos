@@ -510,3 +510,248 @@ class TestMatrixAndHistory:
             "list_events",
             "get_latest_entry_event",
         }
+
+
+def advance_to_editing(session: Session, item_id: uuid.UUID) -> WorkflowService:
+    service = WorkflowService(session)
+    for target in (
+        WorkflowState.EVIDENCE_BUILDING,
+        WorkflowState.SEO_RESEARCH,
+        WorkflowState.BRIEFING,
+        WorkflowState.DRAFTING,
+        WorkflowState.EDITING,
+    ):
+        service.transition(
+            item_id,
+            target,
+            actor_origin=WorkflowActorOrigin.SYSTEM,
+            reason=f"advance to {target.value}",
+        )
+    return service
+
+
+class TestResponsibleStateRouting:
+    """Named CHANGES_REQUESTED responsible-state routing (Phase 4 Task 6)."""
+
+    def test_editing_rework_routes_to_recorded_responsible_state(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="taslak yeniden yazılmalı: bütçe bölümü zayıf",
+                artifact_refs={"content_draft_id": "61111111-2222-4333-8444-555555555555"},
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            session.commit()
+
+            events = WorkflowRepository(session).list_events(item.id)
+            entry = events[-1]
+            assert entry.to_state is WorkflowState.CHANGES_REQUESTED
+            # The responsible state is durably recorded in the validated
+            # entry event, alongside the caller's own refs.
+            assert entry.artifact_refs["responsible_state"] == "drafting"
+            assert entry.artifact_refs["content_draft_id"] == (
+                "61111111-2222-4333-8444-555555555555"
+            )
+
+            # Return-to-origin is now closed: the recorded responsible state
+            # is the ONLY exit.
+            with pytest.raises(InvalidWorkflowTransitionError):
+                service.transition(
+                    item.id,
+                    WorkflowState.EDITING,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="origin is not the responsible state here",
+                )
+            session.rollback()
+
+            service.transition(
+                item.id,
+                WorkflowState.DRAFTING,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="rework routed to the writer stage",
+            )
+            session.commit()
+            assert item.current_state is WorkflowState.DRAFTING
+            trail = [event.to_state for event in WorkflowRepository(session).list_events(item.id)]
+            assert trail[-3:] == [
+                WorkflowState.EDITING,
+                WorkflowState.CHANGES_REQUESTED,
+                WorkflowState.DRAFTING,
+            ]
+
+    def test_entry_without_responsible_state_keeps_return_to_origin(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="küçük düzeltmeler istendi",
+            )
+            session.commit()
+
+            with pytest.raises(InvalidWorkflowTransitionError):
+                service.transition(
+                    item.id,
+                    WorkflowState.DRAFTING,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="no responsible state was recorded",
+                )
+            session.rollback()
+
+            service.transition(
+                item.id,
+                WorkflowState.EDITING,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="düzeltmeler yapıldı",
+            )
+            session.commit()
+            assert item.current_state is WorkflowState.EDITING
+
+    def test_responsible_state_requires_changes_requested_target(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            with pytest.raises(InvalidWorkflowInputError):
+                service.transition(
+                    item.id,
+                    WorkflowState.QA_REVIEW,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="responsible state outside changes_requested",
+                    responsible_state=WorkflowState.DRAFTING,
+                )
+
+    def test_unpermitted_responsible_state_for_review_context(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            # From EDITING, only DRAFTING is in the fixed vocabulary.
+            with pytest.raises(InvalidWorkflowTransitionError):
+                service.transition(
+                    item.id,
+                    WorkflowState.CHANGES_REQUESTED,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="arbitrary target must be impossible",
+                    responsible_state=WorkflowState.QA_REVIEW,
+                )
+            session.rollback()
+
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = WorkflowService(session)
+            for target in (
+                WorkflowState.EVIDENCE_BUILDING,
+                WorkflowState.SEO_RESEARCH,
+                WorkflowState.BRIEFING,
+            ):
+                service.transition(
+                    item.id,
+                    target,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=f"advance to {target.value}",
+                )
+            # BRIEFING enters CHANGES_REQUESTED structurally, but has NO
+            # responsible-state vocabulary yet: naming one is rejected.
+            with pytest.raises(InvalidWorkflowTransitionError):
+                service.transition(
+                    item.id,
+                    WorkflowState.CHANGES_REQUESTED,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="no vocabulary for this context",
+                    responsible_state=WorkflowState.DRAFTING,
+                )
+
+    def test_artifact_refs_cannot_forge_responsible_state(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            with pytest.raises(InvalidWorkflowInputError):
+                service.transition(
+                    item.id,
+                    WorkflowState.CHANGES_REQUESTED,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="forged via raw refs",
+                    artifact_refs={"responsible_state": "drafting"},
+                )
+
+    def test_unrecognized_recorded_responsible_state_fails_closed(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="rework istendi",
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            session.commit()
+
+            # Simulate a corrupt durable record (SQLite harness has no
+            # append-only trigger); the service must fail closed, never
+            # silently reroute.
+            entry = WorkflowRepository(session).get_latest_entry_event(
+                item.id, WorkflowState.CHANGES_REQUESTED
+            )
+            assert entry is not None
+            entry.artifact_refs = {"responsible_state": "not-a-state"}
+            session.flush()
+
+            with pytest.raises(InvalidWorkflowTransitionError, match="unrecognized"):
+                service.transition(
+                    item.id,
+                    WorkflowState.DRAFTING,
+                    actor_origin=WorkflowActorOrigin.OPERATOR,
+                    reason="cannot resolve the durable record",
+                )
+
+    def test_blocked_semantics_are_untouched_by_routing(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            # DRAFTING-adjacent BLOCKED entry/resume still resolves purely
+            # from history (no responsible-state involvement).
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="rework",
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            service.transition(
+                item.id,
+                WorkflowState.DRAFTING,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="routed",
+            )
+            service.transition(
+                item.id,
+                WorkflowState.BLOCKED,
+                actor_origin=WorkflowActorOrigin.SYSTEM,
+                reason="brief superseded while drafting",
+            )
+            session.commit()
+            resumed = service.resolve_block(
+                item.id, reason="brief re-pinned", request_id="workflow-req-9"
+            )
+            session.commit()
+            assert resumed.current_state is WorkflowState.DRAFTING

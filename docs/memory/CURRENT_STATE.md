@@ -11,7 +11,8 @@ accepted, including the operator-required architecture correction pass;
 Task 2 Draft Persistence + Provenance Foundation COMPLETE;
 Task 3 Writer Validation & Originality Policies COMPLETE;
 Task 4 Writer Input Projection + Output Schema + Engine COMPLETE;
-Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE)
+Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE;
+Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2245,23 +2246,51 @@ access protection belongs to future deployment infrastructure.
 - Task 5 added no migration (head stays `0018`), no API/admin, no
   dependency changes; suite is 1125 backend + 135 admin, gate green
 
+- PHASE 4 Task 6 (named CHANGES_REQUESTED responsible-state routing
+  foundation) complete: WorkflowService-only enhancement (no migration,
+  no new tables — the durable record lives in the validated entry
+  event's artifact_refs JSONB under the service-reserved
+  `responsible_state` key): `transition()` gained a TYPED
+  `responsible_state: WorkflowState | None` parameter, legal only when
+  entering CHANGES_REQUESTED and only when the value is in the fixed
+  per-review-context vocabulary `PERMITTED_RESPONSIBLE_STATES`
+  (initially EDITING -> {DRAFTING} — Writer rework; contexts absent from
+  the map permit NO named responsible state); raw artifact_refs carrying
+  the reserved key are rejected (no forgery around the typed parameter);
+  the CHANGES_REQUESTED exit is derived ONLY from the durable entry
+  event — the recorded responsible state when one was named, else the
+  original return-to-origin fallback (full backward compatibility);
+  an unresolvable recorded value fails closed with a typed
+  InvalidWorkflowTransitionError (never silent rerouting); BLOCKED
+  semantics and the structural matrix untouched; never a generic state
+  setter — this closes the documented Phase 3 Task 2 return-to-origin
+  limitation, so EDITING -> CHANGES_REQUESTED(responsible=DRAFTING) ->
+  DRAFTING now works under WorkflowService with full append-only audit
+- Task 6 verified by 7 new WorkflowService tests (routing happy path
+  with audit trail, legacy return-to-origin, non-CR target rejection,
+  unpermitted-context rejection for EDITING and BRIEFING, forged-refs
+  rejection, corrupt-record fail-closed, BLOCKED regression through the
+  rework loop); suite is 1132 backend + 135 admin, gate green; schema
+  head stays `0018`
+
 ## Next immediate task
 
-PHASE 4 TASK 6 (authorized under the autonomous continuation mandate) —
-NAMED CHANGES_REQUESTED RESPONSIBLE-STATE ROUTING FOUNDATION, the
-prerequisite the accepted Writer architecture names before any rework
-exposure (PHASE4_WRITER_ARCHITECTURE.md §22 Task 6): WorkflowService
-enhancement only — when a transition enters CHANGES_REQUESTED, the
-validated entry event's artifact_refs must durably carry the named
-responsible state (context-validated target; initially EDITING ->
-DRAFTING is the only legal rework route), and leaving CHANGES_REQUESTED
-must route to that recorded responsible state (history-derived, with
-return-to-origin fallback semantics only where the architecture allows
-it); BLOCKED semantics stay untouched; NEVER a generic state setter or
-free-target endpoint. Expected: no migration (artifact_refs is existing
-JSONB), no API/admin surface, unit tests over WorkflowService +
-history validation. Task 7 (rework/regeneration commands + read models +
-admin) depends on Tasks 5 AND 6 both being complete.
+PHASE 4 TASK 7 (authorized under the autonomous continuation mandate) —
+WRITER REWORK + REGENERATION COMMAND SURFACE, READ MODELS, AND ADMIN,
+per accepted PHASE4_WRITER_ARCHITECTURE.md §22 Task 7 (dependencies:
+Tasks 5 AND 6, both COMPLETE): explicit operator commands (generate,
+regenerate with required reason via retry_number+1 semantics,
+operator-authored draft submission with the manual_input_hash
+idempotency identity, rework-return EDITING ->
+CHANGES_REQUESTED(responsible=DRAFTING) -> DRAFTING through
+WorkflowService); `/internal/editorial` draft read projections
+(versions, body, claim -> evidence chain, uncertainty coverage,
+attempts, workflow history) + private admin draft screens following the
+Phase 3 Task 14 patterns (server-only boundary, required reasons,
+truthful unknowns rendered as UNKNOWN never 0/PASS, no raw provider
+data, no provider keys in the browser). Migration: none. Acceptance:
+operator story inspectable and drivable end-to-end including
+rework/regeneration; leak tests. Non-goals: Editor UI, publication.
 
 Before implementing the affected integrations, resolve:
 

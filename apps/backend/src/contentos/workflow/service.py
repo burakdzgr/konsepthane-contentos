@@ -41,6 +41,24 @@ MAX_ARTIFACT_REFS_ITEMS = 50
 MAX_ARTIFACT_REFS_KEY_LENGTH = 100
 MAX_ARTIFACT_REFS_STRING_LENGTH = 500
 
+# Named responsible-state routing (PHASE4_WRITER_ARCHITECTURE.md §13): when a
+# transition ENTERS CHANGES_REQUESTED, the caller may name the state
+# responsible for the rework via the typed ``responsible_state`` parameter.
+# The service validates it against this per-review-context vocabulary, records
+# it in the validated entry event's artifact_refs under the reserved key, and
+# derives the EXIT from that durable record. Entries without a recorded
+# responsible state keep the original return-to-origin behavior. This is not a
+# generic state setter: the vocabulary is fixed here, never caller-extensible.
+RESPONSIBLE_STATE_REF_KEY = "responsible_state"
+
+PERMITTED_RESPONSIBLE_STATES: dict[WorkflowState, frozenset[WorkflowState]] = {
+    # From EDITING, rework responsibility may be routed to the upstream
+    # production stage only (Writer rework: EDITING -> CHANGES_REQUESTED
+    # (responsible=DRAFTING) -> DRAFTING). Later review loops extend this
+    # map explicitly; contexts absent here permit NO named responsible state.
+    WorkflowState.EDITING: frozenset({WorkflowState.DRAFTING}),
+}
+
 # The structural canonical transition matrix from docs/WORKFLOW.md. BLOCKED
 # and CHANGES_REQUESTED exits are resolved dynamically from durable history
 # (see _allowed_targets), never from a caller-supplied arbitrary target.
@@ -173,18 +191,36 @@ class WorkflowService:
         reason: str,
         artifact_refs: dict[str, Any] | None = None,
         request_id: str | None = None,
+        responsible_state: WorkflowState | None = None,
     ) -> EditorialWorkItem:
         """Apply one structurally validated transition under a row lock.
 
         The transition is validated against the state actually observed under
         the lock, so a raced/stale request fails with a typed error instead of
         appending impossible history.
+
+        ``responsible_state`` is legal ONLY when entering CHANGES_REQUESTED
+        and only when the value is in the fixed per-context vocabulary
+        (PERMITTED_RESPONSIBLE_STATES); the service records it durably in the
+        entry event's artifact_refs and later derives the exit from it.
         """
         if not isinstance(to_state, WorkflowState):
             raise InvalidWorkflowInputError("to_state must be a WorkflowState value")
         _validate_actor_origin(actor_origin)
         cleaned_reason = _validate_bounded_text("reason", reason, MAX_REASON_LENGTH)
         validated_refs = _validate_artifact_refs(artifact_refs)
+        if RESPONSIBLE_STATE_REF_KEY in validated_refs:
+            raise InvalidWorkflowInputError(
+                "artifact_refs may not set 'responsible_state' directly; "
+                "use the typed responsible_state parameter"
+            )
+        if responsible_state is not None:
+            if not isinstance(responsible_state, WorkflowState):
+                raise InvalidWorkflowInputError("responsible_state must be a WorkflowState value")
+            if to_state is not WorkflowState.CHANGES_REQUESTED:
+                raise InvalidWorkflowInputError(
+                    "responsible_state applies only when entering CHANGES_REQUESTED"
+                )
         validated_request_id = _validate_request_id(request_id)
 
         item = self._repository.get_by_id_for_update(work_item_id)
@@ -197,6 +233,17 @@ class WorkflowService:
             raise InvalidWorkflowTransitionError(
                 f"transition '{current.value}' -> '{to_state.value}' is not allowed"
             )
+        if responsible_state is not None:
+            permitted = PERMITTED_RESPONSIBLE_STATES.get(current, frozenset())
+            if responsible_state not in permitted:
+                raise InvalidWorkflowTransitionError(
+                    f"'{responsible_state.value}' is not a permitted responsible "
+                    f"state when entering changes_requested from '{current.value}'"
+                )
+            validated_refs = {
+                **validated_refs,
+                RESPONSIBLE_STATE_REF_KEY: responsible_state.value,
+            }
 
         now = datetime.now(UTC)
         if to_state is WorkflowState.BLOCKED:
@@ -295,12 +342,28 @@ class WorkflowService:
                 targets.add(prior)
             return frozenset(targets)
         if current is WorkflowState.CHANGES_REQUESTED:
-            # WORKFLOW.md: "return to the named responsible state". Task 2
-            # limitation (documented): only return-to-origin is supported —
-            # the state the item entered CHANGES_REQUESTED from, derived from
-            # durable history. A richer named-responsible-state mechanism
-            # belongs to the phase implementing the review loops.
-            prior = self._entry_from_state(item.id, WorkflowState.CHANGES_REQUESTED)
+            # WORKFLOW.md: "return to the named responsible state". The exit
+            # target is derived ONLY from the durable entry event: the
+            # recorded responsible state when one was named at entry, else
+            # return-to-origin (the state the item entered CHANGES_REQUESTED
+            # from). Never a caller-supplied target.
+            event = self._repository.get_latest_entry_event(
+                item.id, WorkflowState.CHANGES_REQUESTED
+            )
+            if event is None:
+                return frozenset()
+            recorded = (event.artifact_refs or {}).get(RESPONSIBLE_STATE_REF_KEY)
+            if recorded is not None:
+                try:
+                    return frozenset({WorkflowState(recorded)})
+                except ValueError:
+                    # Fail closed and loudly: never silently reroute when the
+                    # durable record cannot be resolved.
+                    raise InvalidWorkflowTransitionError(
+                        "durable history records an unrecognized responsible "
+                        "state for changes_requested"
+                    ) from None
+            prior = event.from_state
             return frozenset({prior}) if prior is not None else frozenset()
         return STRUCTURAL_TRANSITIONS.get(current, frozenset())
 
