@@ -12,7 +12,7 @@ Docs-only; describes the system as built.
 | PostgreSQL URL (with password) | `DATABASE_URL` | `SecretStr` | backend + worker only |
 | Redis broker/result URLs | `REDIS_BROKER_URL`, `REDIS_RESULT_URL` | `SecretStr` | backend + worker only |
 | OpenAI API key | `OPENAI_API_KEY` | `SecretStr`, optional | worker provider adapters only, lazily |
-| Publishing API key | `PUBLISHING_API_KEY` | `SecretStr`, default-None | the HTTP transport only; **unset today by design** (live integration blocked on the open contract/auth/owner inputs) |
+| Publishing API key | `PUBLISHING_API_KEY` | `SecretStr`, default-None | the HTTP transport only; the client is contract-complete (`docs/PUBLISHING_API_CONTRACT.md`) — **the value stays unset until the operator deploys the Konsepthane endpoint and issues the service token** |
 | User passwords | — (CLI env `CONTENTOS_NEW_PASSWORD` or prompt) | argon2id hash at rest | never argv, never logged, never stored raw |
 | Session tokens | — | sha256 `token_hash` at rest | the raw token exists once in the login response and then only in the admin's HttpOnly `contentos_session` cookie |
 | Admin → backend internal URL | admin `CONTENTOS_INTERNAL_API_URL` | server env | admin server side only; leak-tested never to render |

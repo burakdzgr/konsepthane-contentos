@@ -133,6 +133,24 @@ governed capability, not a gap.
    publishing verification scripts), session hygiene, spend controls,
    capped listings, secrets management, production media store.
 
+## Addendum (2026-09-02, post-closure): contract accepted, client live-ready
+
+The operator supplied and accepted the **Publishing API v1 contract**
+(`docs/PUBLISHING_API_CONTRACT.md`), resolving the contract, the auth
+method (Bearer service token) and the ownership declaration
+(Konsepthane main backend). `HttpPublishingTransport` was upgraded
+from skeleton to contract-complete — content-addressed
+`PUT /v1/media/{sha256}` before the idempotent
+`POST /v1/publications` with the correlation header, 429 treated as
+transient per the contract note — and proven two ways: a
+contract-faithful in-process double (unit suite) and a REAL socket
+HTTP server on real PG + Redis driven by the real publish task
+(media PUT with server-side SHA recomputation → PUBLISHED →
+wire-level idempotent redelivery). What remains before production
+publishing: the Konsepthane backend implements the receiving side in
+its own repository, and the operator supplies the deployed
+`CONTENTOS_PUBLISHING_API_URL` + `CONTENTOS_PUBLISHING_API_KEY`.
+
 ## Verdict
 
 Phase 7 — Publishing (ContentOS side) — is **CLOSED**: 9/9 exit

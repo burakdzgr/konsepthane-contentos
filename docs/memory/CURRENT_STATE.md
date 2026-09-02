@@ -3365,29 +3365,72 @@ the inputs listed below.
   NULL for junk) — suite 1302 backend + 232 admin, gate green; no
   migration (head stays `0026`)
 
-## Current standing state (all phases 1–7 CLOSED)
+- PUBLISHING LIVE INTEGRATION (client side) complete: the operator
+  supplied and ACCEPTED the Publishing API v1 contract — committed
+  verbatim as `docs/PUBLISHING_API_CONTRACT.md` (Bearer service auth;
+  content-addressed `PUT /v1/media/{sha256}` with receiver-side SHA
+  recomputation and duplicate convergence; idempotent
+  `POST /v1/publications` with replay-200/created-201, the
+  `idempotency_conflict` 409, `publication_ref` as the one required
+  result field; receiver-side rendering with a no-enrichment rule;
+  atomicity: durable before success). `HttpPublishingTransport`
+  upgraded from skeleton to contract-complete: uploads every manifest
+  SHA before publishing (Content-Type / X-Content-SHA256 /
+  `media:<sha>` idempotency headers; media_ref validated), sends
+  `X-Request-Id` (the transport protocol + fake + task gained a
+  `request_id` kwarg), treats 429 as TRANSIENT per the contract note
+  (`*_rate_limited` → transport_error → bounded retries, never a
+  terminal BLOCK), keeps all other 4xx as rejected_by_api with
+  sanitized classes, and reads store bytes only through the bounded
+  reader (reader failure = `publishing_media_read_failed`, nothing
+  sent). The receiving side lives in the Konsepthane main repo
+  (locally at C:\Users\BURAK\Desktop\ilham — a NestJS monolith with NO
+  ContentOS endpoint yet); implementing it there is the Konsepthane
+  side's task and OUTSIDE this mandate's repository.
+- Verified: 9 new transport tests against a contract-faithful
+  in-process double (uploads-then-publish with every contract header;
+  idempotent replay with media convergence; waived-empty manifest
+  skips media; receiver rejects tampered bytes via SHA recompute with
+  the publish never attempted; same-key-different-payload 409;
+  429-as-transient; timeout + missing-ref honesty; unreadable store
+  never reaches the wire; settings gating unchanged) — suite 1311
+  backend + 232 admin, gate green — PLUS the wire-level real-infra
+  proof: on real PG + Redis, a REAL socket HTTP server implementing
+  the contract received the real transport's media PUT (server-side
+  SHA recomputation) and idempotent POST from the real publish task
+  over a package with a REAL media binding → PUBLISHED, with
+  redelivery replayed at the wire (one publication total). No
+  migration (head stays `0026`).
 
-The full loop research → … → APPROVED → SCHEDULED → PUBLISHING →
-PUBLISHED runs end to end on real infrastructure (the CI
-real-infrastructure lane proves it on every push). ALL remaining
-feature work is blocked on operator inputs:
+## Current standing state (all phases 1–7 CLOSED; publishing client live-ready)
 
-- Publishing LIVE integration: the Publishing API contract, service
-  authentication method, production owner sign-off.
+The full loop research → … → PUBLISHED runs end to end on real
+infrastructure (CI lane on every push), and the publishing client now
+implements the accepted v1 wire contract. Remaining feature work and
+its blockers:
+
+- Publishing GO-LIVE: (a) the Konsepthane backend implements the
+  receiving API in its own repo (owner: Konsepthane, per the
+  contract), (b) the operator deploys it and supplies
+  `CONTENTOS_PUBLISHING_API_URL` + `CONTENTOS_PUBLISHING_API_KEY` —
+  then a staging end-to-end run.
 - Distribution (Pinterest): account/API access + distribution policy.
 - Analytics: data sources + content-identity mapping.
 - Refresh: follows analytics.
 
 ## Next immediate task
 
-HOLD FOR OPERATOR INPUTS. Every dependency-correct implementable task
-is done: phases 1–7 closed with green audits, the production-readiness
-backlog burned down, CI green incl. the real-infrastructure lane. The
-next tasks in dependency order all require the operator inputs above.
-When any input arrives: Publishing live integration first (replace the
-skeleton contract, wire the real transport settings, run the
-end-to-end against a staging endpoint), then Distribution per a fresh
-PHASE8_DISTRIBUTION_ARCHITECTURE.md. Routine autonomous work that
+HOLD FOR OPERATOR INPUTS (updated): the ContentOS side of publishing
+is contract-complete and wire-verified. Next in dependency order when
+inputs arrive: (1) staging URL + key → run
+`verify_pg_live_transport`-style end-to-end against the REAL deployed
+endpoint and flip production config; (2) Pinterest inputs →
+PHASE8_DISTRIBUTION_ARCHITECTURE.md. If the operator explicitly
+authorizes work INSIDE the Konsepthane repo
+(C:\Users\BURAK\Desktop\ilham), the receiving-side implementation
+(NestJS module: media PUT + publications POST per the contract) is
+specified and ready to build — not started autonomously because that
+repository is outside this mandate. Routine autonomous work that
 remains legitimate meanwhile: keeping CI green, dependency/lock
 updates when needed, and docs truthfulness.
 

@@ -1034,6 +1034,7 @@ def register_editorial_pipeline_tasks(
                     package.media_manifest,
                     runtime.create_media_store().read,
                     publishing.idempotency_key(package),
+                    request_id=_current_request_id(self),
                 )
                 attempt = publishing.record_attempt(
                     package,
