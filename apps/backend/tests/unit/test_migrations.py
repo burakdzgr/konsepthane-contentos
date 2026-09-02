@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0022"]
+    assert script.get_heads() == ["0023"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0023").down_revision == "0022"
     assert script.get_revision("0022").down_revision == "0021"
     assert script.get_revision("0021").down_revision == "0020"
     assert script.get_revision("0020").down_revision == "0019"
@@ -376,6 +377,24 @@ def test_human_decision_migration_contains_identity_and_protection() -> None:
     # A decision is a human event: no machine identity, no status field.
     for forbidden in ("worker_id", "'system'", "status VARCHAR", "superseded"):
         assert forbidden not in sql
+
+
+def test_media_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0022:0023")
+
+    assert "CREATE TABLE media_assets" in sql
+    assert "uq_media_assets_content" in sql
+    assert "ck_media_assets_origin_attempt" in sql
+    assert "ck_media_assets_alt_text_nonempty" in sql
+    assert "ck_media_assets_license_nonempty" in sql
+    assert "CREATE TRIGGER trg_media_assets_append_only" in sql
+    assert "CREATE TABLE media_need_satisfactions" in sql
+    assert "uq_media_satisfactions_active" in sql
+    assert "CREATE TRIGGER trg_media_need_satisfactions_guarded" in sql
+    assert "CREATE TABLE media_satisfaction_events" in sql
+    assert "CREATE TRIGGER trg_media_satisfaction_events_append_only" in sql
+    # Human-only in this phase: no machine actor vocabulary anywhere.
+    assert "worker_id" not in sql and "'system'" not in sql
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:

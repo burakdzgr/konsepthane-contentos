@@ -2937,22 +2937,53 @@ access protection belongs to future deployment infrastructure.
   `0023`; commands + read models + streaming route; QA gate v2; AI
   image generation; admin surface; closure audit)
 
+- PHASE 6 Task M1 (media foundation) complete: migration `0023` —
+  `media_assets` (IMMUTABLE by trigger, content-addressed with UNIQUE
+  sha256 so identical bytes converge on one asset by construction;
+  origin CHECK `(ai_generated) = (generation_attempt_id IS NOT NULL)`
+  with UNIQUE attempt; REQUIRED alt_text + license_note; bounded
+  media_type CHECK {png,jpeg,webp}; named `created_by_user_id` FK
+  users RESTRICT), `media_need_satisfactions` (the human binding
+  need→asset: two-shape guarded supersession trigger, partial-unique
+  ACTIVE per (work_item, brief, need_index), named
+  `satisfied_by_user_id`, required reason, microsecond ORM-side
+  created_at) and append-only `media_satisfaction_events` (human-only:
+  actor_user_id NOT NULL); `contentos.media` — `MediaStore`
+  (content-addressed sharded byte store under new setting
+  `media_store_root`, atomic writes, integrity-checked reads, keys
+  internal), `MediaService` (register_upload with server-side hashing,
+  magic-sniffed type matching — the client's declared type is never
+  trusted, size bound 10 MiB, honest hash-dedupe returning the
+  existing asset; satisfy/replace/unsatisfy state-bounded to
+  {DRAFTING, EDITING, QA_REVIEW, CHANGES_REQUESTED} against the
+  ACTIVE accepted brief with need_index validation; idempotent
+  same-asset satisfy; needs_coverage read primitive with honest
+  UNSATISFIED)
+- Task M1 verified: 7 new unit tests (store content-addressing +
+  integrity + key hygiene; upload provenance + dedupe; the full bad
+  input matrix incl. type/magic mismatch and missing alt/license; the
+  satisfy→replace→unsatisfy lifecycle with pointers + audit events;
+  unknown-need/asset + frozen-state refusals; coverage None for
+  unknown items) — suite 1264 backend + 216 admin, gate green; REAL
+  PostgreSQL 16 verification passed (Phase 3 chain seeded to DRAFTING
+  via real services, 0023→0022→0023 cycle over populated data, full
+  MediaService lifecycle on PG, trigger negatives for all three
+  tables, partial-unique ACTIVE index negative); schema head `0023`
+
 ## Next immediate task
 
-PHASE 6 TASK M1 (authorized under the autonomous continuation mandate)
-— MEDIA FOUNDATION, per PHASE6_MEDIA_ARCHITECTURE.md §3/§7: migration
-`0023` (`media_assets` append-only content-addressed with the
-origin/attempt CHECK + `media_need_satisfactions` with the two-shape
-guarded supersession trigger and partial-unique ACTIVE per
-(work_item, brief, need_index)); `MediaStore` (put/open/exists by
-sha256 under a `media_store_root` setting; keys internal);
-`contentos.media` service — asset registration (server-side hashing,
-dedupe by hash, required alt_text/license fields, named creator) and
-satisfy/replace/unsatisfy with the §2 state bounds and required
-reasons; unit tests; REAL PostgreSQL verification (0022→0023 cycle
-over populated data + trigger negatives). Then M2 commands + read
-models. Publishing phase afterwards must consume
-`require_current_approval`.
+PHASE 6 TASK M2 (authorized under the autonomous continuation mandate)
+— MEDIA COMMANDS + READ MODELS, per PHASE6_MEDIA_ARCHITECTURE.md
+§4/§5/§7: operator routes — `POST /internal/editorial/media-assets`
+(multipart upload, bounded, server-side hashing; app wires a
+MediaStore from `media_store_root`), satisfy/unsatisfy commands on
+`work-items/{id}/media-needs/{index}`, and the authenticated
+byte-streaming route `GET /internal/editorial/media-assets/{id}/content`
+(correct content-type; no storage internals); the
+`work-items/{id}/media` read model (needs coverage with asset
+metadata + satisfaction history; storage keys and credential material
+never leave by construction); leak tests; no migration. Then M3 QA
+gate v2 (`satisfied` + exact unmet indexes under `qa-gates/2`).
 
 Before implementing the affected integrations, resolve:
 
