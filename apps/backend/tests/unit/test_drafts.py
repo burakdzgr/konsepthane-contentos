@@ -9,15 +9,22 @@ from sqlalchemy import func, select
 import contentos.drafts.models  # noqa: F401  (register tables before create_all)
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
+from contentos.briefs.enums import BriefClaimKind
 from contentos.briefs.repository import BriefRepository
 from contentos.briefs.service import BriefService
 from contentos.drafts.enums import DraftBlockKind, DraftOrigin, DraftStatus
 from contentos.drafts.errors import (
     DraftInputError,
+    DraftPolicyViolationError,
     DraftPreconditionError,
     InvalidDraftAttemptError,
 )
 from contentos.drafts.models import ContentDraft, DraftClaimUsage, DraftStatusEvent
+from contentos.drafts.policies import (
+    WriterOriginalityPolicy,
+    build_required_handling_manifest,
+    validate_originality,
+)
 from contentos.drafts.repository import DraftRepository
 from contentos.drafts.service import DraftService
 from contentos.drafts.values import (
@@ -28,6 +35,7 @@ from contentos.drafts.values import (
     DraftBodyInput,
     DraftSection,
 )
+from contentos.evidence_packs.repository import EvidencePackRepository
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
 from contentos.workflow.service import WorkflowService
 
@@ -40,6 +48,8 @@ def harness() -> Harness:
 class AcceptedContext:
     context: Context
     claim_ids: list[uuid.UUID]
+    handling_ids: tuple[str, ...]
+    inference_claim_id: uuid.UUID
 
 
 def accepted_context(harness: Harness) -> AcceptedContext:
@@ -52,9 +62,26 @@ def accepted_context(harness: Harness) -> AcceptedContext:
             context.brief_id, reason="kapsam ve kanıt haritası eksiksiz"
         )
         session.commit()
-        claims = BriefRepository(session).list_claims(context.brief_id)
+        briefs = BriefRepository(session)
+        claims = briefs.list_claims(context.brief_id)
+        brief = briefs.get_brief(context.brief_id)
+        assert brief is not None
+        packs = EvidencePackRepository(session)
+        pack = packs.get_pack(brief.evidence_pack_id)
+        assert pack is not None
+        manifest = build_required_handling_manifest(
+            brief, pack, packs.list_contradictions(pack.id), claims
+        )
         result.context = context
-        result.claim_ids = [claim.id for claim in claims]
+        by_kind = {claim.claim_kind: claim.id for claim in claims}
+        # Semantically fixed order: [0]=factual, [1]=source_assertion — the
+        # body builder's wording depends on it.
+        result.claim_ids = [
+            by_kind[BriefClaimKind.FACTUAL],
+            by_kind[BriefClaimKind.SOURCE_ASSERTION],
+        ]
+        result.inference_claim_id = by_kind[BriefClaimKind.INFERENCE]
+        result.handling_ids = tuple(entry.handling_id for entry in manifest)
     return result
 
 
@@ -69,8 +96,22 @@ def block(
     return DraftBlock(block_id=block_id, kind=kind, text=text, claim_refs=claim_refs, **kwargs)  # type: ignore[arg-type]
 
 
-def valid_body(claim_ids: list[uuid.UUID]) -> DraftBodyInput:
-    """Covers the harness brief's required sections: giris, plan, butce."""
+def valid_body(claim_ids: list[uuid.UUID], handling_ids: tuple[str, ...] = ()) -> DraftBodyInput:
+    """Covers the harness brief's required sections AND its handling manifest."""
+    coverage_blocks: tuple[DraftBlock, ...] = ()
+    if handling_ids:
+        coverage_blocks = (
+            DraftBlock(
+                block_id="kapsam-notlari",
+                kind=DraftBlockKind.CALLOUT,
+                text=(
+                    "Bu rehberdeki bilgiler sınırlı kaynak sinyaline dayanır; "
+                    "eksik arama verileri ve yerel farklılıklar belirsizlik "
+                    "yaratabilir, çelişen süre tahminleri aralık olarak verilir."
+                ),
+                uncertainty_refs=handling_ids,
+            ),
+        )
     return DraftBodyInput(
         sections=(
             DraftSection(
@@ -83,7 +124,8 @@ def valid_body(claim_ids: list[uuid.UUID]) -> DraftBodyInput:
                         "Kaynaklara göre konsept detayları netleştirilmelidir.",
                         claim_refs=(claim_ids[0],),
                     ),
-                ),
+                )
+                + coverage_blocks,
             ),
             DraftSection(
                 key="plan",
@@ -117,7 +159,7 @@ class TestOperatorDraftCreation:
         with harness.session() as session:
             creation = DraftService(session).create_operator_draft(
                 accepted.context.brief_id,
-                valid_body(accepted.claim_ids),
+                valid_body(accepted.claim_ids, accepted.handling_ids),
                 title_proposal="Evde balon temalı parti planı",
             )
             session.commit()
@@ -136,10 +178,19 @@ class TestOperatorDraftCreation:
             assert len(draft.content_hash) == 64
             assert draft.manual_input_hash is not None
             assert len(draft.manual_input_hash) == 64
-            # Truthful Task-2 snapshots: structural-only, nothing overclaimed.
-            assert draft.validation_policy_snapshot["name"] == "writer-structural"
-            assert draft.uncertainty_coverage == {"status": "not_evaluated"}
-            assert draft.originality_result == {"outcome": "not_checked"}
+            # Task-3 policy snapshots + truthful evaluation records.
+            assert draft.validation_policy_snapshot["name"] == "writer-validation"
+            assert draft.validation_policy_snapshot["version"] == "1"
+            assert draft.validation_policy_snapshot["exclusions_mechanically_checked"] is False
+            assert draft.originality_policy_snapshot["name"] == "writer-originality"
+            assert draft.uncertainty_coverage["status"] == "evaluated"
+            assert draft.uncertainty_coverage["total"] == len(accepted.handling_ids)
+            assert all(entry["block_ids"] for entry in draft.uncertainty_coverage["entries"])
+            assert draft.originality_result["outcome"] == "passed"
+            assert (
+                draft.originality_result["checks"]["source_structure"]["brief_guard_outcome"]
+                == "passed"
+            )
 
             usages = DraftRepository(session).list_claim_usages(draft.id)
             anchors = {(u.brief_claim_id, u.section_key, u.block_id) for u in usages}
@@ -153,11 +204,11 @@ class TestOperatorDraftCreation:
         with harness.session() as session:
             service = DraftService(session)
             first = service.create_operator_draft(
-                accepted.context.brief_id, valid_body(accepted.claim_ids)
+                accepted.context.brief_id, valid_body(accepted.claim_ids, accepted.handling_ids)
             )
             session.commit()
             second = service.create_operator_draft(
-                accepted.context.brief_id, valid_body(accepted.claim_ids)
+                accepted.context.brief_id, valid_body(accepted.claim_ids, accepted.handling_ids)
             )
             session.commit()
             assert second.created is False
@@ -170,26 +221,16 @@ class TestOperatorDraftCreation:
         with harness.session() as session:
             service = DraftService(session)
             first = service.create_operator_draft(
-                accepted.context.brief_id, valid_body(accepted.claim_ids)
+                accepted.context.brief_id, valid_body(accepted.claim_ids, accepted.handling_ids)
             )
             session.commit()
 
-            changed = valid_body(accepted.claim_ids)
-            changed = DraftBodyInput(
-                sections=changed.sections
-                + (
-                    DraftSection(
-                        key="giris",
-                        heading="x",
-                        blocks=(block("z-1"),),
-                    ),
-                )
-            )
             # A substantively different body without a reason is refused.
+            base = valid_body(accepted.claim_ids, accepted.handling_ids)
             different = DraftBodyInput(
                 sections=(
-                    valid_body(accepted.claim_ids).sections[0],
-                    valid_body(accepted.claim_ids).sections[1],
+                    base.sections[0],
+                    base.sections[1],
                     DraftSection(
                         key="butce",
                         heading="Bütçe dostu öneriler (revize)",
@@ -233,7 +274,10 @@ class TestOperatorDraftCreation:
         accepted = accepted_context(harness)
         with harness.session() as session:
             service = DraftService(session)
-            service.create_operator_draft(accepted.context.brief_id, valid_body(accepted.claim_ids))
+            service.create_operator_draft(
+                accepted.context.brief_id,
+                valid_body(accepted.claim_ids, accepted.handling_ids),
+            )
             session.commit()
             actives = session.scalar(
                 select(func.count())
@@ -246,7 +290,9 @@ class TestOperatorDraftCreation:
 class TestStructuralGates:
     def test_missing_required_section_fails(self, harness: Harness) -> None:
         accepted = accepted_context(harness)
-        body = DraftBodyInput(sections=valid_body(accepted.claim_ids).sections[:2])
+        body = DraftBodyInput(
+            sections=valid_body(accepted.claim_ids, accepted.handling_ids).sections[:2]
+        )
         with harness.session() as session:
             with pytest.raises(DraftInputError, match="butce"):
                 DraftService(session).create_operator_draft(accepted.context.brief_id, body)
@@ -254,7 +300,7 @@ class TestStructuralGates:
     def test_unknown_section_fails(self, harness: Harness) -> None:
         accepted = accepted_context(harness)
         body = DraftBodyInput(
-            sections=valid_body(accepted.claim_ids).sections
+            sections=valid_body(accepted.claim_ids, accepted.handling_ids).sections
             + (DraftSection(key="bonus", heading="Ekstra", blocks=(block("bonus-1"),)),)
         )
         with harness.session() as session:
@@ -263,7 +309,7 @@ class TestStructuralGates:
 
     def test_foreign_claim_ref_fails(self, harness: Harness) -> None:
         accepted = accepted_context(harness)
-        body = valid_body([accepted.claim_ids[0], uuid.uuid4()])
+        body = valid_body([accepted.claim_ids[0], uuid.uuid4()], accepted.handling_ids)
         with harness.session() as session:
             with pytest.raises(DraftInputError, match="not a claim of the pinned brief"):
                 DraftService(session).create_operator_draft(accepted.context.brief_id, body)
@@ -279,7 +325,7 @@ class TestStructuralGates:
     )
     def test_url_html_script_ban(self, harness: Harness, bad_text: str) -> None:
         accepted = accepted_context(harness)
-        sections = valid_body(accepted.claim_ids).sections
+        sections = valid_body(accepted.claim_ids, accepted.handling_ids).sections
         body = DraftBodyInput(
             sections=(
                 DraftSection(
@@ -300,13 +346,13 @@ class TestStructuralGates:
             with pytest.raises(DraftInputError, match="forbidden"):
                 DraftService(session).create_operator_draft(
                     accepted.context.brief_id,
-                    valid_body(accepted.claim_ids),
+                    valid_body(accepted.claim_ids, accepted.handling_ids),
                     title_proposal="Harika plan https://spam.example",
                 )
 
     def test_duplicate_block_ids_across_sections_fail(self, harness: Harness) -> None:
         accepted = accepted_context(harness)
-        sections = valid_body(accepted.claim_ids).sections
+        sections = valid_body(accepted.claim_ids, accepted.handling_ids).sections
         body = DraftBodyInput(
             sections=sections[:2]
             + (
@@ -323,7 +369,7 @@ class TestStructuralGates:
 
     def test_placeholder_blocks_reference_real_brief_needs(self, harness: Harness) -> None:
         accepted = accepted_context(harness)
-        base = valid_body(accepted.claim_ids).sections
+        base = valid_body(accepted.claim_ids, accepted.handling_ids).sections
 
         # Positive: the harness brief carries exactly one link and one media need.
         good = DraftBodyInput(
@@ -418,7 +464,7 @@ class TestPreconditions:
             session.commit()
             with pytest.raises(DraftPreconditionError, match="DRAFTING"):
                 DraftService(session).create_operator_draft(
-                    accepted.context.brief_id, valid_body(accepted.claim_ids)
+                    accepted.context.brief_id, valid_body(accepted.claim_ids, accepted.handling_ids)
                 )
 
     def test_unknown_brief_is_refused(self, harness: Harness) -> None:
@@ -465,7 +511,7 @@ class TestGeneratedDraftCreation:
             service = DraftService(session)
             first = service.create_generated_draft(
                 accepted.context.brief_id,
-                valid_body(accepted.claim_ids),
+                valid_body(accepted.claim_ids, accepted.handling_ids),
                 generation_attempt=attempt,
             )
             session.commit()
@@ -477,7 +523,7 @@ class TestGeneratedDraftCreation:
 
             redelivered = service.create_generated_draft(
                 accepted.context.brief_id,
-                valid_body(accepted.claim_ids),
+                valid_body(accepted.claim_ids, accepted.handling_ids),
                 generation_attempt=attempt,
             )
             assert redelivered.created is False
@@ -499,7 +545,7 @@ class TestGeneratedDraftCreation:
             session.add_all([wrong_purpose, failed, foreign])
             session.commit()
             service = DraftService(session)
-            body = valid_body(accepted.claim_ids)
+            body = valid_body(accepted.claim_ids, accepted.handling_ids)
             with pytest.raises(InvalidDraftAttemptError, match="purpose"):
                 service.create_generated_draft(
                     accepted.context.brief_id, body, generation_attempt=wrong_purpose
@@ -518,7 +564,7 @@ class TestGeneratedDraftCreation:
         with harness.session() as session:
             service = DraftService(session)
             manual = service.create_operator_draft(
-                accepted.context.brief_id, valid_body(accepted.claim_ids)
+                accepted.context.brief_id, valid_body(accepted.claim_ids, accepted.handling_ids)
             )
             session.commit()
             attempt = writer_attempt(accepted.context.brief_id)
@@ -526,7 +572,7 @@ class TestGeneratedDraftCreation:
             session.commit()
             generated = service.create_generated_draft(
                 accepted.context.brief_id,
-                valid_body(accepted.claim_ids),
+                valid_body(accepted.claim_ids, accepted.handling_ids),
                 generation_attempt=attempt,
                 supersede_reason="yazar motoru sürümü tercih edildi",
             )
@@ -535,3 +581,164 @@ class TestGeneratedDraftCreation:
             assert generated.superseded_draft_id == manual.draft.id
             active = DraftRepository(session).get_active_draft(accepted.context.work_item_id)
             assert active is not None and active.id == generated.draft.id
+
+
+class TestWriterPolicies:
+    def base_sections(self, accepted: AcceptedContext) -> tuple[DraftSection, ...]:
+        return valid_body(accepted.claim_ids, accepted.handling_ids).sections
+
+    def with_butce(self, accepted: AcceptedContext, extra: DraftBlock) -> DraftBodyInput:
+        sections = self.base_sections(accepted)
+        butce = sections[2]
+        return DraftBodyInput(
+            sections=sections[:2]
+            + (DraftSection(key="butce", heading=butce.heading, blocks=butce.blocks + (extra,)),)
+        )
+
+    def test_missing_handling_coverage_fails_closed(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        body = valid_body(accepted.claim_ids)  # no coverage callout at all
+        with harness.session() as session:
+            with pytest.raises(DraftPolicyViolationError, match="disappeared"):
+                DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+
+    def test_unknown_handling_ref_fails_closed(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        body = self.with_butce(
+            accepted,
+            DraftBlock(
+                block_id="uydurma-not",
+                kind=DraftBlockKind.CALLOUT,
+                text="Uydurulmuş bir belirsizlik notu.",
+                uncertainty_refs=("hayali-not",),
+            ),
+        )
+        with harness.session() as session:
+            with pytest.raises(DraftPolicyViolationError, match="unknown handling"):
+                DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+
+    def test_numeric_assertion_without_claim_fails(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        body = self.with_butce(
+            accepted,
+            block("fiyat-1", "Ortalama parti bütçesi 2500 lira tutar."),
+        )
+        with harness.session() as session:
+            with pytest.raises(DraftPolicyViolationError, match="numeric assertion"):
+                DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+
+    def test_numeric_with_claim_binding_passes(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        body = self.with_butce(
+            accepted,
+            block(
+                "fiyat-2",
+                "Kaynağa göre bütçe kalemleri 3 ana grupta toplanabilir.",
+                claim_refs=(accepted.claim_ids[1],),
+            ),
+        )
+        with harness.session() as session:
+            creation = DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+            session.commit()
+            assert creation.created is True
+
+    def test_step_enumeration_is_not_a_numeric_assertion(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        body = self.with_butce(
+            accepted,
+            block(
+                "adim-1",
+                "1. Balonları şişirin\n2. Masayı kurun",
+                kind=DraftBlockKind.HOW_TO_STEP,
+            ),
+        )
+        with harness.session() as session:
+            creation = DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+            session.commit()
+            assert creation.created is True
+
+    def test_source_assertion_requires_attribution(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        sections = self.base_sections(accepted)
+        # Restate the source assertion as bare fact: no attribution stem.
+        bare = DraftSection(
+            key="butce",
+            heading="Bütçe dostu öneriler",
+            blocks=(
+                block(
+                    "butce-1",
+                    "Parti bütçesi her zaman düşük tutulur.",
+                    claim_refs=(accepted.claim_ids[1],),
+                ),
+            ),
+        )
+        body = DraftBodyInput(sections=sections[:2] + (bare,))
+        with harness.session() as session:
+            with pytest.raises(DraftPolicyViolationError, match="attribution"):
+                DraftService(session).create_operator_draft(accepted.context.brief_id, body)
+
+    def test_inference_requires_hedging(self, harness: Harness) -> None:
+        accepted = accepted_context(harness)
+        hardened = self.with_butce(
+            accepted,
+            block(
+                "cikarim-1",
+                "Ev partileri kesinlikle streslidir.",
+                claim_refs=(accepted.inference_claim_id,),
+            ),
+        )
+        with harness.session() as session:
+            with pytest.raises(DraftPolicyViolationError, match="inference"):
+                DraftService(session).create_operator_draft(accepted.context.brief_id, hardened)
+        hedged = self.with_butce(
+            accepted,
+            block(
+                "cikarim-2",
+                "Ev partileri iyi hazırlıkla stressiz olabilir.",
+                claim_refs=(accepted.inference_claim_id,),
+            ),
+        )
+        with harness.session() as session:
+            creation = DraftService(session).create_operator_draft(
+                accepted.context.brief_id, hedged
+            )
+            session.commit()
+            assert creation.created is True
+
+    def test_verbatim_overlap_cap_is_deterministic(self) -> None:
+        statement = (
+            "Bu çok uzun bir kaynak cümlesi olup birebir kopyalanması halinde "
+            "özgünlük sınırını kesin olarak aşacak kadar karakter içerir ve "
+            "testte bunu kanıtlamak için kullanılır."
+        )
+        body = DraftBodyInput(
+            sections=(
+                DraftSection(
+                    key="giris",
+                    heading="Test",
+                    blocks=(block("kopya-1", f"Girizgah: {statement} Devamı."),),
+                ),
+            )
+        ).cleaned()
+
+        class _Brief:
+            structure_guard_result = {"outcome": "passed"}
+
+        with pytest.raises(DraftPolicyViolationError, match="TRANSLATE-AND-REPUBLISH"):
+            validate_originality(
+                body,
+                None,
+                [statement],
+                _Brief(),
+                WriterOriginalityPolicy(),  # type: ignore[arg-type]
+            )
+        # A short quotation stays inside the cap.
+        result = validate_originality(
+            body,
+            None,
+            ["kısa bir alıntı"],
+            _Brief(),  # type: ignore[arg-type]
+            WriterOriginalityPolicy(),
+        )
+        assert result["outcome"] == "passed"
+        assert result["checks"]["verbatim_overlap"]["max_observed_chars"] <= 80

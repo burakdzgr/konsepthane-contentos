@@ -8,7 +8,8 @@ PHASE 4 - Content Production (Writer -> Editor -> QA, ending at
 AWAITING_HUMAN_REVIEW) - IN PROGRESS
 (Task 1 Writer Architecture / Drafting Boundary Design COMPLETE — design
 accepted, including the operator-required architecture correction pass;
-Task 2 Draft Persistence + Provenance Foundation COMPLETE)
+Task 2 Draft Persistence + Provenance Foundation COMPLETE;
+Task 3 Writer Validation & Originality Policies COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2146,21 +2147,53 @@ access protection belongs to future deployment infrastructure.
 - Task 2 verified: 1103 backend tests (1081 + 21 new + 1 migration), 135
   admin tests, and the full root quality gate passed; schema head `0018`
 
+- PHASE 4 Task 3 (writer validation & originality policies) complete:
+  `contentos.drafts.policies` — versioned `writer-validation/1`
+  (numeric-assertion gate: digit-bearing blocks require an eligible brief
+  claim binding, step/list enumeration exempt; SOURCE_ASSERTION blocks
+  must keep attribution framing and INFERENCE blocks hedging framing via
+  versioned Turkish marker stems; free-text brief exclusions honestly
+  recorded as NOT mechanically checkable) and `writer-originality/1`
+  (normalized longest-common-substring verbatim-overlap cap — default 80
+  chars, policy config not architectural truth — against the projected
+  evidence statements, the only copyable text since source bodies never
+  enter the Writer projection; source-structure basis carried from the
+  brief's own structure guard, truthfully labeled, never re-proven);
+  deterministic required-handling manifest built from the pinned
+  artifacts (brief uncertainty notes, pack licensing/staleness/locale
+  cautions, unresolved non-blocking + resolved-cautious-wording
+  contradictions, per-claim handling) with stable ids; coverage
+  validation fails closed on any undischarged manifest entry or unknown
+  uncertainty ref and persists a full coverage record (entry -> block
+  anchors) on the draft; all gates run inside DraftService for BOTH
+  origins BEFORE any draft row exists (typed
+  DraftPolicyViolationError), with real policy snapshots persisted per
+  draft (manual idempotency hash now pins the validation policy
+  version); semantic claim-faithfulness remains explicitly delegated to
+  Editor/QA per the accepted design — nothing here claims entailment
+  certainty
+- Task 3 added no migration (schema head stays `0018`), no provider
+  calls, no Celery, no API/admin, no dependency changes
+- Task 3 verified: 1111 backend tests (1103 + 8 new policy tests; the
+  harness brief gained an inference claim + link/media needs), 135 admin
+  tests, and the full root quality gate passed
+
 ## Next immediate task
 
-PHASE 4 TASK 3 (authorized under the autonomous continuation mandate) —
-WRITER VALIDATION & ORIGINALITY POLICIES, per accepted
-PHASE4_WRITER_ARCHITECTURE.md §22: versioned `writer-validation/1`
-(numeric-assertion gate, claim-kind framing rules incl. SOURCE_ASSERTION
-attribution and INFERENCE framing, mechanically checkable exclusion
-enforcement) and `writer-originality/1` (evidence-statement
-verbatim-overlap cap, brief-structure conformance, heading-similarity
-guard reusing the Phase 3 structure-guard mechanics); the deterministic
-required-handling manifest builder (brief uncertainty notes, pack
-cautions/staleness/locale limits, contradiction handling, claim handling)
-with coverage validation and a persisted coverage record — all enforced
-inside DraftService for BOTH origins, with policy snapshots persisted per
-draft. No migration expected. No provider calls, no Celery, no API/admin.
+PHASE 4 TASK 4 (authorized under the autonomous continuation mandate) —
+WRITER INPUT PROJECTION, OUTPUT SCHEMA, AND ENGINE, per accepted
+PHASE4_WRITER_ARCHITECTURE.md §22: deterministic bounded
+`WriterInputProjection` (brief contract, claims with bounded evidence
+statements + identities, pack cautions/contradictions, intent, idea,
+locale/market, required-handling manifest; canonical hash = attempt
+input hash; forbidden fields never enter), strict `WriterDraftV1` output
+schema + template/schema `writer-draft/1`, and the `WriterEngine`
+(`writer/1`) through the EXISTING contentos.ai boundary with the fake
+provider: attempt identity + pre-provider short-circuits, idempotent
+materialization via DraftService.create_generated_draft,
+IncompleteDraftMaterializationError + retry_number+1 recovery. The
+existing OpenAI adapter works unchanged through the boundary. No
+migration, no Celery, no API/admin, no live provider calls in gates.
 
 Before implementing the affected integrations, resolve:
 

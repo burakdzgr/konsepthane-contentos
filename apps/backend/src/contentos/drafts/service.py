@@ -38,7 +38,7 @@ from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.hashing import sha256_hex
 from contentos.ai.models import AiGenerationAttempt
 from contentos.briefs.enums import BriefStatus
-from contentos.briefs.models import ContentBrief
+from contentos.briefs.models import BriefClaim, ContentBrief
 from contentos.briefs.repository import BriefRepository
 from contentos.core.context import is_valid_request_id
 from contentos.drafts.enums import (
@@ -54,19 +54,29 @@ from contentos.drafts.errors import (
     InvalidDraftAttemptError,
 )
 from contentos.drafts.models import ContentDraft, DraftClaimUsage, DraftStatusEvent
+from contentos.drafts.policies import (
+    DEFAULT_WRITER_ORIGINALITY_POLICY,
+    DEFAULT_WRITER_VALIDATION_POLICY,
+    WriterOriginalityPolicy,
+    WriterValidationPolicy,
+    build_required_handling_manifest,
+    validate_claim_semantics,
+    validate_handling_coverage,
+    validate_originality,
+)
 from contentos.drafts.repository import DraftRepository
 from contentos.drafts.values import (
     BODY_SCHEMA_VERSION,
     MANUAL_DRAFT_ENGINE_NAME,
     MANUAL_DRAFT_ENGINE_VERSION,
     MAX_TITLE_PROPOSAL_LENGTH,
-    STRUCTURAL_VALIDATION_NAME,
-    STRUCTURAL_VALIDATION_VERSION,
     WRITER_ENGINE_NAME,
     WRITER_ENGINE_VERSION,
     DraftBodyInput,
     require_safe_text,
 )
+from contentos.evidence_packs.repository import EvidencePackRepository
+from contentos.research.models import ResearchEvidence
 from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
@@ -87,6 +97,7 @@ class DraftService:
         self._session = session
         self._repository = DraftRepository(session)
         self._briefs = BriefRepository(session)
+        self._packs = EvidencePackRepository(session)
         self._workflow = WorkflowRepository(session)
 
     # --- public creation paths ----------------------------------------------
@@ -99,6 +110,8 @@ class DraftService:
         title_proposal: str | None = None,
         supersede_reason: str | None = None,
         request_id: str | None = None,
+        validation_policy: WriterValidationPolicy = DEFAULT_WRITER_VALIDATION_POLICY,
+        originality_policy: WriterOriginalityPolicy = DEFAULT_WRITER_ORIGINALITY_POLICY,
     ) -> DraftCreation:
         """Human-authored draft: same gates, no AI attempt (real or fake)."""
         return self._create_draft(
@@ -111,6 +124,8 @@ class DraftService:
             title_proposal=title_proposal,
             supersede_reason=supersede_reason,
             request_id=request_id,
+            validation_policy=validation_policy,
+            originality_policy=originality_policy,
         )
 
     def create_generated_draft(
@@ -122,6 +137,8 @@ class DraftService:
         title_proposal: str | None = None,
         supersede_reason: str | None = None,
         request_id: str | None = None,
+        validation_policy: WriterValidationPolicy = DEFAULT_WRITER_VALIDATION_POLICY,
+        originality_policy: WriterOriginalityPolicy = DEFAULT_WRITER_ORIGINALITY_POLICY,
     ) -> DraftCreation:
         """Writer-engine draft materialization for one SUCCEEDED attempt."""
         self._validate_attempt(generation_attempt, content_brief_id)
@@ -135,6 +152,8 @@ class DraftService:
             title_proposal=title_proposal,
             supersede_reason=supersede_reason,
             request_id=request_id,
+            validation_policy=validation_policy,
+            originality_policy=originality_policy,
         )
 
     # --- core ---------------------------------------------------------------
@@ -151,6 +170,8 @@ class DraftService:
         title_proposal: str | None,
         supersede_reason: str | None,
         request_id: str | None,
+        validation_policy: WriterValidationPolicy,
+        originality_policy: WriterOriginalityPolicy,
     ) -> DraftCreation:
         validated_request_id = _validate_request_id(request_id)
         cleaned_title = (
@@ -174,19 +195,33 @@ class DraftService:
         cleaned_body = body.cleaned()
         self._validate_section_contract(brief, cleaned_body)
         self._validate_need_refs(brief, cleaned_body)
-        usages = self._validate_claim_refs(brief, cleaned_body)
+        claims = self._briefs.list_claims(brief.id)
+        claims_by_id = {str(claim.id): claim for claim in claims}
+        usages = self._validate_claim_refs(claims_by_id, cleaned_body)
 
-        # Task-2 structural validation identity; Task 3 replaces these with
-        # the writer-validation/originality policies. Truthful today:
-        # coverage was not evaluated and originality was not checked.
+        # Writer-stage deterministic policy gates (design section 6/7): the
+        # required-handling manifest from the pinned artifacts, coverage,
+        # the fact-creation envelope, and the originality guard — all
+        # fail-closed BEFORE any draft row exists, for BOTH origins.
+        pack = self._packs.get_pack(brief.evidence_pack_id)
+        if pack is None:  # pragma: no cover - RESTRICT FK guarantees this
+            raise DraftPreconditionError("the brief has no resolvable evidence pack")
+        contradictions = self._packs.list_contradictions(pack.id)
+        manifest = build_required_handling_manifest(brief, pack, contradictions, claims)
+        uncertainty_coverage = validate_handling_coverage(manifest, cleaned_body, validation_policy)
+        validate_claim_semantics(cleaned_body, claims_by_id, validation_policy)
+        originality_result = validate_originality(
+            cleaned_body,
+            cleaned_title,
+            self._evidence_statements(claims),
+            brief,
+            originality_policy,
+        )
         validation_policy_snapshot: dict[str, Any] = {
-            "name": STRUCTURAL_VALIDATION_NAME,
-            "version": STRUCTURAL_VALIDATION_VERSION,
+            **validation_policy.snapshot(),
             "body_schema": BODY_SCHEMA_VERSION,
         }
-        uncertainty_coverage: dict[str, Any] = {"status": "not_evaluated"}
-        originality_policy_snapshot: dict[str, Any] = {}
-        originality_result: dict[str, Any] = {"outcome": "not_checked"}
+        originality_policy_snapshot: dict[str, Any] = originality_policy.snapshot()
 
         usage_payload = [
             {
@@ -225,7 +260,7 @@ class DraftService:
                     "body": cleaned_body,
                     "claim_usages": usage_payload,
                     "uncertainty_coverage": uncertainty_coverage,
-                    "validation_policy_version": STRUCTURAL_VALIDATION_VERSION,
+                    "validation_policy_version": validation_policy.version,
                 }
             )
             existing = self._repository.get_by_manual_identity(work_item.id, manual_input_hash)
@@ -386,11 +421,20 @@ class DraftService:
                             f"{block['media_need_ref']}, but the brief has {media_needs}"
                         )
 
+    def _evidence_statements(self, claims: list[BriefClaim]) -> list[str]:
+        statements: list[str] = []
+        for claim in claims:
+            for link in self._briefs.list_claim_evidence(claim.id):
+                evidence = self._session.get(ResearchEvidence, link.research_evidence_id)
+                if evidence is not None:
+                    statements.append(evidence.statement)
+        return statements
+
     def _validate_claim_refs(
-        self, brief: ContentBrief, cleaned_body: dict[str, Any]
+        self, claims_by_id: dict[str, BriefClaim], cleaned_body: dict[str, Any]
     ) -> list[tuple[str, str, str]]:
         """Return the 1:1 relational mirror (claim id, section key, block id)."""
-        known_claims = {str(claim.id) for claim in self._briefs.list_claims(brief.id)}
+        known_claims = set(claims_by_id)
         usages: list[tuple[str, str, str]] = []
         for section in cleaned_body["sections"]:
             for block in section["blocks"]:

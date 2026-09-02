@@ -382,6 +382,13 @@ def brief_payload(evidence_ids: list[uuid.UUID]) -> dict[str, Any]:
                 "handling": None,
                 "evidence_ids": [str(evidence_ids[2])],
             },
+            {
+                "claim_key": "editoryal-cikarim",
+                "claim_text": "Ev partileri hazırlıkla stressiz olabilir.",
+                "claim_kind": "inference",
+                "handling": None,
+                "evidence_ids": [],
+            },
         ],
     }
 

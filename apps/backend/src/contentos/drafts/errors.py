@@ -23,6 +23,12 @@ class InvalidDraftAttemptError(DraftError):
     (wrong purpose, not SUCCEEDED, or pinned to a different brief)."""
 
 
+class DraftPolicyViolationError(DraftError):
+    """A deterministic Writer-stage policy gate failed (numeric assertion
+    without claim binding, missing/unknown handling coverage, framing
+    violation, or a verbatim-overlap breach); no draft row is created."""
+
+
 class DraftConflictError(DraftError):
     """Durable draft state conflicts with the requested creation and could
     not be resolved idempotently; nothing was overwritten."""
