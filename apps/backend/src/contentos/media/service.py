@@ -150,6 +150,15 @@ class MediaService:
     def read_asset_bytes(self, asset: MediaAsset) -> bytes:
         return self._store.read(asset.content_sha256)
 
+    def resolve_need(
+        self, work_item_id: uuid.UUID, need_index: int
+    ) -> tuple[ContentBrief, dict[str, Any]]:
+        """The state-bounded (ACTIVE accepted brief, exact need) pair every
+        media operation — satisfaction AND generation — must resolve first."""
+        brief = self._resolve_brief_in_bounds(work_item_id)
+        self._require_need_index(brief, need_index)
+        return brief, dict(brief.media_needs[need_index])
+
     # --- satisfactions --------------------------------------------------------
 
     def satisfy_need(

@@ -20,6 +20,7 @@ from contentos.worker.editorial_tasks import (
     EVALUATE_OPPORTUNITY_TASK,
     GENERATE_EDITOR_REVIEW_TASK,
     GENERATE_IDEA_CANDIDATES_TASK,
+    GENERATE_MEDIA_IMAGE_TASK,
     GENERATE_WRITER_DRAFT_TASK,
     PROMOTE_RESEARCH_TASK,
     RUN_QA_GATES_TASK,
@@ -138,6 +139,15 @@ class EditorialControlDispatcher(Protocol):
     ) -> None: ...
 
     def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None: ...
+
+    def enqueue_generate_media_image(
+        self,
+        work_item_id: str,
+        need_index: int,
+        requested_by_user_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> None: ...
 
 
 class CeleryEditorialControlDispatcher:
@@ -297,3 +307,21 @@ class CeleryEditorialControlDispatcher:
 
     def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None:
         self._send(RUN_QA_GATES_TASK, {"work_item_id": work_item_id}, request_id)
+
+    def enqueue_generate_media_image(
+        self,
+        work_item_id: str,
+        need_index: int,
+        requested_by_user_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> None:
+        self._send(
+            GENERATE_MEDIA_IMAGE_TASK,
+            {
+                "work_item_id": work_item_id,
+                "need_index": need_index,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            request_id,
+        )

@@ -242,6 +242,26 @@ class FakeEditorialControlDispatcher:
     def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None:
         self.calls.append(("run_qa_gates", {"work_item_id": work_item_id}, request_id))
 
+    def enqueue_generate_media_image(
+        self,
+        work_item_id: str,
+        need_index: int,
+        requested_by_user_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> None:
+        self.calls.append(
+            (
+                "generate_media_image",
+                {
+                    "work_item_id": work_item_id,
+                    "need_index": need_index,
+                    "requested_by_user_id": requested_by_user_id,
+                },
+                request_id,
+            )
+        )
+
 
 class FailingEditorialDispatcher(FakeEditorialControlDispatcher):
     def __getattribute__(self, name: str) -> Any:

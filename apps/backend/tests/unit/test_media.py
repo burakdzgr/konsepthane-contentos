@@ -392,3 +392,263 @@ class TestMediaApi:
         assert (
             harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/media").status_code == 404
         )
+
+
+class TestMediaImageGeneration:
+    """Phase 6 M4: AI image generation behind the full ai boundary."""
+
+    def image_payload(self, data: bytes = PNG_BYTES, media_type: str = "image/png") -> dict:
+        import base64
+
+        return {
+            "image_base64": base64.b64encode(data).decode("ascii"),
+            "media_type": media_type,
+        }
+
+    def engine(self, session: Session, tmp_path: Path):
+        from contentos.media.generation import MediaImageEngine
+
+        return MediaImageEngine(session, MediaStore(tmp_path / "media-store"))
+
+    def test_success_creates_a_provenance_carrying_asset_only(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.enums import GenerationPurpose, GenerationStatus
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.media.generation import GENERATED_LICENSE_NOTE
+        from contentos.workflow.repository import WorkflowRepository
+
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+        with harness.session() as session:
+            user = operator_user(session)
+            provider = FakeStructuredProvider(payload=self.image_payload())
+            result = self.engine(session, tmp_path).generate(
+                work_item_id, 0, requested_by=user, provider=provider
+            )
+            session.commit()
+            assert result.status is GenerationStatus.SUCCEEDED
+            assert result.created is True
+            asset = result.asset
+            assert asset is not None
+            assert asset.origin is MediaOrigin.AI_GENERATED
+            assert asset.generation_attempt_id == result.attempt.id
+            assert asset.license_note == GENERATED_LICENSE_NOTE
+            assert asset.created_by_user_id == user.id
+            assert asset.alt_text  # deterministic proposal from the need
+            assert result.attempt.purpose is GenerationPurpose.MEDIA_IMAGE
+            # The stored bytes are exactly the decoded image.
+            assert MediaStore(tmp_path / "media-store").read(asset.content_sha256) == PNG_BYTES
+
+            # NO satisfaction and NO workflow effect: a human must bind it.
+            service = MediaService(session, MediaStore(tmp_path / "media-store"))
+            coverage = service.needs_coverage(work_item_id)
+            assert coverage is not None and coverage[0].satisfaction is None
+            item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert item is not None and item.current_state.value == "qa_review"
+
+    def test_mismatched_bytes_are_a_validation_failure_without_an_asset(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.enums import GenerationStatus
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.media.models import MediaAsset
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            user = operator_user(session)
+            provider = FakeStructuredProvider(payload=self.image_payload(JPEG_BYTES, "image/png"))
+            result = self.engine(session, tmp_path).generate(
+                accepted.context.work_item_id, 0, requested_by=user, provider=provider
+            )
+            session.commit()
+            assert result.status is GenerationStatus.VALIDATION_FAILED
+            assert result.asset is None
+            assert result.attempt.error_class == "domain_validation"
+            assert session.execute(select(MediaAsset)).scalar_one_or_none() is None
+
+    def test_identical_rerun_reuses_attempt_and_resolves_the_asset(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.fake import FakeStructuredProvider
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            user = operator_user(session)
+            provider = FakeStructuredProvider(payload=self.image_payload())
+            engine = self.engine(session, tmp_path)
+            first = engine.generate(
+                accepted.context.work_item_id, 0, requested_by=user, provider=provider
+            )
+            session.commit()
+            second = engine.generate(
+                accepted.context.work_item_id, 0, requested_by=user, provider=provider
+            )
+            assert second.created is False
+            assert provider.invocations == 1  # no second spend
+            assert second.asset is not None
+            assert first.asset is not None
+            assert second.asset.id == first.asset.id
+
+    def test_generation_respects_the_media_state_bounds(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.fake import FakeStructuredProvider
+
+        frozen, _, _ = awaiting_review_context(harness)
+        with harness.session() as session:
+            user = operator_user(session)
+            with pytest.raises(MediaPreconditionError, match="terminal review"):
+                self.engine(session, tmp_path).generate(
+                    frozen.context.work_item_id,
+                    0,
+                    requested_by=user,
+                    provider=FakeStructuredProvider(payload=self.image_payload()),
+                )
+
+
+class TestGenerateImageCommand:
+    def test_generate_image_queues_the_exact_task_with_the_named_human(
+        self, harness: Harness
+    ) -> None:
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+        response = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/0/generate-image"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "status": "queued",
+            "task": "generate_media_image",
+            "entity_id": str(work_item_id),
+        }
+        [(task_name, payload, _)] = harness.dispatcher.calls
+        assert task_name == "generate_media_image"
+        assert payload["work_item_id"] == str(work_item_id)
+        assert payload["need_index"] == 0
+        with harness.session() as session:
+            assert payload["requested_by_user_id"] == str(operator_user(session).id)
+
+    def test_generate_image_refuses_frozen_states_and_unknown_needs(self, harness: Harness) -> None:
+        frozen, _, _ = awaiting_review_context(harness)
+        frozen_response = harness.post(
+            f"/internal/editorial/work-items/{frozen.context.work_item_id}"
+            "/media-needs/0/generate-image"
+        )
+        assert frozen_response.status_code == 409
+        assert harness.dispatcher.calls == []
+
+        active, _, _ = qa_review_context(harness)
+        unknown_need = harness.post(
+            f"/internal/editorial/work-items/{active.context.work_item_id}"
+            "/media-needs/9/generate-image"
+        )
+        assert unknown_need.status_code == 422
+        assert harness.dispatcher.calls == []
+
+
+class TestGenerateMediaImageTask:
+    """The 10th editorial task, end to end through the eager worker."""
+
+    def worker_app(self, harness: Harness, tmp_path: Path, provider):
+        from contentos.core.config import Environment, LogLevel, Settings
+        from contentos.queue.celery import create_celery_app
+        from contentos.worker.editorial_tasks import register_editorial_pipeline_tasks
+        from contentos.worker.runtime import WorkerRuntime
+
+        settings = Settings(
+            environment=Environment.TEST,
+            service_name="ContentOS Media Task Test",
+            application_version="1.0.0-test",
+            log_level=LogLevel.INFO,
+            api_docs_enabled=False,
+            celery_task_always_eager=True,
+            celery_broker_connection_retry_on_startup=False,
+        )
+        runtime = WorkerRuntime(
+            settings,
+            session_factory=harness.session_factory,
+            image_generation_provider_factory=lambda: provider,
+            media_store=MediaStore(tmp_path / "media-store"),
+        )
+        app = create_celery_app(settings)
+        register_editorial_pipeline_tasks(app, runtime)
+        return app
+
+    def test_task_produces_an_asset_and_nothing_else(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        import base64
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.media.models import MediaAsset
+        from contentos.worker.editorial_tasks import GENERATE_MEDIA_IMAGE_TASK
+        from contentos.workflow.repository import WorkflowRepository
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            user_id = str(operator_user(session).id)
+        provider = FakeStructuredProvider(
+            payload={
+                "image_base64": base64.b64encode(PNG_BYTES).decode("ascii"),
+                "media_type": "image/png",
+            }
+        )
+        app = self.worker_app(harness, tmp_path, provider)
+        result = (
+            app.tasks[GENERATE_MEDIA_IMAGE_TASK]
+            .apply(
+                kwargs={
+                    "work_item_id": str(accepted.context.work_item_id),
+                    "need_index": 0,
+                    "requested_by_user_id": user_id,
+                }
+            )
+            .get()
+        )
+        assert result["status"] == "completed", result
+        assert result["media_asset_id"] is not None
+        with harness.session() as session:
+            asset = session.get(MediaAsset, uuid.UUID(result["media_asset_id"]))
+            assert asset is not None
+            assert str(asset.created_by_user_id) == user_id
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state.value == "qa_review"
+
+    def test_task_reports_preconditions_truthfully_without_effects(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.worker.editorial_tasks import GENERATE_MEDIA_IMAGE_TASK
+
+        frozen, _, _ = awaiting_review_context(harness)
+        with harness.session() as session:
+            user_id = str(operator_user(session).id)
+        app = self.worker_app(harness, tmp_path, FakeStructuredProvider(payload={}))
+        result = (
+            app.tasks[GENERATE_MEDIA_IMAGE_TASK]
+            .apply(
+                kwargs={
+                    "work_item_id": str(frozen.context.work_item_id),
+                    "need_index": 0,
+                    "requested_by_user_id": user_id,
+                }
+            )
+            .get()
+        )
+        assert result["status"] == "precondition_failed"
+        assert "terminal review" in result["detail"]
+
+        unknown_user = (
+            app.tasks[GENERATE_MEDIA_IMAGE_TASK]
+            .apply(
+                kwargs={
+                    "work_item_id": str(frozen.context.work_item_id),
+                    "need_index": 0,
+                    "requested_by_user_id": str(uuid.uuid4()),
+                }
+            )
+            .get()
+        )
+        assert unknown_user["status"] == "precondition_failed"
+        assert "active user" in unknown_user["detail"]

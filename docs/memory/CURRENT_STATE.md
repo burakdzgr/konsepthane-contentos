@@ -3012,23 +3012,54 @@ access protection belongs to future deployment infrastructure.
   paths; snapshot version assertions updated) — suite 1271 backend +
   216 admin, gate green; no migration (head stays `0023`)
 
+- PHASE 6 Task M4 (AI image generation) complete: migration `0024`
+  widens the attempt purpose CHECK with `media_image` (audit-protecting
+  downgrade guard refuses while media_image attempts exist — 0018
+  pattern); `GenerationPurpose.MEDIA_IMAGE`; the image path reuses the
+  ENTIRE structured-generation boundary — the "structured output" is
+  the bounded `media-image/1` envelope {image_base64, media_type} with
+  a domain validator proving the DECODED bytes match the declared type
+  and store bound (a provider's word is never trusted), so identity
+  hashing, idempotent reuse, safe attempt metadata and no-raw
+  persistence all apply unchanged; `MediaImageEngine` (media/
+  generation.py) resolves the state-bounded need, executes, and on a
+  NEW SUCCEEDED attempt stores the bytes content-addressed and writes
+  the MediaAsset with attempt provenance, the NAMED commissioning
+  human, deterministic alt-text from the need, and the fixed
+  `generated_in_house` licensing note; reuse resolves the SAME asset
+  with zero provider spend; identical bytes converge on the existing
+  asset; generation NEVER satisfies a need and NEVER touches the
+  workflow; `generate_media_image` (10th editorial task) + the
+  operator queue command `media-needs/{index}/generate-image`
+  (dispatch carries the authenticated commissioning user id; 409/422
+  pre-validation; precondition changes at execution time are truthful
+  task no-ops, never workflow effects); `OpenAiImageProvider` (Images
+  API, b64 PNG, sanitized error classes, no SDK leakage) behind new
+  settings `openai_image_model`/`openai_image_timeout_seconds`;
+  WorkerRuntime gained image-provider + media-store seams
+- Task M4 verified: 8 new tests (engine success with provenance-only
+  effects + workflow untouched; type-mismatch = domain validation
+  failure with zero assets; idempotent reuse resolving the same asset
+  with one invocation; state bounds; the queue command with the named
+  human + frozen/unknown-need refusals; the eager task end-to-end +
+  truthful precondition summaries) + the 0024 migration test — suite
+  1279 backend + 216 admin, gate green; REAL PostgreSQL 16
+  verification passed (0024 cycle with the CHECK inspected on PG, real
+  engine run with provenance asset + idempotent reuse, downgrade
+  guard refusing over real audit history); schema head `0024`
+
 ## Next immediate task
 
-PHASE 6 TASK M4 (authorized under the autonomous continuation mandate)
-— AI IMAGE GENERATION, per PHASE6_MEDIA_ARCHITECTURE.md §1/§4/§7:
-`GenerationPurpose.MEDIA_IMAGE` (+ the 0024 purpose-CHECK widening
-migration with the audit-protecting downgrade guard, per the 0018
-pattern); image support in the contentos.ai boundary (attempt rows
-with safe metadata only, prompts/raw payloads never persisted, a
-deterministic fake image provider for tests); the
-`generate_media_image` queue task (10th editorial task) + its
-dispatch command carrying (work_item_id, need_index): prompt composed
-from the durable brief need + bounded draft context, the returned
-image stored content-addressed with attempt provenance and the fixed
-`generated_in_house` licensing posture — durable result → commit, NO
-workflow transition, NO satisfaction (a human must bind it);
-real-PG verification for 0024. Then M5 admin media surface, M6 the
-media closure audit.
+PHASE 6 TASK M5 (authorized under the autonomous continuation mandate)
+— ADMIN MEDIA SURFACE, per PHASE6_MEDIA_ARCHITECTURE.md §5/§7: the
+editorial detail page gains a Media section — needs coverage table
+(per need: satisfied → asset metadata incl. origin/alt/licensing/
+provenance + the thumbnail via the admin's server side, or honest
+UNSATISFIED), state-gated commands (upload form with required
+alt/license, satisfy-from-library, generate-image, unsatisfy),
+satisfaction history, leak tests (no store keys/backend URL); zod
+schemas + fetchers for the media coverage read model + control
+functions + actions; no migration. Then M6 the media closure audit.
 
 Before implementing the affected integrations, resolve:
 

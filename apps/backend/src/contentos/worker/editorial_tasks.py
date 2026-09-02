@@ -85,6 +85,7 @@ COMPOSE_CONTENT_BRIEF_TASK = "contentos.editorial.compose_content_brief"
 GENERATE_WRITER_DRAFT_TASK = "contentos.editorial.generate_writer_draft"
 GENERATE_EDITOR_REVIEW_TASK = "contentos.editorial.generate_editor_review"
 RUN_QA_GATES_TASK = "contentos.editorial.run_qa_gates"
+GENERATE_MEDIA_IMAGE_TASK = "contentos.editorial.generate_media_image"
 
 EDITORIAL_TASK_NAMES = (
     PROMOTE_RESEARCH_TASK,
@@ -96,6 +97,7 @@ EDITORIAL_TASK_NAMES = (
     GENERATE_WRITER_DRAFT_TASK,
     GENERATE_EDITOR_REVIEW_TASK,
     RUN_QA_GATES_TASK,
+    GENERATE_MEDIA_IMAGE_TASK,
 )
 
 MAX_BLOCK_REASON_ITEMS = 5
@@ -807,6 +809,76 @@ def register_editorial_pipeline_tasks(
                 report_version=result.report.version,
             )
 
+    # --- generate_media_image -----------------------------------------------
+
+    def generate_media_image(
+        self: Any,
+        work_item_id: str,
+        need_index: int,
+        requested_by_user_id: str,
+        retry_number: int = 0,
+    ) -> dict[str, Any]:
+        """Phase 6 M4: produce ONE candidate image for one brief media need.
+
+        No workflow transition, no downstream dispatch, and NO satisfaction:
+        the durable outcome is an attempt row plus (on success) a
+        content-addressed asset carrying the attempt provenance and the
+        NAMED commissioning human. A human binds it explicitly (ADR 0004).
+        """
+        from contentos.auth.models import User as _User
+        from contentos.media.errors import MediaInputError, MediaPreconditionError
+        from contentos.media.generation import MediaImageEngine
+
+        parsed_item = _parse_uuid(work_item_id)
+        parsed_user = _parse_uuid(requested_by_user_id)
+        with task_session() as session:
+            requested_by = session.get(_User, parsed_user)
+            if requested_by is None or not requested_by.is_active:
+                # The commissioning identity must be a real ACTIVE human.
+                return _summary(
+                    self,
+                    "precondition_failed",
+                    work_item_id=work_item_id,
+                    detail="requested_by_user_id does not resolve to an active user",
+                )
+            engine = MediaImageEngine(session, runtime.create_media_store())
+            try:
+                result = engine.generate(
+                    parsed_item,
+                    need_index,
+                    requested_by=requested_by,
+                    provider=runtime.create_image_provider(),
+                    retry_number=retry_number + int(self.request.retries),
+                    request_id=_current_request_id(self),
+                )
+            except (MediaPreconditionError, MediaInputError) as error:
+                # Durable state does not admit the generation (state moved,
+                # need vanished with a new brief, ...): truthful no-op —
+                # never a workflow effect, never a fabricated failure asset.
+                return _summary(
+                    self,
+                    "precondition_failed",
+                    work_item_id=work_item_id,
+                    detail=str(error)[:500],
+                )
+            if handle_ai_outcome(self, session, result.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    work_item_id=work_item_id,
+                    attempt_id=str(result.attempt.id),
+                    attempt_status=result.status.value,
+                )
+            session.commit()
+            return _summary(
+                self,
+                "completed" if result.created else "reused",
+                work_item_id=work_item_id,
+                need_index=need_index,
+                attempt_id=str(result.attempt.id),
+                media_asset_id=str(result.asset.id) if result.asset is not None else None,
+            )
+
     common_options: dict[str, Any] = {
         "bind": True,
         "shared": False,
@@ -823,6 +895,7 @@ def register_editorial_pipeline_tasks(
     app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(generate_writer_draft)
     app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(generate_editor_review)
     app.task(name=RUN_QA_GATES_TASK, **common_options)(run_qa_gates)
+    app.task(name=GENERATE_MEDIA_IMAGE_TASK, **common_options)(generate_media_image)
 
 
 def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:

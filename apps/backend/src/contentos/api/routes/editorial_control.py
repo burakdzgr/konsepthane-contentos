@@ -27,7 +27,16 @@ import uuid
 from typing import Annotated, Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -153,6 +162,7 @@ EDITORIAL_TASK_LABELS = Literal[
     "generate_writer_draft",
     "generate_editor_review",
     "run_qa_gates",
+    "generate_media_image",
 ]
 
 # Contradiction resolution: "unresolved" is not a resolution — excluding it
@@ -1442,6 +1452,41 @@ async def upload_media_asset(
         media_type=asset.media_type,
         byte_size=asset.byte_size,
     )
+
+
+@router.post(
+    "/work-items/{work_item_id}/media-needs/{need_index}/generate-image",
+    response_model=QueuedResponse,
+)
+def generate_media_image(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    need_index: Annotated[int, Path(ge=0, le=100)],
+) -> QueuedResponse:
+    """Queue ONE candidate-image generation for one brief media need,
+    commissioned by the authenticated operator. Generation satisfies
+    nothing by itself — a human binds the asset explicitly."""
+    try:
+        MediaService(session, request.app.state.media_store).resolve_need(work_item_id, need_index)
+    except MediaPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except MediaInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    dispatcher = _dispatcher(request)
+    request_id = _current_request_id()
+    requested_by = _current_user(request)
+    _enqueue_or_503(
+        "generate_media_image",
+        work_item_id,
+        lambda: dispatcher.enqueue_generate_media_image(
+            str(work_item_id),
+            need_index,
+            str(requested_by.id),
+            request_id=request_id,
+        ),
+    )
+    return QueuedResponse(status="queued", task="generate_media_image", entity_id=work_item_id)
 
 
 @router.post(

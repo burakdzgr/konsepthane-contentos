@@ -15,6 +15,7 @@ from contentos.core.config import Settings
 from contentos.db.session import create_database_engine, create_session_factory
 from contentos.fetching.client import FetchClient
 from contentos.fetching.policy import build_fetch_policy
+from contentos.media.store import MediaStore
 from contentos.payloads.postgres import PostgresRawPayloadStore
 
 SessionFactory = Callable[[], Session]
@@ -32,11 +33,15 @@ class WorkerRuntime:
         session_factory: SessionFactory | None = None,
         fetch_client_factory: FetchClientFactory | None = None,
         structured_generation_provider_factory: ProviderFactory | None = None,
+        image_generation_provider_factory: ProviderFactory | None = None,
+        media_store: MediaStore | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
         self._fetch_client_factory = fetch_client_factory
         self._provider_factory = structured_generation_provider_factory
+        self._image_provider_factory = image_generation_provider_factory
+        self._media_store = media_store
 
     @property
     def settings(self) -> Settings:
@@ -78,3 +83,20 @@ class WorkerRuntime:
         )
 
         return create_openai_provider_from_settings(self._settings)
+
+    def create_image_provider(self) -> StructuredGenerationProvider:
+        """Return the image-generation provider (same protocol; the payload
+        is the bounded media-image envelope). Lazy, injectable for tests."""
+        if self._image_provider_factory is not None:
+            return self._image_provider_factory()
+        from contentos.ai.providers.openai_image_provider import (
+            create_openai_image_provider_from_settings,
+        )
+
+        return create_openai_image_provider_from_settings(self._settings)
+
+    def create_media_store(self) -> MediaStore:
+        """The ContentOS-owned content-addressed media byte store."""
+        if self._media_store is None:
+            self._media_store = MediaStore(self._settings.media_store_root)
+        return self._media_store

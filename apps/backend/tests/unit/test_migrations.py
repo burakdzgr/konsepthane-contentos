@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0023"]
+    assert script.get_heads() == ["0024"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0024").down_revision == "0023"
     assert script.get_revision("0023").down_revision == "0022"
     assert script.get_revision("0022").down_revision == "0021"
     assert script.get_revision("0021").down_revision == "0020"
@@ -395,6 +396,19 @@ def test_media_migration_contains_identity_and_protection() -> None:
     assert "CREATE TRIGGER trg_media_satisfaction_events_append_only" in sql
     # Human-only in this phase: no machine actor vocabulary anywhere.
     assert "worker_id" not in sql and "'system'" not in sql
+
+
+def test_media_image_purpose_migration_widens_and_guards() -> None:
+    sql = offline_sql("upgrade", "0023:0024")
+    assert "ck_ai_generation_attempts_purpose" in sql
+    assert "'media_image'" in sql
+
+    source = (MIGRATIONS_DIR / "versions" / "0024_add_media_image_purpose.py").read_text(
+        encoding="utf-8"
+    )
+    # The downgrade refuses to destroy or invalidate audit history.
+    assert "cannot downgrade 0024" in source
+    assert "purpose = 'media_image'" in source
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:
