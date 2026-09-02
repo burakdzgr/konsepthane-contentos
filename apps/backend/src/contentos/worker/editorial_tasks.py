@@ -30,6 +30,7 @@ import structlog
 from celery import Celery
 from sqlalchemy.orm import Session
 
+from contentos.ai.budget import BudgetExceededError, ensure_daily_attempt_budget
 from contentos.ai.enums import GenerationStatus
 from contentos.briefs.composition import BriefCompositionEngine
 from contentos.briefs.errors import BriefCompositionMaterializationError
@@ -175,6 +176,16 @@ def register_editorial_pipeline_tasks(
             raise task.retry(countdown=_retry_countdown(task.request.retries)) from None
         return task_name
 
+    def budget_refusal(task: Any, session: Session, **fields: Any) -> dict[str, Any] | None:
+        """The daily spend guard, checked BEFORE any provider invocation.
+        A refusal is an execution fact and a truthful task no-op: nothing
+        is persisted, no state moves, and nothing retries blindly."""
+        try:
+            ensure_daily_attempt_budget(session, runtime.settings.ai_daily_attempt_budget)
+        except BudgetExceededError as error:
+            return _summary(task, "budget_exhausted", detail=str(error), **fields)
+        return None
+
     def handle_ai_outcome(task: Any, session: Session, status: GenerationStatus) -> bool:
         """Commit the durable failed attempt, then DOMAIN-retry if allowed.
 
@@ -236,6 +247,9 @@ def register_editorial_pipeline_tasks(
         parsed_id = _parse_uuid(opportunity_id)
         with task_session() as session:
             _require_stage(session, parsed_id, WorkflowState.EVIDENCE_BUILDING)
+            refused = budget_refusal(self, session, opportunity_id=opportunity_id)
+            if refused is not None:
+                return refused
             execution = IdeaGenerationEngine(session).generate_candidates(
                 parsed_id,
                 provider=runtime.create_generation_provider(),
@@ -431,6 +445,9 @@ def register_editorial_pipeline_tasks(
                 raise InvalidPipelineInputError(
                     "the pinned evidence pack is missing, mismatched, or not READY"
                 )
+            refused = budget_refusal(self, session, opportunity_id=opportunity_id)
+            if refused is not None:
+                return refused
             # TRANSACTION A: durable analysis (or durable failed attempt).
             outcome = SearchIntentService(session).synthesize(
                 parsed_opportunity,
@@ -503,6 +520,9 @@ def register_editorial_pipeline_tasks(
         parsed_pack = _parse_uuid(evidence_pack_id)
         parsed_analysis = _parse_uuid(search_intent_analysis_id)
         with task_session() as session:
+            refused = budget_refusal(self, session, work_item_id=work_item_id)
+            if refused is not None:
+                return refused
             try:
                 result = BriefCompositionEngine(session).compose(
                     parsed_work_item,
@@ -591,6 +611,9 @@ def register_editorial_pipeline_tasks(
                         next_task=next_task,
                     )
 
+            refused = budget_refusal(self, session, content_brief_id=content_brief_id)
+            if refused is not None:
+                return refused
             # TRANSACTION A: durable draft (or durable failed attempt).
             try:
                 result = engine.generate_draft(
@@ -694,6 +717,9 @@ def register_editorial_pipeline_tasks(
                     )
 
             # TRANSACTION A: durable review (or durable failed attempt).
+            refused = budget_refusal(self, session, work_item_id=work_item_id)
+            if refused is not None:
+                return refused
             try:
                 result = EditorEngine(session).generate_review(
                     parsed_item,
@@ -843,6 +869,9 @@ def register_editorial_pipeline_tasks(
                     work_item_id=work_item_id,
                     detail="requested_by_user_id does not resolve to an active user",
                 )
+            refused = budget_refusal(self, session, work_item_id=work_item_id)
+            if refused is not None:
+                return refused
             engine = MediaImageEngine(session, runtime.create_media_store())
             try:
                 result = engine.generate(

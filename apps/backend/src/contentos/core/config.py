@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # OpenAI configuration is needed ONLY when constructing the OpenAI
     # adapter; every non-OpenAI feature works without it. Provider and
     # model are configuration, never domain constants.
+    # Daily provider-spend guard: durable AI attempts allowed per UTC day
+    # across all purposes. None disables the guard explicitly.
+    ai_daily_attempt_budget: int | None = Field(default=500, ge=1, le=100_000)
     openai_api_key: SecretStr | None = None
     openai_model: str | None = Field(default=None, min_length=1)
     openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)

@@ -682,3 +682,75 @@ class TestMediaHistoryCap:
         assert page["history"] == []
         assert page["total_history"] == 1
         assert page["history_truncated"] is True
+
+
+class TestAiSpendBudget:
+    """Production-readiness: the daily attempt budget guard."""
+
+    def test_helper_counts_disables_and_refuses(self, harness: Harness) -> None:
+        from contentos.ai.budget import (
+            BudgetExceededError,
+            attempts_today,
+            ensure_daily_attempt_budget,
+        )
+
+        qa_review_context(harness)  # the chain seeded several attempts today
+        with harness.session() as session:
+            used = attempts_today(session)
+            assert used >= 3
+            ensure_daily_attempt_budget(session, None)  # disabled: never raises
+            ensure_daily_attempt_budget(session, used + 1)  # headroom: fine
+            with pytest.raises(BudgetExceededError, match="budget is exhausted"):
+                ensure_daily_attempt_budget(session, used)
+
+    def test_exhausted_budget_makes_the_task_a_truthful_noop(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.core.config import Environment, LogLevel, Settings
+        from contentos.media.models import MediaAsset
+        from contentos.queue.celery import create_celery_app
+        from contentos.worker.editorial_tasks import (
+            GENERATE_MEDIA_IMAGE_TASK,
+            register_editorial_pipeline_tasks,
+        )
+        from contentos.worker.runtime import WorkerRuntime
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            user_id = str(operator_user(session).id)
+        provider = FakeStructuredProvider(payload={})
+        settings = Settings(
+            environment=Environment.TEST,
+            service_name="ContentOS Budget Test",
+            application_version="1.0.0-test",
+            log_level=LogLevel.INFO,
+            api_docs_enabled=False,
+            celery_task_always_eager=True,
+            celery_broker_connection_retry_on_startup=False,
+            ai_daily_attempt_budget=1,  # already spent by the seeded chain
+        )
+        runtime = WorkerRuntime(
+            settings,
+            session_factory=harness.session_factory,
+            image_generation_provider_factory=lambda: provider,
+            media_store=MediaStore(tmp_path / "media-store"),
+        )
+        app = create_celery_app(settings)
+        register_editorial_pipeline_tasks(app, runtime)
+        result = (
+            app.tasks[GENERATE_MEDIA_IMAGE_TASK]
+            .apply(
+                kwargs={
+                    "work_item_id": str(accepted.context.work_item_id),
+                    "need_index": 0,
+                    "requested_by_user_id": user_id,
+                }
+            )
+            .get()
+        )
+        assert result["status"] == "budget_exhausted"
+        assert "no provider was invoked" in result["detail"]
+        assert provider.invocations == 0
+        with harness.session() as session:
+            assert session.execute(select(MediaAsset)).scalar_one_or_none() is None

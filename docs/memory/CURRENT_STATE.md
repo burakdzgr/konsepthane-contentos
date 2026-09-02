@@ -3321,19 +3321,38 @@ the inputs listed below.
   empty-list + truthful totals asserted) — suite 1297 backend + 232
   admin, gate green; no migration (head stays `0026`)
 
+- PRODUCTION-READINESS: provider spend controls complete:
+  `contentos.ai.budget` — `attempts_today` (durable
+  ai_generation_attempts rows since UTC midnight, SQLite-naive
+  normalized) and `ensure_daily_attempt_budget` raising the typed
+  `BudgetExceededError` BEFORE any provider invocation (nothing
+  persisted, no state moved); new setting `ai_daily_attempt_budget`
+  (default 500 per UTC day across all purposes, ge=1, None disables
+  explicitly); the guard is wired into ALL SIX AI worker tasks
+  (ideas/intent/brief/writer/editor/media-image) via the shared
+  `budget_refusal` closure returning the truthful `budget_exhausted`
+  task summary — an execution fact, never an editorial decision, no
+  blind retry
+- Verified: 2 new tests (helper counting + explicit-disable + refusal;
+  the exhausted-budget media task as a truthful no-op with ZERO
+  provider invocations and zero assets) — suite 1299 backend + 232
+  admin, gate green; no migration (head stays `0026`)
+
 ## Next production-readiness task
 
-PROVIDER SPEND CONTROLS — bounded retries exist, but nothing durable
-bounds cumulative provider spend: add a deterministic daily attempt
-budget (per purpose, counted from the durable ai_generation_attempts
-rows — no new tables needed) enforced in the generation engines/tasks
-before any provider call, configurable via settings (default generous,
-0 = disabled), with a truthful typed refusal that is an execution
-fact, never an editorial decision. Then: secrets-management
-documentation (final backlog item). Feature phases
-(Distribution/Analytics/Refresh + the publishing live integration)
-remain blocked on the operator inputs listed below and resume the
-moment they arrive.
+SECRETS-MANAGEMENT DOCUMENTATION (final backlog item) — a docs-only
+operations note (docs/OPERATIONS_SECRETS.md or similar) recording:
+which secrets exist (database url, redis urls, OpenAI key + models,
+publishing api key when it arrives, admin session cookie sececurity
+posture), how they are supplied today (compose env vars; SecretStr in
+settings; never logged/rendered — point at the leak tests), rotation
+procedure (CLI password rotation; provider key rotation = env change
++ restart), and what production requires before exposure (a real
+secret store, TLS termination, login rate-limiting — the documented
+acceptances). After that the production-readiness backlog from the
+phase audits is COMPLETE; feature phases (Distribution/Analytics/
+Refresh + the publishing live integration) remain blocked on the
+operator inputs listed below and resume the moment they arrive.
 
 Before implementing the affected integrations, resolve:
 
