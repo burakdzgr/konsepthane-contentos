@@ -26,7 +26,8 @@ only) COMPLETE; Task 16 QA Report Persistence Foundation COMPLETE;
 Task 17 QA Gate Engine COMPLETE; Task 18 QA Orchestration +
 Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
 AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
-COMPLETE)
+COMPLETE; Task 20 QA-Stage Audit COMPLETE; Task 21 PHASE 4 CLOSURE
+AUDIT COMPLETE — **PHASE 4 IS CLOSED**)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2689,24 +2690,51 @@ access protection belongs to future deployment infrastructure.
   rejection); suite 1225 backend + 185 admin (23 files), gate green;
   no migration (head stays `0020`)
 
+- PHASE 4 Tasks 20 + 21 (QA-stage audit + PHASE 4 CLOSURE AUDIT,
+  docs-only) complete: `docs/PHASE4_QA_AUDIT.md` — 7/7 §7 criteria MET,
+  QA stage CLOSED (limitations: media gate waivable-not-satisfiable
+  until a media pipeline exists; link needs non-blocking until
+  Publishing API integration; AWAITING_HUMAN_REVIEW has no exit
+  surface by design pending governance; waiver revocation backlog).
+  `docs/PHASE4_CLOSURE_AUDIT.md` — **PHASE 4 CLOSED**: all three stage
+  audits green (Writer 15/15, Editor 10/10, QA 7/7); the binding
+  invariants each audited and HELD (provenance resolvable end-to-end,
+  AI never Evidence/never new facts, UNKNOWN never 0/PASS, failure
+  never an editorial decision, WorkflowService-only artifact-gated
+  transitions, responsible-state routing, no publication/approval
+  boundary, ADR 0004 human control); the FULL CHAIN verified on real
+  PG + Redis in one run (`verify_pg_full_chain.py`: seeded research
+  through writer/editor/QA to AWAITING_HUMAN_REVIEW with the package
+  pinned, ending in a complete ADR 0007 walk from the terminal draft:
+  Draft->Usage->Claim->Evidence->Document->Snapshot->Source); the
+  consolidated production-readiness backlog (8 items: auth/RBAC,
+  real-infra CI lane, spend controls, paging, manual-draft UX, waiver
+  revocation, one recorded test-evidence gap, media/link pipelines)
+  is recorded SEPARATELY from feature completion
+
 ## Next immediate task
 
-PHASE 4 TASK 20 (authorized under the autonomous continuation mandate)
-— QA-STAGE CLOSURE AUDIT (docs-only) against PHASE4_QA_ARCHITECTURE.md
-§7 with the criterion-by-criterion evidence matrix and honest
-limitation classification (PHASE4_QA_AUDIT.md), immediately followed
-by PHASE 4 TASK 21 — the PHASE 4 CLOSURE AUDIT (docs-only): the
-complete Research -> Opportunity -> Evidence -> Idea -> Brief ->
-Writer -> Editor -> QA -> AWAITING_HUMAN_REVIEW story audited against
-the phase's binding invariants (provenance chain resolvability, AI
-output never Evidence, failures never editorial decisions,
-WorkflowService-only transitions with artifact gates, no publication/
-approval surface, truthful UNKNOWN), backed by a real-infrastructure
-FULL-CHAIN verification run (single script: seeded research ->
-AWAITING_HUMAN_REVIEW on real PG + Redis) and the consolidated
-production-readiness backlog. Then Phase 4 is CLOSED; the next phase
-(governance: authentication, authorized reviewers, APPROVED) begins
-with its own architecture.
+PHASE 5 — GOVERNANCE ARCHITECTURE (design only; authorized under the
+autonomous continuation mandate's long-term roadmap). Phase 4 is
+closed; the pipeline parks validated packages at AWAITING_HUMAN_REVIEW
+with no exit surface. The governance phase must design (then
+implement) exactly what ADR 0004 requires before APPROVED can exist:
+authentication for the operator/admin surfaces (the current
+single-operator deployment boundary is the recorded production-
+readiness gap), named authorized human reviewers, the
+AWAITING_HUMAN_REVIEW decision surface (APPROVED with a durable
+named-human approval record pinning the exact package /
+CHANGES_REQUESTED via the routing foundation with a QA_REVIEW-or-
+upstream responsible vocabulary / REJECTED with reasons),
+approval-validity semantics (APPROVAL_EXPIRED per WORKFLOW.md — the
+approved package hash must still match at scheduling time), and the
+governance data model (append-only approval records; never a fake
+approval mechanism). Constraints unchanged: WorkflowService-only,
+artifact gates, append-only audit, no publication boundary yet
+(SCHEDULED/PUBLISHING remain the publishing phase behind the future
+Konsepthane Publishing API). The design document should follow the
+Phase 4 pattern: decisions, data model, exit criteria, atomic
+dependency-correct implementation tasks.
 
 Before implementing the affected integrations, resolve:
 
