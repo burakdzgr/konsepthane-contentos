@@ -2902,22 +2902,39 @@ access protection belongs to future deployment infrastructure.
   expiry outside SCHEDULED is a precondition error) — suite 1256
   backend + 216 admin, gate green; no migration (head stays `0022`)
 
+- PHASE 5 Task G6 (governance closure audit) complete — **PHASE 5 IS
+  CLOSED**: `docs/PHASE5_GOVERNANCE_AUDIT.md` audits all 8 §6 exit
+  criteria as MET with code/test references (guarded routers + leak
+  posture, audited-only user management, reviewer-only pinned decision
+  exits, approve gates + no-session-for-machines by construction,
+  bounded routing + reference-never-edit revocation, hash-bound
+  validity + unreachable APPROVAL_EXPIRED wiring, named actors with
+  honest UNKNOWN, read models + real-PG verification), documents that
+  Phase 4's "no fake approval" invariant is correctly RETIRED (the ban
+  test evolved into an exact two-route approval-surface pin; ADR 0004
+  now mechanically enforced), and carries the consolidated
+  production-readiness backlog (real-infra CI lane, session
+  pruning/rate-limiting, spend controls, capped listings, manual-draft
+  editor UX, secrets management). Docs-only; no runtime changed.
+
 ## Next immediate task
 
-PHASE 5 TASK G6 (authorized under the autonomous continuation mandate)
-— GOVERNANCE CLOSURE AUDIT, docs-only, against
-PHASE5_GOVERNANCE_ARCHITECTURE.md §6 exit criteria: verify every
-criterion with concrete code/test references (auth foundation, admin
-authentication, decision records + gates, validity primitive +
-APPROVAL_EXPIRED wiring, read models + leak tests, real-PG
-verification), including re-verifying that Phase 4's "no fake
-approval" invariant is now correctly retired by real named approvals
-(the two governed reviewer routes are the ONLY approval surface).
-After G6: continue per roadmap — the media phase (image needs already
-land in QA media_needs), then publishing (Publishing API contract,
-service auth, idempotency — the open integration questions below),
-keeping the production-readiness backlog separate from feature
-completion.
+MEDIA PHASE — ARCHITECTURE FIRST (authorized under the autonomous
+continuation mandate), per the roadmap (Governance done → Media →
+Publishing → Scheduling/Distribution → Analytics → Refresh): write
+`docs/PHASE6_MEDIA_ARCHITECTURE.md` before any code — scope: satisfy
+the QA `media_needs` gate honestly (today it blocks `unsatisfied` or
+is waived by a human). Decisions to design: durable media artifacts
+(what a satisfied media need IS: sourced/generated image with
+provenance + licensing posture; AI image generation would go through
+contentos.ai purposes with the same no-raw-persistence rules), where
+media lives (no Konsepthane production filesystem access — a
+ContentOS-owned store), how media needs bind to draft blocks
+(placeholder keys already exist in writer drafts), the workflow shape
+(media work inside which states; QA re-run after satisfaction), admin
+surface, and what is deliberately deferred. Then implement in atomic
+migration-verified tasks per the established loop. Publishing phase
+afterwards must consume `require_current_approval`.
 
 Before implementing the affected integrations, resolve:
 
