@@ -19,6 +19,9 @@ from contentos.decisions.service import DecisionService
 from contentos.publishing.models import PublicationAttempt, PublicationPackage
 from contentos.workflow.models import EditorialWorkItem
 
+MAX_PUBLICATION_PACKAGES = 50
+MAX_ATTEMPTS_PER_PACKAGE = 50
+
 
 class PublicationActorView(_FrozenModel):
     id: uuid.UUID
@@ -56,11 +59,15 @@ class PublicationPackageView(_FrozenModel):
     assembled_by: PublicationActorView
     created_at: datetime
     attempts: list[PublicationAttemptView]
+    total_attempts: int
+    attempts_truncated: bool
 
 
 class PublicationPage(_FrozenModel):
     work_item_id: uuid.UUID
     packages: list[PublicationPackageView]
+    total_packages: int
+    packages_truncated: bool
     # None when no package exists yet; else whether the CURRENT approval
     # still covers the latest package's content.
     latest_package_approval_current: bool | None
@@ -96,6 +103,7 @@ def get_publication(session: Session, work_item_id: uuid.UUID) -> PublicationPag
         sections = body.get("sections") if isinstance(body, dict) else None
         manifest = package.media_manifest or {}
         user = users[package.assembled_by_user_id]
+        package_attempts = attempts_by_package.get(package.id, [])
         return PublicationPackageView(
             id=package.id,
             version=package.version,
@@ -128,8 +136,10 @@ def get_publication(session: Session, work_item_id: uuid.UUID) -> PublicationPag
                     transport_name=attempt.transport_name,
                     created_at=attempt.created_at,
                 )
-                for attempt in attempts_by_package.get(package.id, [])
+                for attempt in package_attempts[:MAX_ATTEMPTS_PER_PACKAGE]
             ],
+            total_attempts=len(package_attempts),
+            attempts_truncated=len(package_attempts) > MAX_ATTEMPTS_PER_PACKAGE,
         )
 
     latest_current: bool | None = None
@@ -142,6 +152,8 @@ def get_publication(session: Session, work_item_id: uuid.UUID) -> PublicationPag
         )
     return PublicationPage(
         work_item_id=work_item_id,
-        packages=[_package_view(package) for package in packages],
+        packages=[_package_view(package) for package in packages[:MAX_PUBLICATION_PACKAGES]],
+        total_packages=len(packages),
+        packages_truncated=len(packages) > MAX_PUBLICATION_PACKAGES,
         latest_package_approval_current=latest_current,
     )

@@ -590,3 +590,31 @@ class TestPublicationReads:
             harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/publication").status_code
             == 404
         )
+
+
+class TestPublicationListCaps:
+    def test_packages_and_attempts_truncate_truthfully(
+        self, harness: Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import contentos.api.read_models.publishing as publishing_module
+        from contentos.publishing.transport import FakePublishingTransport, TransportOutcome
+
+        publisher = TestPublishTask()
+        work_item_id, _ = publisher.scheduled(harness)
+        transport = FakePublishingTransport(
+            outcome=TransportOutcome(status="succeeded", remote_publication_ref="kh-1")
+        )
+        app = publisher.worker_app(harness, transport)
+        assert publisher.run(app, work_item_id)["status"] == "completed"
+
+        monkeypatch.setattr(publishing_module, "MAX_ATTEMPTS_PER_PACKAGE", 0)
+        page = harness.get(f"/internal/editorial/work-items/{work_item_id}/publication").json()
+        assert page["packages"][0]["attempts"] == []
+        assert page["packages"][0]["total_attempts"] == 1
+        assert page["packages"][0]["attempts_truncated"] is True
+        assert page["total_packages"] == 1 and page["packages_truncated"] is False
+
+        monkeypatch.setattr(publishing_module, "MAX_PUBLICATION_PACKAGES", 0)
+        page = harness.get(f"/internal/editorial/work-items/{work_item_id}/publication").json()
+        assert page["packages"] == []
+        assert page["packages_truncated"] is True

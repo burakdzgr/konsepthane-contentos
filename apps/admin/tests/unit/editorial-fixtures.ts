@@ -734,6 +734,8 @@ export function decisionListPage(
   return {
     work_item_id: WORK_ITEM_ID,
     decisions,
+    total: decisions.length,
+    truncated: false,
     approval_status: status,
   };
 }
@@ -806,6 +808,8 @@ export function mediaCoveragePage(
     satisfied_needs: satisfied,
     total_needs: needs.length,
     history: [],
+    total_history: 0,
+    history_truncated: false,
     ...overrides,
   };
 }
@@ -853,6 +857,8 @@ export function publicationPackage(
     },
     created_at: AT,
     attempts: [],
+    total_attempts: 0,
+    attempts_truncated: false,
     ...overrides,
   };
 }
@@ -863,6 +869,8 @@ export function publicationPage(
   return {
     work_item_id: WORK_ITEM_ID,
     packages: [],
+    total_packages: (overrides.packages ?? []).length,
+    packages_truncated: false,
     latest_package_approval_current: null,
     ...overrides,
   };

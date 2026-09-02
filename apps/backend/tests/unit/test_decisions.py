@@ -429,3 +429,24 @@ class TestRoleSeparation:
         )
         assert decide.status_code == 200
         assert decide.json()["reviewer_username"] == "pure.reviewer2"
+
+
+class TestDecisionListCap:
+    def test_decision_listing_truncates_truthfully(
+        self, harness: Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import contentos.api.read_models.decisions as decisions_module
+
+        accepted, _, _ = awaiting_review_context(harness)
+        approve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/approve",
+            {"reason": "onay"},
+        )
+        assert approve.status_code == 200
+        monkeypatch.setattr(decisions_module, "MAX_DECISIONS_PER_WORK_ITEM", 0)
+        body = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/decisions"
+        ).json()
+        assert body["decisions"] == []
+        assert body["total"] == 1
+        assert body["truncated"] is True

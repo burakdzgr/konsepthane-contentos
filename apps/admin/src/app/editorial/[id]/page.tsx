@@ -2002,6 +2002,8 @@ function MediaSection({
                 `#${row.need_index} ${row.status} — ${row.satisfied_by.display_name}: ${row.reason}`,
             )
             .join(" · ")}
+          {media.history_truncated &&
+            ` · … older bindings not shown (${media.total_history} total)`}
         </p>
       )}
     </section>
@@ -2076,6 +2078,12 @@ function PublicationSection({
                         {row.attempts.length === 0 && (
                           <span className="muted">No dispatches yet.</span>
                         )}
+                        {row.attempts_truncated && (
+                          <p className="muted">
+                            Showing {row.attempts.length} of{" "}
+                            {row.total_attempts} attempts.
+                          </p>
+                        )}
                         {row.attempts.map((attempt) => (
                           <p key={attempt.id}>
                             #{attempt.attempt_number}{" "}
@@ -2100,6 +2108,13 @@ function PublicationSection({
                 </tbody>
               </table>
             </div>
+          )}
+          {publication.packages.length > 0 && (
+            <TruncationNote
+              shown={publication.packages.length}
+              total={publication.total_packages}
+              noun="publication packages"
+            />
           )}
         </>
       )}
@@ -2260,6 +2275,11 @@ function DecisionsSection({
               </table>
             </div>
           )}
+          <TruncationNote
+            shown={decisions.decisions.length}
+            total={decisions.total}
+            noun="decisions"
+          />
         </>
       )}
       {(state === "awaiting_human_review" || state === "approved") &&

@@ -3307,15 +3307,30 @@ the inputs listed below.
   absent by design for the single-tenant internal tool and is REQUIRED
   before any wider exposure.
 
+- PRODUCTION-READINESS: capped listings complete: the three read
+  models that lacked contract-level bounds (drafts/reviews/QA already
+  had them) gained explicit caps with truthful signals — decisions
+  (`MAX_DECISIONS_PER_WORK_ITEM=100`, +total/truncated), media binding
+  history (`MAX_MEDIA_HISTORY=100`, +total_history/history_truncated;
+  needs stay bounded by the brief contract), publication packages
+  (`MAX_PUBLICATION_PACKAGES=50`, +total_packages/packages_truncated)
+  and per-package attempts (`MAX_ATTEMPTS_PER_PACKAGE=50`,
+  +total_attempts/attempts_truncated); admin zod schemas/fixtures
+  updated and the sections render truncation notes. Verified: 3 new
+  backend tests (cap constants monkeypatched to force truncation;
+  empty-list + truthful totals asserted) — suite 1297 backend + 232
+  admin, gate green; no migration (head stays `0026`)
+
 ## Next production-readiness task
 
-CAPPED LISTINGS — the per-work-item list read models
-(drafts/reviews/qa-reports/decisions/media history/publication
-attempts) return unbounded lists today (bounded in practice by
-supersession/retry caps, but not by contract); add explicit caps with
-truthful `truncated`/total signals where missing, mirroring the
-work-queue paging pattern. Then: provider spend controls;
-secrets-management documentation. Feature phases
+PROVIDER SPEND CONTROLS — bounded retries exist, but nothing durable
+bounds cumulative provider spend: add a deterministic daily attempt
+budget (per purpose, counted from the durable ai_generation_attempts
+rows — no new tables needed) enforced in the generation engines/tasks
+before any provider call, configurable via settings (default generous,
+0 = disabled), with a truthful typed refusal that is an execution
+fact, never an editorial decision. Then: secrets-management
+documentation (final backlog item). Feature phases
 (Distribution/Analytics/Refresh + the publishing live integration)
 remain blocked on the operator inputs listed below and resume the
 moment they arrive.

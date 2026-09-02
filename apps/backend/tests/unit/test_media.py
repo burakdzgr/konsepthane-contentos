@@ -652,3 +652,33 @@ class TestGenerateMediaImageTask:
         )
         assert unknown_user["status"] == "precondition_failed"
         assert "active user" in unknown_user["detail"]
+
+
+class TestMediaHistoryCap:
+    def test_history_truncates_truthfully(
+        self, harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import contentos.api.read_models.media as media_module
+
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+        with harness.session() as session:
+            user = operator_user(session)
+            service = MediaService(session, MediaStore(tmp_path / "media-store"))
+            asset, _ = service.register_upload(
+                PNG_BYTES,
+                media_type="image/png",
+                alt_text="Kapak",
+                license_note="Arşiv",
+                created_by=user,
+            )
+            session.commit()
+            service.satisfy_need(work_item_id, 0, asset.id, user=user, reason="bağla")
+            session.commit()
+            service.unsatisfy_need(work_item_id, 0, user=user, reason="çöz")
+            session.commit()
+        monkeypatch.setattr(media_module, "MAX_MEDIA_HISTORY", 0)
+        page = harness.get(f"/internal/editorial/work-items/{work_item_id}/media").json()
+        assert page["history"] == []
+        assert page["total_history"] == 1
+        assert page["history_truncated"] is True

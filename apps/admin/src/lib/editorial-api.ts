@@ -798,11 +798,15 @@ const publicationPackageSchema = z.object({
   }),
   created_at: timestampSchema,
   attempts: z.array(publicationAttemptSchema),
+  total_attempts: z.number().int(),
+  attempts_truncated: z.boolean(),
 });
 
 const publicationPageSchema = z.object({
   work_item_id: z.string().uuid(),
   packages: z.array(publicationPackageSchema),
+  total_packages: z.number().int(),
+  packages_truncated: z.boolean(),
   latest_package_approval_current: z.boolean().nullable(),
 });
 
@@ -856,6 +860,8 @@ const mediaCoveragePageSchema = z.object({
   satisfied_needs: z.number().int(),
   total_needs: z.number().int(),
   history: z.array(mediaSatisfactionSchema),
+  total_history: z.number().int(),
+  history_truncated: z.boolean(),
 });
 
 const decisionSchema = z.object({
@@ -887,6 +893,8 @@ const approvalStatusSchema = z.object({
 const decisionListPageSchema = z.object({
   work_item_id: z.string().uuid(),
   decisions: z.array(decisionSchema),
+  total: z.number().int(),
+  truncated: z.boolean(),
   approval_status: approvalStatusSchema,
 });
 

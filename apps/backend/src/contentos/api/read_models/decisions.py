@@ -19,6 +19,9 @@ from contentos.decisions.models import HumanDecision
 from contentos.decisions.service import DecisionService
 from contentos.workflow.models import EditorialWorkItem
 
+# Decisions are rare human events; the cap is generous and truthful.
+MAX_DECISIONS_PER_WORK_ITEM = 100
+
 
 class ReviewerView(_FrozenModel):
     id: uuid.UUID
@@ -52,6 +55,8 @@ class ApprovalStatusView(_FrozenModel):
 class DecisionListPage(_FrozenModel):
     work_item_id: uuid.UUID
     decisions: list[DecisionView]
+    total: int
+    truncated: bool
     approval_status: ApprovalStatusView
 
 
@@ -87,7 +92,9 @@ def list_work_item_decisions(session: Session, work_item_id: uuid.UUID) -> Decis
     status = service.approval_status(work_item_id)
     return DecisionListPage(
         work_item_id=work_item_id,
-        decisions=[_view(decision) for decision in decisions],
+        decisions=[_view(decision) for decision in decisions[:MAX_DECISIONS_PER_WORK_ITEM]],
+        total=len(decisions),
+        truncated=len(decisions) > MAX_DECISIONS_PER_WORK_ITEM,
         approval_status=ApprovalStatusView(
             approved=status.approved,
             current=status.current,

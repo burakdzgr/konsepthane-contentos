@@ -21,6 +21,10 @@ from contentos.media.enums import MediaOrigin, SatisfactionStatus
 from contentos.media.models import MediaAsset, MediaNeedSatisfaction
 from contentos.workflow.models import EditorialWorkItem
 
+# The needs list is bounded by the brief contract (MAX_MEDIA_NEEDS); the
+# audited binding HISTORY needs its own truthful cap.
+MAX_MEDIA_HISTORY = 100
+
 
 class MediaActorView(_FrozenModel):
     id: uuid.UUID
@@ -72,6 +76,8 @@ class MediaCoveragePage(_FrozenModel):
     satisfied_needs: int
     total_needs: int
     history: list[SatisfactionView]
+    total_history: int
+    history_truncated: bool
 
 
 def get_media_coverage(session: Session, work_item_id: uuid.UUID) -> MediaCoveragePage | None:
@@ -160,5 +166,7 @@ def get_media_coverage(session: Session, work_item_id: uuid.UUID) -> MediaCovera
         needs=needs,
         satisfied_needs=sum(1 for need in needs if need.satisfaction is not None),
         total_needs=len(needs),
-        history=[_satisfaction_view(row) for row in satisfactions],
+        history=[_satisfaction_view(row) for row in satisfactions[:MAX_MEDIA_HISTORY]],
+        total_history=len(satisfactions),
+        history_truncated=len(satisfactions) > MAX_MEDIA_HISTORY,
     )
