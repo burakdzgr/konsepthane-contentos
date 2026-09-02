@@ -15,7 +15,7 @@ Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE;
 Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE;
 Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
 COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
-CLOSED)
+CLOSED; Task 9 Editor Architecture (design only) COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2326,25 +2326,57 @@ access protection belongs to future deployment infrastructure.
   provider spend controls; capped unpaged draft listings). No runtime
   changes.
 
+- PHASE 4 Task 9 (Editor architecture, design only) complete:
+  `docs/PHASE4_EDITOR_ARCHITECTURE.md`. Core decisions: the Editor is
+  EVALUATIVE, never generative — revisions flow through the existing
+  Writer rework loop (single content-producing engine; frozen draft
+  origin vocabulary; findings carried as bounded structured input to
+  regeneration, ids + bounded safe text only, no new fact channel);
+  humans advance the workflow out of EDITING (accept-review OPERATOR
+  command gated on a durable ACTIVE `pass` review pinning the ACTIVE
+  draft; request-rework keeps the Task 6 responsible-state routing and
+  pins the review; REJECTED stays human-only); model output is
+  FINDINGS-ONLY in a strict `editor-review/1` schema (dimension/
+  severity/anchor vocabulary, purpose EDITOR_REVIEW) with the verdict
+  COMPUTED by the versioned deterministic `editor-verdict/1` policy
+  (blocking/major -> revise, else pass) — findings are policy signals,
+  never Evidence, never facts; deterministic integrity gates (entry-pin
+  resolution, ACTIVE draft, exact accepted brief, Writer-envelope drift
+  recomputation) fail closed with zero provider spend; data model =
+  append-only `editorial_reviews` (+findings +status_events) with the
+  proven two-shape supersession trigger, `UNIQUE(generation_attempt_id)`
+  and partial-unique ACTIVE row, purpose-CHECK widening with the
+  audit-protecting downgrade guard; failure taxonomy identical to the
+  Writer (execution failure never a verdict, stays EDITING); dispatch
+  of the Editor task added to the two draft success paths (the
+  previously omitted downstream-dispatch step); honest QA note (the
+  WORKFLOW.md "eligible media set" QA_REVIEW entry gate must be defined
+  truthfully by the QA architecture — no silent pass). Exit criteria
+  (§11) and atomic implementation order Tasks 10-15 (§12) recorded.
+
 ## Next immediate task
 
-PHASE 4 TASK 9 (authorized under the autonomous continuation mandate) —
-EDITOR ARCHITECTURE (design only), per PHASE4_WRITER_ARCHITECTURE.md
-§22 and the mandate's stage order: an accepted design document
-(PHASE4_EDITOR_ARCHITECTURE.md) for the Editor stage that consumes the
-durable EDITING entry (pinned ContentDraft) and produces durable,
-versioned editorial review artifacts. Binding constraints: reuse the
-contentos.ai boundary (model judgment = policy signal, NEVER
-ResearchEvidence, never new facts); deterministic gates before/around
-any model-assisted signal; execution failure never an editorial
-verdict; workflow authority stays WorkflowService-only (EDITING ->
-QA_REVIEW forward, EDITING -> CHANGES_REQUESTED(responsible=DRAFTING)
-rework via the Task 6 foundation, EDITING -> REJECTED reserved to
-humans); artifact-gate pattern for every transition; append-only
-persistence with provenance to the exact draft version reviewed;
-truthful UNKNOWN semantics; no publication boundary. The design must
-end with atomic dependency-correct implementation tasks and exit
-criteria mirroring the Writer-stage discipline (§21/§22 style).
+PHASE 4 TASK 10 (authorized under the autonomous continuation mandate)
+— EDITOR REVIEW PERSISTENCE + PROVENANCE FOUNDATION, per accepted
+PHASE4_EDITOR_ARCHITECTURE.md §12 Task 10: migration 0019 creating
+`editorial_reviews` (version >=1, verdict pass|revise CHECK,
+integrity_gate_result/verdict_policy_snapshot/review_scope JSONB,
+engine identity, status active|superseded with the proven two-shape
+guarded trigger, `UNIQUE(work_item_id, version)`,
+`UNIQUE(generation_attempt_id)`, partial-unique ACTIVE row, RESTRICT
+FKs to work item/draft/brief/attempt),
+`editorial_review_findings` (finding_key unique per review,
+dimension/severity/origin CHECK vocabularies, optional block_id +
+brief_claim_id anchor, bounded safe text, append-only) and
+`editorial_review_status_events` (draft-status-event pattern,
+append-only) + `ck_ai_generation_attempts_purpose` widened for
+`editor_review` with the downgrade refusing while editor_review rows
+exist; drafts-style enums/errors/values/repository and a ReviewService
+with deterministic gates only (entry-pin resolution, ACTIVE draft,
+exact accepted brief, supersession with required reason, race
+convergence) — NO engine, NO Celery, NO API/admin. Unit tests + real-PG
+verification (migration cycle, trigger negatives, race, downgrade
+guard).
 
 Before implementing the affected integrations, resolve:
 
