@@ -4,6 +4,78 @@ Last updated: 2026-09-02
 
 ## Current phase
 
+PHASE 4 - Content Production (Writer -> Editor -> QA, ending at
+AWAITING_HUMAN_REVIEW) - IN PROGRESS
+(Task 1 Writer Architecture / Drafting Boundary Design COMPLETE — design
+accepted, including the operator-required architecture correction pass)
+
+Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
+Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
+contentos.drafts package, no Writer models/engine/tasks/routes/admin, no
+migration (schema head stays `0017`), no dependency changes, no ADR (all
+decisions live in the accepted design; ADRs remain 0001-0009). Accepted
+Writer-stage decisions: `contentos.drafts` domain (immutable versioned
+ContentDraft identified by work_item_id + version, one draft per
+successful generation attempt, active/superseded status only) with
+structured bounded JSON body (`writer-draft-body/1`, inline-Markdown
+blocks, no URLs/HTML) + relational DraftClaimUsage provenance
+(Draft -> BriefClaim -> ResearchEvidence; ADR 0007 chain extended, never
+replaced); binding fact-creation rule with deterministic post-generation
+validation (claim-ref completeness, numeric-assertion gate, kind rules,
+required-handling manifest coverage — versioned policies
+writer-validation/1 + writer-originality/1); bounded
+WriterInputProjection (no source bodies/clean_text/raw payloads — the
+model can never copy what it never receives); WriterDraftV1 strict output
+schema through the EXISTING contentos.ai boundary (new purpose
+WRITER_DRAFT, attempt idempotency + IncompleteDraftMaterializationError
+recovery per Task 9/10/12 semantics); operator-authored drafts
+(origin=operator, same validation, no fake attempt, and a durable
+manual_input_hash idempotency identity — SHA-256 over brief id + body
+schema version + canonical body + claim-usage mapping + handling
+coverage + validation policy version, partial-unique per work item, with
+the established insert/IntegrityError/re-read race recovery; request_id
+stays correlation-only); explicit regeneration command (DRAFTING only,
+reason required, supersession audited); the Writer factual guarantee is
+stated truthfully as a deterministic fail-closed envelope (known claim
+refs, numeric-assertion gate, kind/framing rules, required handling,
+URL/HTML ban) — semantic claim-faithfulness is explicitly delegated to
+Editor/QA over the DraftClaimUsage -> BriefClaim -> ResearchEvidence
+chain, any future model-assisted faithfulness check is a policy/QA
+signal never Evidence, and no semantic certainty is claimed that was not
+proven; DRAFTING -> EDITING is an automatic SYSTEM WorkflowService
+transition after a valid durable draft commits (WORKFLOW.md's own
+artifact gate: "Draft version exists"), never queue completion, with the
+draft identity pinned in the event; Writer rework from EDITING is NOT
+claimed operational yet — the current WorkflowService CHANGES_REQUESTED
+limitation returns only to the entry state, so a dedicated NAMED
+CHANGES_REQUESTED RESPONSIBLE-STATE ROUTING FOUNDATION (WorkflowService-
+controlled, durable/audited responsible-state recording with required
+reason, context-validated targets, history-derived exit, return-to-
+origin fallback, BLOCKED semantics untouched, never a generic state
+setter) is a declared Phase 4 dependency that must ship before any
+rework/regeneration-from-EDITING flow is exposed; execution failure
+never becomes REJECTED; Celery job
+contentos.editorial.generate_writer_draft under the inherited delivery
+contract (outbox stays production-readiness backlog). Phase 4 scope
+decision (corrected): Content Production = Writer -> Editor -> QA,
+ending when an exact validated content package reaches
+AWAITING_HUMAN_REVIEW — ready for an authorized human review decision,
+NOT approved; APPROVED belongs to the next governance/review phase,
+which must first design the authorized-human identity/approval boundary
+ADR 0004 requires (no auth/RBAC is pulled into Phase 4);
+Scheduler/Publishing/Pinterest/Analytics remain later; the QA-stage
+design will scope the minimal media-eligibility slice QA_REVIEW entry
+requires. Implementation order (atomic, corrected): Task 2 draft
+persistence + provenance foundation incl. manual_input_hash (migration
+expected 0018); Task 3 writer validation & originality policies; Task 4
+input projection + output schema + WriterEngine (fake provider); Task 5
+orchestration + DRAFTING->EDITING wiring (initial generation only, no
+rework exposure); Task 6 named CHANGES_REQUESTED responsible-state
+routing foundation; Task 7 Writer rework + regeneration command surface
++ read models + admin (depends on Tasks 5 AND 6); Task 8 Writer-stage
+audit; Task 9 Editor architecture (design only, after Writer-stage
+closure).
+
 PHASE 3 - Editorial Intelligence / Idea Engine - COMPLETE (2026-09-02)
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
@@ -1926,6 +1998,7 @@ main
 - docs/PHASE2_CLOSURE_AUDIT.md
 - docs/PHASE3_EDITORIAL_INTELLIGENCE.md
 - docs/PHASE3_CLOSURE_AUDIT.md
+- docs/PHASE4_WRITER_ARCHITECTURE.md
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
@@ -2015,16 +2088,20 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 4 TASK 1 (awaiting explicit authorization) — WRITER ARCHITECTURE /
-DRAFTING BOUNDARY DESIGN. DESIGN ONLY: define how a future Writer
-consumes exactly one ACCEPTED_FOR_DRAFTING ContentBrief version and its
-pinned evidence contract under the immutable Phase 4 entry criteria
-recorded in docs/PHASE3_CLOSURE_AUDIT.md §10 (provenance non-bypassable,
-AI output never evidence, contradictions/uncertainty never silently
-resolved, draft creation is not publication approval, ADR 0004 untouched,
-no Konsepthane production access, Phase 3 artifacts immutable, Writer
-failure is execution failure). No Writer implementation, no publication,
-no scheduling.
+PHASE 4 TASK 2 (awaiting explicit authorization) — DRAFT PERSISTENCE +
+PROVENANCE FOUNDATION, per the accepted PHASE4_WRITER_ARCHITECTURE.md
+§22: the contentos.drafts models/values/repository + migration (expected
+`0018`: content_drafts, draft_claim_usages, draft_status_events, and the
+ai_generation_attempts purpose CHECK gaining `writer_draft`); the
+writer-draft-body/1 structural body validation; DraftService.create_draft
+for BOTH origins with structural gates (claim-ref validity, URL/HTML ban,
+brief section-contract conformance, claim-usage mirroring), the
+manual_input_hash idempotency identity for operator-authored drafts
+(partial-unique per work item + race recovery), supersession,
+and append-only/status-only-forward immutability triggers; SQLite +
+real-PG verification including trigger and downgrade/upgrade cycles. No
+AI generation, no Writer policies (Task 3), no workflow transition, no
+API/admin.
 
 Before implementing the affected integrations, resolve:
 
