@@ -21,7 +21,8 @@ Task 11 Editor Writer-Envelope Drift Guard COMPLETE;
 Task 12 Editor Projection + Output Schema + Engine COMPLETE;
 Task 13 Editor Orchestration + Commands COMPLETE;
 Task 14 Editor Read Models + Admin COMPLETE; Task 15 Editor-Stage
-Closure Audit COMPLETE — EDITOR STAGE CLOSED)
+Closure Audit COMPLETE — EDITOR STAGE CLOSED; QA Architecture (design
+only) COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2540,30 +2541,53 @@ access protection belongs to future deployment infrastructure.
   superseded-brief review precondition is code-enforced but lacks a
   dedicated unit test). No runtime changes.
 
+- PHASE 4 QA architecture (design only) complete:
+  `docs/PHASE4_QA_ARCHITECTURE.md`. Core decisions: QA v1 is FULLY
+  DETERMINISTIC — no model, no provider spend, no purpose widening
+  (the Editor already carries the governed semantic signal; a future
+  model-assisted QA signal would arrive as a new versioned gate via
+  the Editor pattern); the ready advance is SYSTEM-gated (a
+  `ready_for_human_review` QaReport is a mechanical artifact gate:
+  the task advances QA_REVIEW -> AWAITING_HUMAN_REVIEW with the report
+  pinned) while every judgment exit stays human (rework with a bounded
+  responsible-state choice {drafting, editing} via a QA_REVIEW entry in
+  PERMITTED_RESPONSIBLE_STATES; audited media waivers; REJECTED
+  human-only); the WORKFLOW.md media gate is TRUTHFUL — not_applicable
+  / unsatisfied (default, blocking) / waived_by_human (audited, needs
+  stay visible), never a silent pass; internal-link needs reported
+  non-blocking (publish-time concern); seven hard gates under
+  `qa-gates/1` (package integrity, ADR 0007 provenance re-proof,
+  writer-envelope recheck reused verbatim, content safety re-ban,
+  review currency, media, links) with deterministic outcome
+  ready_for_human_review|not_ready and no failure verdict; data model
+  = append-only qa_reports (+work-item-scoped audited qa_gate_waivers
+  +status events, migration 0020, the proven trigger patterns,
+  idempotent re-runs by content_hash); 9th editorial task
+  `run_qa_gates` dispatched post-commit from accept-review; commands
+  run-qa / waive-qa-gate / generalized request-rework; APPROVED stays
+  unreachable by design (ADR 0004 governance phase). Exit criteria §7
+  and implementation order Tasks 16-21 (§8) recorded — ending with the
+  QA-stage audit and the PHASE 4 CLOSURE AUDIT.
+
 ## Next immediate task
 
-PHASE 4 QA ARCHITECTURE (design only; authorized under the autonomous
-continuation mandate) — the next stage document
-(PHASE4_QA_ARCHITECTURE.md) per the mandate's order (Writer -> Editor
--> QA -> Phase 4 closure at AWAITING_HUMAN_REVIEW). Binding
-constraints: QA validates the EXACT package pinned at QA_REVIEW entry
-(editorial_review_id + content_draft_id + content_hash) with
-deterministic HARD gates (absence of a result is never a pass); the
-WORKFLOW.md QA_REVIEW entry condition "eligible media set" must be
-handled truthfully — no media pipeline exists, so the media gate
-reports an explicit UNKNOWN/failing-or-waived-by-human state, never a
-silent pass; execution failure is never a QA verdict; workflow
-authority stays WorkflowService-only (QA_REVIEW ->
-AWAITING_HUMAN_REVIEW artifact-gated; QA_REVIEW -> CHANGES_REQUESTED
-via the Task 6 routing foundation with a context-validated responsible
-state; BLOCKED semantics untouched); append-only persistence with
-provenance to the exact reviewed versions; model-assisted signals (if
-any) follow the Editor pattern (policy signal, never Evidence, verdict
-computed deterministically); Phase 4 ENDS at AWAITING_HUMAN_REVIEW —
-APPROVED belongs to the later governance phase (ADR 0004). The design
-must end with §11/§12-style exit criteria and atomic
-dependency-correct implementation tasks, followed by QA implementation
-and the Phase 4 closure audit.
+PHASE 4 TASK 16 (authorized under the autonomous continuation mandate)
+— QA REPORT PERSISTENCE FOUNDATION, per accepted
+PHASE4_QA_ARCHITECTURE.md §8 Task 16: migration 0020 creating
+`qa_reports` (version >=1, outcome ready_for_human_review|not_ready
+CHECK, gate_results/gate_policy_snapshot JSONB, engine qa/1, status
+active|superseded with the proven two-shape guarded trigger,
+UNIQUE(work_item_id, version), partial-unique ACTIVE row, RESTRICT FKs
+to work item/draft/review/brief), `qa_gate_waivers` (work-item-scoped,
+gate_key CHECK vocabulary v1 = media_needs, required reason,
+append-only) and `qa_report_status_events` (established pattern,
+append-only); `contentos.qa` module (enums/errors/values/models/
+repository) and a `QaService` with package-resolution gates
+(QA_REVIEW entry pins resolve to the ACTIVE draft + ACTIVE pass review
++ accepted brief) and idempotent report persistence by content_hash
+with audited SYSTEM supersession — the gate ENGINE itself is Task 17.
+Unit tests + real-PG verification (0019->0020 cycle, trigger
+negatives, race, idempotent re-run). No API/admin/Celery.
 
 Before implementing the affected integrations, resolve:
 
