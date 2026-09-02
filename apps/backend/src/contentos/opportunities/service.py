@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from contentos.core.context import is_valid_request_id
 from contentos.discovery.models import DiscoveryItem
 from contentos.duplicates.enums import DuplicateDecisionOutcome
 from contentos.duplicates.models import DuplicateDecision
@@ -30,9 +31,13 @@ from contentos.opportunities.enums import (
     OpportunityActor,
     OpportunityDisposition,
     ResearchInputRole,
+    ScoreEligibility,
 )
 from contentos.opportunities.errors import (
+    CommissioningConflictError,
+    CommissioningGateError,
     InvalidPromotionInputError,
+    OpportunityNotFoundError,
     PromotionConflictError,
     PromotionNotEligibleError,
     PromotionRootNotFoundError,
@@ -40,7 +45,7 @@ from contentos.opportunities.errors import (
 from contentos.opportunities.models import EditorialOpportunity, OpportunityResearchInput
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.sources.models import Source
-from contentos.workflow.enums import WorkflowActorOrigin, WorkItemOrigin
+from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState, WorkItemOrigin
 from contentos.workflow.repository import WorkflowRepository
 from contentos.workflow.service import WorkflowService
 
@@ -349,3 +354,129 @@ def _validate_optional_text(name: str, value: str | None, limit: int) -> str | N
     if value is None:
         return None
     return _validate_required_text(name, value, limit)
+
+
+@dataclass(frozen=True, slots=True)
+class CommissionResult:
+    """`commissioned` is False on an idempotent no-op re-commissioning."""
+
+    opportunity: EditorialOpportunity
+    opportunity_score_id: uuid.UUID | None
+    commissioned: bool
+
+
+class OpportunityCommissioningService:
+    """The explicit HUMAN commissioning command (design §18).
+
+    IDEA_SCORING -> EVIDENCE_BUILDING is an operator decision: no Celery
+    job, scoring evaluation, or idea generation may ever call this
+    automatically. Task 14 exposes it; today it is a transport-neutral
+    domain command under the private single-operator boundary.
+
+    Gate rule (reported): only a durable effective score with eligibility
+    COMMISSIONABLE commissions. No score is never a pass;
+    NOT_COMMISSIONABLE fails closed; NEEDS_OPERATOR_REVIEW also fails
+    closed because the accepted design authorizes no commissioning
+    override for it — re-scoring or a future explicit override command is
+    the path, never an invented one here.
+
+    The service flushes; the caller commits (a workflow failure or caller
+    rollback leaves the opportunity OPEN — no half-commissioned state).
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._repository = OpportunityRepository(session)
+        self._workflow_repo = WorkflowRepository(session)
+
+    def commission_opportunity(
+        self,
+        opportunity_id: uuid.UUID,
+        *,
+        reason: str,
+        request_id: str | None = None,
+    ) -> CommissionResult:
+        cleaned_reason = _validate_required_text("reason", reason, MAX_OVERRIDE_REASON_LENGTH)
+        if request_id is not None and not is_valid_request_id(request_id):
+            raise InvalidPromotionInputError("request_id is not a valid correlation identifier")
+        opportunity = self._repository.get_by_id(opportunity_id)
+        if opportunity is None:
+            raise OpportunityNotFoundError(f"no opportunity with id {opportunity_id}")
+        # Serialize the decision on the canonical work-item row.
+        work_item = self._workflow_repo.get_by_id_for_update(opportunity.work_item_id)
+        if work_item is None:  # pragma: no cover - RESTRICT FK guarantees this
+            raise OpportunityNotFoundError("opportunity has no resolvable work item")
+        # The opportunity was read BEFORE the lock wait; a concurrent
+        # commissioning may have committed while we blocked. Re-read it so
+        # the loser of the race resolves idempotently instead of acting on
+        # a stale OPEN disposition.
+        self._session.refresh(opportunity)
+
+        if opportunity.disposition is OpportunityDisposition.COMMISSIONED:
+            return self._resolve_idempotent(opportunity, work_item)
+        if opportunity.disposition is not OpportunityDisposition.OPEN:
+            raise CommissioningConflictError(
+                f"a {opportunity.disposition.value!r} opportunity cannot be commissioned"
+            )
+        if work_item.current_state is not WorkflowState.IDEA_SCORING:
+            raise CommissioningConflictError(
+                "commissioning requires the work item to be in IDEA_SCORING "
+                f"(current: {work_item.current_state.value})"
+            )
+
+        score = self._repository.get_effective_score(opportunity.id)
+        if score is None:
+            raise CommissioningGateError(
+                "no durable opportunity score exists; absence of a score is never a pass"
+            )
+        if score.eligibility is not ScoreEligibility.COMMISSIONABLE:
+            raise CommissioningGateError(
+                "the effective score's eligibility is "
+                f"{score.eligibility.value!r}; only COMMISSIONABLE may be "
+                "commissioned (NEEDS_OPERATOR_REVIEW fails closed — no "
+                "override exists)"
+            )
+
+        now = datetime.now(UTC)
+        opportunity.disposition = OpportunityDisposition.COMMISSIONED
+        opportunity.disposition_reason = cleaned_reason
+        opportunity.disposition_at = now
+        opportunity.disposition_by = OpportunityActor.OPERATOR
+        WorkflowService(self._session).transition(
+            work_item.id,
+            WorkflowState.EVIDENCE_BUILDING,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=cleaned_reason,
+            artifact_refs={
+                "opportunity_id": str(opportunity.id),
+                "opportunity_score_id": str(score.id),
+            },
+            request_id=request_id,
+        )
+        self._session.flush()
+        return CommissionResult(
+            opportunity=opportunity, opportunity_score_id=score.id, commissioned=True
+        )
+
+    def _resolve_idempotent(
+        self, opportunity: EditorialOpportunity, work_item: Any
+    ) -> CommissionResult:
+        """No-op only when history consistently records the commissioning."""
+        entry = self._workflow_repo.get_latest_entry_event(
+            work_item.id, WorkflowState.EVIDENCE_BUILDING
+        )
+        if (
+            entry is None
+            or entry.from_state is not WorkflowState.IDEA_SCORING
+            or entry.artifact_refs.get("opportunity_id") != str(opportunity.id)
+        ):
+            raise CommissioningConflictError(
+                "the opportunity is COMMISSIONED but the workflow history does "
+                "not consistently record the commissioning transition"
+            )
+        score_ref = entry.artifact_refs.get("opportunity_score_id")
+        return CommissionResult(
+            opportunity=opportunity,
+            opportunity_score_id=uuid.UUID(score_ref) if score_ref else None,
+            commissioned=False,
+        )

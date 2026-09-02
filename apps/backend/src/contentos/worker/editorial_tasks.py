@@ -1,0 +1,624 @@
+"""Idempotent Celery orchestration of the Phase 3 editorial pipeline.
+
+The Phase-2 delivery contract is binding and reused verbatim: PostgreSQL is
+authoritative; Celery is transport/execution only; at-least-once delivery is
+absorbed by durable domain idempotency; durable results COMMIT before the
+next stage is enqueued; DISPATCH retries never redo domain work; queue
+completion alone never changes workflow state (every transition goes
+through WorkflowService with exact artifact refs). The known commit/broker
+gap is inherited unchanged — no outbox in this task.
+
+Human decision boundaries are hard: commissioning (IDEA_SCORING ->
+EVIDENCE_BUILDING) and brief acceptance (BRIEFING -> DRAFTING) are NEVER
+performed by any task here. Scoring never auto-commissions; idea generation
+never auto-selects; composition ends at a DRAFT brief in BRIEFING.
+
+AI tasks build their provider lazily through the WorkerRuntime seam (fake
+provider in tests, configured OpenAI in production; missing configuration
+is a typed terminal failure with no fallback). The AI attempt retry_number
+is ``base_retry_number + celery domain retries`` so every provider retry is
+a distinct durable attempt identity; failed attempts are COMMITTED before a
+DOMAIN retry is raised.
+"""
+
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, Protocol
+
+import structlog
+from celery import Celery
+from sqlalchemy.orm import Session
+
+from contentos.ai.enums import GenerationStatus
+from contentos.briefs.composition import BriefCompositionEngine
+from contentos.briefs.errors import BriefCompositionMaterializationError
+from contentos.evidence_packs.enums import (
+    ContradictionSeverity,
+    EvidenceItemRole,
+    EvidencePackSufficiency,
+)
+from contentos.evidence_packs.repository import EvidencePackRepository
+from contentos.evidence_packs.service import (
+    ContradictionDeclaration,
+    EvidencePackService,
+    EvidenceSelection,
+)
+from contentos.ideas.generation import IdeaGenerationEngine
+from contentos.ideas.service import IdeaService
+from contentos.opportunities.enums import OpportunityDisposition
+from contentos.opportunities.errors import OpportunityNotFoundError
+from contentos.opportunities.repository import OpportunityRepository
+from contentos.opportunities.scoring_service import OpportunityScoringService
+from contentos.opportunities.service import ResearchPromotionService
+from contentos.search_intent.service import SearchIntentService
+from contentos.worker.research_tasks import (
+    MAX_RETRIES,
+    InvalidPipelineInputError,
+    _current_request_id,
+    _parse_uuid,
+    _retry_countdown,
+)
+from contentos.worker.runtime import WorkerRuntime
+from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
+from contentos.workflow.repository import WorkflowRepository
+from contentos.workflow.service import WorkflowService
+
+_logger = structlog.get_logger("contentos.worker.editorial")
+
+PROMOTE_RESEARCH_TASK = "contentos.editorial.promote_research"
+EVALUATE_OPPORTUNITY_TASK = "contentos.editorial.evaluate_opportunity"
+GENERATE_IDEA_CANDIDATES_TASK = "contentos.editorial.generate_idea_candidates"
+BUILD_EVIDENCE_PACK_TASK = "contentos.editorial.build_evidence_pack"
+ANALYZE_SEARCH_INTENT_TASK = "contentos.editorial.analyze_search_intent"
+COMPOSE_CONTENT_BRIEF_TASK = "contentos.editorial.compose_content_brief"
+
+EDITORIAL_TASK_NAMES = (
+    PROMOTE_RESEARCH_TASK,
+    EVALUATE_OPPORTUNITY_TASK,
+    GENERATE_IDEA_CANDIDATES_TASK,
+    BUILD_EVIDENCE_PACK_TASK,
+    ANALYZE_SEARCH_INTENT_TASK,
+    COMPOSE_CONTENT_BRIEF_TASK,
+)
+
+MAX_BLOCK_REASON_ITEMS = 5
+
+# Bounded DOMAIN retry classification for AI execution outcomes: a timeout
+# or (assumed transient) provider error may retry within the Celery bound;
+# VALIDATION_FAILED and CANCELLED are terminal for automatic execution —
+# the durable attempt persists and nothing retries blindly.
+RETRYABLE_AI_STATUSES = frozenset({GenerationStatus.TIMEOUT, GenerationStatus.PROVIDER_ERROR})
+
+
+class WorkflowHistoryConflictError(Exception):
+    """Durable workflow history is incompatible with this redelivery."""
+
+
+class EditorialDispatcher(Protocol):
+    """Post-commit enqueueing seam for the next editorial stage."""
+
+    def enqueue(
+        self, task_name: str, payload: dict[str, Any], *, request_id: str | None = None
+    ) -> None: ...
+
+
+class CeleryEditorialDispatcher:
+    """Enqueue registered editorial tasks with JSON-safe kwargs only."""
+
+    def __init__(self, app: Celery) -> None:
+        self._app = app
+
+    def enqueue(
+        self, task_name: str, payload: dict[str, Any], *, request_id: str | None = None
+    ) -> None:
+        headers = {"request_id": request_id} if request_id else None
+        self._app.tasks[task_name].apply_async(kwargs=payload, headers=headers)
+
+
+def register_editorial_pipeline_tasks(
+    app: Celery,
+    runtime: WorkerRuntime,
+    *,
+    dispatcher: EditorialDispatcher | None = None,
+) -> None:
+    """Explicitly register the six §18 editorial tasks on ``app``.
+
+    Registration only defines tasks: no database, broker, network, or
+    provider activity happens here.
+    """
+    editorial_dispatcher: EditorialDispatcher = dispatcher or CeleryEditorialDispatcher(app)
+
+    @contextmanager
+    def task_session() -> Iterator[Session]:
+        session = runtime.create_session()
+        try:
+            yield session
+        except BaseException:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def dispatch_next(task: Any, task_name: str, payload: dict[str, Any]) -> str:
+        """Enqueue after commit; transport failure triggers a DISPATCH retry."""
+        try:
+            editorial_dispatcher.enqueue(task_name, payload, request_id=_current_request_id(task))
+        except Exception as error:
+            _logger.warning(
+                "editorial_dispatch_failed",
+                task=str(task.name),
+                next_task=task_name,
+                error_type=type(error).__name__,
+                retries=int(task.request.retries),
+            )
+            raise task.retry(countdown=_retry_countdown(task.request.retries)) from None
+        return task_name
+
+    def handle_ai_outcome(task: Any, session: Session, status: GenerationStatus) -> bool:
+        """Commit the durable failed attempt, then DOMAIN-retry if allowed.
+
+        Returns True when the caller should report a terminal failed
+        outcome (no retry raised)."""
+        if status is GenerationStatus.SUCCEEDED:
+            return False
+        session.commit()  # the failed attempt is audit history, never rolled back
+        if status in RETRYABLE_AI_STATUSES and task.request.retries < MAX_RETRIES:
+            raise task.retry(countdown=_retry_countdown(task.request.retries))
+        return True
+
+    # --- promote_research ---------------------------------------------------
+
+    def promote_research(self: Any, normalized_document_id: str) -> dict[str, Any]:
+        parsed_id = _parse_uuid(normalized_document_id)
+        with task_session() as session:
+            result = ResearchPromotionService(session).promote_research(parsed_id)
+            session.commit()
+            next_task = dispatch_next(
+                self,
+                EVALUATE_OPPORTUNITY_TASK,
+                {"opportunity_id": str(result.opportunity_id)},
+            )
+            return _summary(
+                self,
+                "completed" if result.created else "reused",
+                work_item_id=str(result.work_item_id),
+                opportunity_id=str(result.opportunity_id),
+                duplicate_outcome=result.duplicate_outcome.value,
+                next_task=next_task,
+            )
+
+    # --- evaluate_opportunity -----------------------------------------------
+
+    def evaluate_opportunity(self: Any, opportunity_id: str) -> dict[str, Any]:
+        parsed_id = _parse_uuid(opportunity_id)
+        with task_session() as session:
+            evaluation = OpportunityScoringService(session).evaluate_opportunity(parsed_id)
+            session.commit()
+            # Commissioning remains a HUMAN decision: no downstream dispatch.
+            return _summary(
+                self,
+                "completed" if evaluation.created else "reused",
+                opportunity_id=opportunity_id,
+                opportunity_score_id=str(evaluation.score.id),
+                band=evaluation.score.overall_band.value,
+                eligibility=evaluation.score.eligibility.value,
+            )
+
+    # --- generate_idea_candidates -------------------------------------------
+
+    def generate_idea_candidates(
+        self: Any,
+        opportunity_id: str,
+        candidate_count: int = 3,
+        retry_number: int = 0,
+    ) -> dict[str, Any]:
+        parsed_id = _parse_uuid(opportunity_id)
+        with task_session() as session:
+            _require_stage(session, parsed_id, WorkflowState.EVIDENCE_BUILDING)
+            execution = IdeaGenerationEngine(session).generate_candidates(
+                parsed_id,
+                provider=runtime.create_generation_provider(),
+                candidate_count=candidate_count,
+                retry_number=retry_number + int(self.request.retries),
+            )
+            if handle_ai_outcome(self, session, execution.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    opportunity_id=opportunity_id,
+                    attempt_id=str(execution.attempt.id),
+                    attempt_status=execution.status.value,
+                )
+            session.commit()
+            # No workflow transition, no automatic selection, no dispatch:
+            # the operator still selects an idea explicitly.
+            return _summary(
+                self,
+                "completed" if execution.ideas_created else "reused",
+                opportunity_id=opportunity_id,
+                attempt_id=str(execution.attempt.id),
+                idea_ids=[str(idea.id) for idea in execution.ideas],
+            )
+
+    # --- build_evidence_pack ------------------------------------------------
+
+    def build_evidence_pack(
+        self: Any,
+        opportunity_id: str,
+        idea_id: str,
+        selections: list[dict[str, Any]],
+        contradictions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        parsed_opportunity = _parse_uuid(opportunity_id)
+        parsed_idea = _parse_uuid(idea_id)
+        mapped_selections = [_map_selection(entry) for entry in selections]
+        mapped_contradictions = (
+            [_map_contradiction(entry) for entry in contradictions] if contradictions else None
+        )
+        with task_session() as session:
+            work_item = _require_commissioned(session, parsed_opportunity)
+            if work_item.current_state not in (
+                WorkflowState.EVIDENCE_BUILDING,
+                WorkflowState.SEO_RESEARCH,
+                WorkflowState.BLOCKED,
+            ):
+                raise WorkflowHistoryConflictError(
+                    "evidence pack assembly requires EVIDENCE_BUILDING "
+                    f"(current: {work_item.current_state.value})"
+                )
+            effective = IdeaService(session).get_effective_selection(parsed_opportunity)
+            if effective is None or effective.id != parsed_idea:
+                raise InvalidPipelineInputError(
+                    "the supplied idea is not the current effective selection"
+                )
+            # TRANSACTION A: durable pack first.
+            assembly = EvidencePackService(session).assemble_pack(
+                parsed_opportunity,
+                mapped_selections,
+                contradictions=mapped_contradictions,
+                idea_id=parsed_idea,
+            )
+            session.commit()
+            pack = assembly.pack
+
+            # TRANSACTION B: re-read and move workflow through the service.
+            workflow_repo = WorkflowRepository(session)
+            work_item = workflow_repo.get_by_id_for_update(work_item.id)
+            assert work_item is not None
+            analysis_payload = {
+                "opportunity_id": opportunity_id,
+                "idea_id": idea_id,
+                "evidence_pack_id": str(pack.id),
+            }
+            if pack.sufficiency is EvidencePackSufficiency.READY:
+                if work_item.current_state is WorkflowState.EVIDENCE_BUILDING:
+                    WorkflowService(session).transition(
+                        work_item.id,
+                        WorkflowState.SEO_RESEARCH,
+                        actor_origin=WorkflowActorOrigin.SYSTEM,
+                        reason=(f"evidence pack {pack.id} v{pack.version} is READY"),
+                        artifact_refs={
+                            "opportunity_id": opportunity_id,
+                            "idea_id": idea_id,
+                            "evidence_pack_id": str(pack.id),
+                            "evidence_pack_version": pack.version,
+                            "sufficiency": pack.sufficiency.value,
+                        },
+                        request_id=_current_request_id(self),
+                    )
+                    session.commit()
+                else:
+                    _require_compatible_entry(
+                        workflow_repo,
+                        work_item.id,
+                        WorkflowState.SEO_RESEARCH,
+                        "evidence_pack_id",
+                        str(pack.id),
+                    )
+                    if work_item.current_state is not WorkflowState.SEO_RESEARCH:
+                        # Pipeline already progressed past analysis dispatch.
+                        return _summary(
+                            self,
+                            "reused",
+                            opportunity_id=opportunity_id,
+                            evidence_pack_id=str(pack.id),
+                            sufficiency=pack.sufficiency.value,
+                        )
+                next_task = dispatch_next(self, ANALYZE_SEARCH_INTENT_TASK, analysis_payload)
+                return _summary(
+                    self,
+                    "completed" if assembly.created else "reused",
+                    opportunity_id=opportunity_id,
+                    evidence_pack_id=str(pack.id),
+                    sufficiency=pack.sufficiency.value,
+                    next_task=next_task,
+                )
+
+            # Non-READY: explicit SYSTEM block, never analysis, never REJECT.
+            if work_item.current_state is WorkflowState.EVIDENCE_BUILDING:
+                missing = pack.sufficiency_detail.get("missing", [])[:MAX_BLOCK_REASON_ITEMS]
+                blocking = pack.sufficiency_detail.get("unresolved_blocking_contradictions", [])[
+                    :MAX_BLOCK_REASON_ITEMS
+                ]
+                reason = f"evidence pack {pack.id} v{pack.version} is {pack.sufficiency.value}"
+                if missing:
+                    reason += f"; missing: {'; '.join(missing)}"
+                if blocking:
+                    reason += f"; blocking contradictions: {', '.join(blocking)}"
+                WorkflowService(session).transition(
+                    work_item.id,
+                    WorkflowState.BLOCKED,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=reason[:1000],
+                    artifact_refs={
+                        "opportunity_id": opportunity_id,
+                        "idea_id": idea_id,
+                        "evidence_pack_id": str(pack.id),
+                        "evidence_pack_version": pack.version,
+                        "sufficiency": pack.sufficiency.value,
+                    },
+                    request_id=_current_request_id(self),
+                )
+                session.commit()
+            else:
+                _require_compatible_entry(
+                    workflow_repo,
+                    work_item.id,
+                    WorkflowState.BLOCKED,
+                    "evidence_pack_id",
+                    str(pack.id),
+                )
+            return _summary(
+                self,
+                "blocked",
+                opportunity_id=opportunity_id,
+                evidence_pack_id=str(pack.id),
+                sufficiency=pack.sufficiency.value,
+            )
+
+    # --- analyze_search_intent ----------------------------------------------
+
+    def analyze_search_intent(
+        self: Any,
+        opportunity_id: str,
+        idea_id: str,
+        evidence_pack_id: str,
+        signal_ids: list[str] | None = None,
+        retry_number: int = 0,
+    ) -> dict[str, Any]:
+        parsed_opportunity = _parse_uuid(opportunity_id)
+        parsed_idea = _parse_uuid(idea_id)
+        parsed_pack = _parse_uuid(evidence_pack_id)
+        parsed_signals = [_parse_uuid(value) for value in (signal_ids or [])]
+        with task_session() as session:
+            work_item = _require_commissioned(session, parsed_opportunity)
+            if work_item.current_state not in (
+                WorkflowState.SEO_RESEARCH,
+                WorkflowState.BRIEFING,
+            ):
+                raise WorkflowHistoryConflictError(
+                    "search-intent analysis requires SEO_RESEARCH "
+                    f"(current: {work_item.current_state.value})"
+                )
+            pack = EvidencePackRepository(session).get_pack(parsed_pack)
+            if (
+                pack is None
+                or pack.opportunity_id != parsed_opportunity
+                or pack.sufficiency is not EvidencePackSufficiency.READY
+                or (pack.idea_id is not None and pack.idea_id != parsed_idea)
+            ):
+                raise InvalidPipelineInputError(
+                    "the pinned evidence pack is missing, mismatched, or not READY"
+                )
+            # TRANSACTION A: durable analysis (or durable failed attempt).
+            outcome = SearchIntentService(session).synthesize(
+                parsed_opportunity,
+                idea_id=parsed_idea,
+                provider=runtime.create_generation_provider(),
+                signal_ids=parsed_signals,
+                retry_number=retry_number + int(self.request.retries),
+            )
+            if handle_ai_outcome(self, session, outcome.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    opportunity_id=opportunity_id,
+                    attempt_id=str(outcome.attempt.id),
+                    attempt_status=outcome.status.value,
+                )
+            session.commit()
+            analysis = outcome.analysis
+            assert analysis is not None
+
+            # TRANSACTION B: workflow movement after the durable result.
+            workflow_repo = WorkflowRepository(session)
+            work_item = workflow_repo.get_by_id_for_update(work_item.id)
+            assert work_item is not None
+            if work_item.current_state is WorkflowState.SEO_RESEARCH:
+                WorkflowService(session).transition(
+                    work_item.id,
+                    WorkflowState.BRIEFING,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=f"search intent analysis {analysis.id} v{analysis.version}",
+                    artifact_refs={
+                        "opportunity_id": opportunity_id,
+                        "idea_id": idea_id,
+                        "evidence_pack_id": evidence_pack_id,
+                        "search_intent_analysis_id": str(analysis.id),
+                    },
+                    request_id=_current_request_id(self),
+                )
+                session.commit()
+            else:
+                _require_compatible_entry(
+                    workflow_repo,
+                    work_item.id,
+                    WorkflowState.BRIEFING,
+                    "search_intent_analysis_id",
+                    str(analysis.id),
+                )
+            # Brief composition is an OPERATOR command (§18): stop here.
+            return _summary(
+                self,
+                "completed" if outcome.analysis_created else "reused",
+                opportunity_id=opportunity_id,
+                search_intent_analysis_id=str(analysis.id),
+                missing_signals=list(analysis.missing_signals),
+            )
+
+    # --- compose_content_brief ----------------------------------------------
+
+    def compose_content_brief(
+        self: Any,
+        work_item_id: str,
+        idea_id: str,
+        evidence_pack_id: str,
+        search_intent_analysis_id: str,
+        retry_number: int = 0,
+        supersede_reason: str | None = None,
+    ) -> dict[str, Any]:
+        parsed_work_item = _parse_uuid(work_item_id)
+        parsed_idea = _parse_uuid(idea_id)
+        parsed_pack = _parse_uuid(evidence_pack_id)
+        parsed_analysis = _parse_uuid(search_intent_analysis_id)
+        with task_session() as session:
+            try:
+                result = BriefCompositionEngine(session).compose(
+                    parsed_work_item,
+                    idea_id=parsed_idea,
+                    evidence_pack_id=parsed_pack,
+                    search_intent_analysis_id=parsed_analysis,
+                    provider=runtime.create_generation_provider(),
+                    retry_number=retry_number + int(self.request.retries),
+                    supersede_reason=supersede_reason,
+                    request_id=_current_request_id(self),
+                )
+            except BriefCompositionMaterializationError:
+                # The SUCCEEDED attempt is real audit history: keep it
+                # durable, then fail terminally (never relabeled).
+                session.commit()
+                raise
+            if handle_ai_outcome(self, session, result.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    work_item_id=work_item_id,
+                    attempt_id=str(result.attempt.id),
+                    attempt_status=result.status.value,
+                )
+            session.commit()
+            brief = result.brief
+            assert brief is not None
+            # NEVER accept, NEVER transition: the draft waits in BRIEFING
+            # for the explicit operator acceptance command.
+            return _summary(
+                self,
+                "completed" if result.brief_created else "reused",
+                work_item_id=work_item_id,
+                content_brief_id=str(brief.id),
+                brief_status=brief.status.value,
+                structure_guard=result.structure_guard_outcome,
+            )
+
+    common_options: dict[str, Any] = {
+        "bind": True,
+        "shared": False,
+        "acks_late": True,
+        "reject_on_worker_lost": True,
+        "max_retries": MAX_RETRIES,
+    }
+    app.task(name=PROMOTE_RESEARCH_TASK, **common_options)(promote_research)
+    app.task(name=EVALUATE_OPPORTUNITY_TASK, **common_options)(evaluate_opportunity)
+    app.task(name=GENERATE_IDEA_CANDIDATES_TASK, **common_options)(generate_idea_candidates)
+    app.task(name=BUILD_EVIDENCE_PACK_TASK, **common_options)(build_evidence_pack)
+    app.task(name=ANALYZE_SEARCH_INTENT_TASK, **common_options)(analyze_search_intent)
+    app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(compose_content_brief)
+
+
+def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:
+    """Revalidate durable state; return the work item (never mutated here)."""
+    opportunity = OpportunityRepository(session).get_by_id(opportunity_id)
+    if opportunity is None:
+        raise OpportunityNotFoundError(f"no opportunity with id {opportunity_id}")
+    if opportunity.disposition is not OpportunityDisposition.COMMISSIONED:
+        raise InvalidPipelineInputError(
+            f"the opportunity is not COMMISSIONED (current: {opportunity.disposition.value})"
+        )
+    work_item = WorkflowRepository(session).get_by_id(opportunity.work_item_id)
+    if work_item is None:  # pragma: no cover - RESTRICT FK guarantees this
+        raise OpportunityNotFoundError("opportunity has no resolvable work item")
+    return work_item
+
+
+def _require_stage(session: Session, opportunity_id: uuid.UUID, stage: WorkflowState) -> None:
+    work_item = _require_commissioned(session, opportunity_id)
+    if work_item.current_state is not stage:
+        raise WorkflowHistoryConflictError(
+            f"this command requires {stage.value} (current: {work_item.current_state.value})"
+        )
+
+
+def _require_compatible_entry(
+    workflow_repo: WorkflowRepository,
+    work_item_id: uuid.UUID,
+    entered_state: WorkflowState,
+    ref_key: str,
+    ref_value: str,
+) -> None:
+    """Redelivery guard: durable history must pin this exact artifact."""
+    entry = workflow_repo.get_latest_entry_event(work_item_id, entered_state)
+    if entry is None or entry.artifact_refs.get(ref_key) != ref_value:
+        raise WorkflowHistoryConflictError(
+            f"durable workflow history for {entered_state.value} does not pin "
+            f"{ref_key}={ref_value}; refusing to repair or duplicate it"
+        )
+
+
+def _map_selection(entry: dict[str, Any]) -> EvidenceSelection:
+    """Bounded JSON command -> the EXISTING EvidenceSelection contract."""
+    try:
+        return EvidenceSelection(
+            research_evidence_id=_parse_uuid(entry["research_evidence_id"]),
+            role=EvidenceItemRole(str(entry["role"])),
+            claim_cluster=str(entry["claim_cluster"]),
+            display_note=(
+                str(entry["display_note"]) if entry.get("display_note") is not None else None
+            ),
+        )
+    except (KeyError, ValueError, TypeError):
+        raise InvalidPipelineInputError(
+            "an evidence selection command entry is malformed"
+        ) from None
+
+
+def _map_contradiction(entry: dict[str, Any]) -> ContradictionDeclaration:
+    try:
+        return ContradictionDeclaration(
+            claim_key=str(entry["claim_key"]),
+            evidence_side_a=tuple(_parse_uuid(v) for v in entry["evidence_side_a"]),
+            evidence_side_b=tuple(_parse_uuid(v) for v in entry["evidence_side_b"]),
+            nature=str(entry["nature"]),
+            severity=ContradictionSeverity(str(entry["severity"])),
+            handling_recommendation=(
+                str(entry["handling_recommendation"])
+                if entry.get("handling_recommendation") is not None
+                else None
+            ),
+        )
+    except (KeyError, ValueError, TypeError):
+        raise InvalidPipelineInputError(
+            "a contradiction declaration command entry is malformed"
+        ) from None
+
+
+def _summary(task: Any, status: str, **fields: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"status": status, "next_task": None}
+    payload.update(fields)
+    _logger.info(
+        "editorial_task_completed",
+        task=str(task.name),
+        retries=int(task.request.retries),
+        **payload,
+    )
+    return payload

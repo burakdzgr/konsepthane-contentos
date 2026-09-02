@@ -913,6 +913,21 @@ retried; explicit `WorkflowService` transitions only after durable commits
 (IDEA_SCORING → EVIDENCE_BUILDING) and brief acceptance remain human
 commands, never job side effects.
 
+Realized in Phase 3 Task 13: the six job names above are registered in
+`contentos.worker.editorial_tasks` (research and editorial pipelines share
+one `WorkerRuntime`, which gained a lazy structured-generation provider
+factory seam — fake in tests, configured OpenAI in production, typed
+terminal failure when unconfigured). `build_evidence_pack` is the explicit
+evidence-selection command: its payload carries bounded JSON selection
+entries mapped onto the EXISTING `EvidenceSelection` contract (never an
+invented heuristic). AI-task retry classification: TIMEOUT/PROVIDER_ERROR
+retry within the Celery bound with each provider retry a distinct durable
+attempt (`retry_number = base + task retries`, failed attempts committed
+before the DOMAIN retry); VALIDATION_FAILED/CANCELLED are terminal.
+Commissioning landed as `OpportunityCommissioningService.
+commission_opportunity` in `contentos.opportunities` — a transport-neutral
+operator command, not a Celery job.
+
 ---
 
 ## 19. Operator controls and admin plan (design only)

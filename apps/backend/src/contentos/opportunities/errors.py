@@ -31,3 +31,16 @@ class InvalidScoringStateError(OpportunityError):
 
 class ScoringConflictError(OpportunityError):
     """A concurrent evaluation conflicted and could not be recovered."""
+
+
+class CommissioningGateError(OpportunityError):
+    """An explicit commissioning gate failed; the opportunity stays OPEN.
+
+    No durable score, a NOT_COMMISSIONABLE effective score, or a
+    NEEDS_OPERATOR_REVIEW score (the accepted design authorizes no
+    commissioning override for it, so it fails closed)."""
+
+
+class CommissioningConflictError(OpportunityError):
+    """The commissioning command contradicts durable disposition/workflow
+    history; nothing is silently repaired."""

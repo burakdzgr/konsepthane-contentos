@@ -1,6 +1,6 @@
 ﻿# Konsepthane ContentOS - Current State
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Current phase
 
@@ -13,7 +13,8 @@ persistence + operator selection COMPLETE; Task 8 provider-neutral AI
 boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
 engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE; Task 11
 ContentBrief persistence + claim map + acceptance gate COMPLETE; Task 12
-Brief Composition Engine COMPLETE)
+Brief Composition Engine COMPLETE; Task 13 Celery editorial orchestration
++ operator commissioning command COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1686,6 +1687,101 @@ main
   production access, no OpenAI adapter changes, and no dependency changes
 - Task 12 verified: 1016 backend tests (993 + 23 new), 96 admin tests,
   and the full root quality gate passed; schema head `0017`
+- PHASE 3 Task 13 (Celery editorial orchestration + commissioning command)
+  complete: `contentos.worker.editorial_tasks` registers EXACTLY the six
+  §18 stable names (`contentos.editorial.promote_research`,
+  `evaluate_opportunity`, `generate_idea_candidates`,
+  `build_evidence_pack`, `analyze_search_intent`,
+  `compose_content_brief`); no generic execute/advance task exists; NO
+  migration (schema head stays `0017`); no dependency changes
+- Phase-2 Task-16 delivery contract reused verbatim: PostgreSQL
+  authoritative; `acks_late` + `reject_on_worker_lost` + bounded
+  deterministic no-jitter backoff (`MAX_RETRIES` 3); commit-before-enqueue
+  (proven on real PG by an independent-session dispatcher); at-least-once
+  absorbed by the durable §10.3 identities; UUID-string-only payloads with
+  validated `request_id` headers; DOMAIN vs DISPATCH retry separation
+  (a dispatch retry never redoes committed domain work); queue completion
+  alone never advances workflow state — every transition goes through
+  `WorkflowService` with exact artifact refs; the known commit/broker gap
+  is inherited unchanged (still NO outbox — a crash between commit and
+  enqueue loses only the enqueue; redelivery/re-trigger reuses the
+  durable result idempotently)
+- job semantics: promotion creates work item + opportunity (IDEA_SCORING)
+  then dispatches scoring; scoring persists the score ONLY (no transition,
+  no downstream dispatch — commissioning is human); idea generation is an
+  operator command on a COMMISSIONED opportunity in EVIDENCE_BUILDING (no
+  transition, no auto-selection, no dispatch); `build_evidence_pack` is
+  the explicit evidence-selection command (bounded JSON selection/
+  contradiction entries mapped onto the EXISTING `EvidenceSelection` /
+  `ContradictionDeclaration` contracts — never an invented heuristic;
+  the supplied idea must be the current effective selection): READY packs
+  transition SYSTEM EVIDENCE_BUILDING -> SEO_RESEARCH (pack id/version/
+  sufficiency pinned in artifact refs) then dispatch intent analysis;
+  non-READY packs transition SYSTEM -> BLOCKED with the exact pack
+  reason (pack id, sufficiency, missing items, blocking contradictions;
+  bounded) and never REJECTED, never analysis; intent analysis
+  transitions SYSTEM SEO_RESEARCH -> BRIEFING and NEVER dispatches
+  composition (an operator command); composition produces a DRAFT brief
+  and NEVER accepts or transitions — BRIEFING -> DRAFTING stays the
+  Task-11 operator command
+- redelivery guards: after a transition already happened, tasks demand
+  that durable workflow history pin the SAME artifact (latest entry-event
+  ref check) — incompatible history is a typed
+  `WorkflowHistoryConflictError`, never repaired or duplicated
+- `WorkerRuntime` gained `create_generation_provider()` with a
+  `structured_generation_provider_factory` seam: tests inject the fake;
+  production lazily builds the configured OpenAI adapter ONLY when an AI
+  task actually runs; missing configuration is a typed terminal failure
+  (no fallback provider); worker-app creation/registration still performs
+  no DB/broker/provider/network activity; research + editorial pipelines
+  share ONE runtime in `create_worker_app`
+- AI retry classification: TIMEOUT and PROVIDER_ERROR retry within the
+  Celery bound; VALIDATION_FAILED and CANCELLED are terminal; every
+  failed attempt is COMMITTED before the DOMAIN retry is raised, and each
+  provider retry is a DISTINCT durable attempt identity
+  (`retry_number = base + task retries`; proven: a persistent TIMEOUT
+  yields exactly 1 + MAX_RETRIES committed attempts with retry_numbers
+  0..3, then a truthful terminal `ai_failed` summary); a
+  `BriefCompositionMaterializationError` keeps its SUCCEEDED attempt
+  durable (committed) and fails terminally, never relabeled
+- operator commissioning command
+  (`OpportunityCommissioningService.commission_opportunity` in
+  `contentos.opportunities`, NOT a Celery job): requires reason (bounded)
+  + optional validated request_id; locks the work item FOR UPDATE and
+  re-reads the opportunity after the lock so a concurrent duplicate
+  command converges to the idempotent no-op; gate rule (reported): only a
+  durable effective score with eligibility COMMISSIONABLE passes — no
+  score is never a pass, NOT_COMMISSIONABLE fails closed, and
+  NEEDS_OPERATOR_REVIEW also fails closed because the accepted design
+  authorizes no commissioning override (typed `CommissioningGateError`);
+  success atomically sets disposition COMMISSIONED and transitions
+  OPERATOR IDEA_SCORING -> EVIDENCE_BUILDING with
+  {opportunity_id, opportunity_score_id} artifact refs; idempotent no-op
+  ONLY when history consistently records the transition (else typed
+  `CommissioningConflictError`); caller commits — a rollback leaves the
+  opportunity OPEN with no half-commissioned state
+- verified against real ephemeral Redis: 5 research + 6 editorial stable
+  names registered with policy flags, JSON content-type broker messages,
+  stable-name + request_id headers, UUID-string-only kwargs, no secrets
+  in the queued message; torn down
+- verified end-to-end against real ephemeral pgvector PostgreSQL (fake
+  provider through the runtime seam): research seeding (4 OFFICIAL
+  sources, real duplicate decisions) -> promotion task -> scoring task
+  producing a REAL COMMISSIONABLE/strong score -> commissioning RACE (two
+  concurrent operators: one winner, loser idempotent no-op, exactly one
+  EVIDENCE_BUILDING event) -> idea task (3 candidates) -> operator
+  selection -> pack task (READY -> SEO_RESEARCH once, analysis dispatched
+  only after commit) -> intent task (BRIEFING, honest missing_signals, no
+  compose dispatch) -> compose task (DRAFT brief, structure guard passed)
+  — every stage redelivered and reused durably (single provider call per
+  AI stage, no duplicate events/artifacts); final history creation ->
+  commissioning(OPERATOR) -> SEO_RESEARCH(SYSTEM) -> BRIEFING(SYSTEM),
+  pipeline STOPS at BRIEFING with a DRAFT brief; teardown complete
+- Task 13 added no API/admin surface (Task 14), no Writer/article fields,
+  no publication approval, no OpenAI adapter changes, no new AI prompts,
+  no Beat scheduling, and no live-provider tests
+- Task 13 verified: 1042 backend tests (1016 + 26 new), 96 admin tests,
+  and the full root quality gate passed; schema head `0017`
 
 ## Current documentation structure
 
@@ -1756,15 +1852,17 @@ Analytics integration: not started
 
 Phase 2 implementation is authorized only one atomic task at a time.
 
-No AI pack organization, Celery orchestration/Beat scheduling,
-Writer/Editor/QA, publication approval, or pre-commit configuration
-exists yet. Model-assisted idea generation, SearchIntentAnalysis
-(deterministic + optional INTENT_SYNTHESIS), ContentBrief persistence +
-claim map + acceptance gate, and the Brief Composition Engine
-(deterministic assembly + model-assisted wording via BRIEF_COMPOSITION)
-all exist as synchronous domain engines; no commissioning command exists
-yet, and acceptance remains an explicit operator command. Automated tests
-and gates never call a real AI provider. The admin exposes exactly the minimal
+No AI pack organization, Beat scheduling, Writer/Editor/QA, publication
+approval, or pre-commit configuration exists yet. Model-assisted idea
+generation, SearchIntentAnalysis (deterministic + optional
+INTENT_SYNTHESIS), ContentBrief persistence + claim map + acceptance
+gate, and the Brief Composition Engine (deterministic assembly +
+model-assisted wording via BRIEF_COMPOSITION) exist as synchronous domain
+engines, now also orchestrated through the six registered §18 editorial
+Celery tasks; commissioning exists as the transport-neutral
+`commission_opportunity` operator command (no API/admin surface yet), and
+brief acceptance remains an explicit operator command that no Celery task
+ever performs. Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1779,19 +1877,17 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 13 (awaiting explicit authorization) — Celery orchestration,
-per the accepted design's implementation order item 12: the §18 editorial
-jobs (`contentos.editorial.promote_research`, `evaluate_opportunity`,
-`generate_idea_candidates`, `build_evidence_pack` with its READY ->
-SYSTEM SEO_RESEARCH transition and not-READY -> BLOCKED,
-`analyze_search_intent` with SYSTEM -> BRIEFING,
-`compose_content_brief`) under the Task-16 contracts (PostgreSQL
-authoritative, commit-before-enqueue, at-least-once absorbed by the
-§10.3 identities, UUID-only payloads, DOMAIN vs DISPATCH retry
-separation, bounded backoff); explicit WorkflowService transitions only
-after durable results; commissioning and brief acceptance remain human
-commands. This is also where the commissioning operator command likely
-lands per design §18.
+PHASE 3 TASK 14 (awaiting explicit authorization) — admin/operator
+visibility + explicit command surface, per the accepted design §19: expose
+the Phase 3 pipeline read-only (work items, opportunities, scores, ideas,
+packs, intent analyses, briefs with their exact pinned artifact identities
+and workflow history) plus the explicit operator commands that already
+exist as domain services (promotion trigger, re-scoring, commissioning,
+idea generation/selection, evidence-pack building with explicit
+selections, intent analysis, brief composition, brief acceptance) —
+transport surfaces over the existing commands, never new editorial
+semantics; human boundaries (commissioning, acceptance) stay explicit
+operator actions.
 
 Before implementing the affected integrations, resolve:
 
