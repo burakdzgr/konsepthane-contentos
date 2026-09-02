@@ -3402,37 +3402,71 @@ the inputs listed below.
   redelivery replayed at the wire (one publication total). No
   migration (head stays `0026`).
 
-## Current standing state (all phases 1–7 CLOSED; publishing client live-ready)
+- KONSEPTHANE RECEIVING SIDE + REAL E2E complete (operator explicitly
+  authorized work in the Konsepthane repo): implemented in
+  `C:\Users\BURAK\Desktop\ilham` (pushed as `dc13bd7` on its main) —
+  the `contentos` NestJS module with the two contract endpoints
+  outside the public v1 prefix (`PUT /internal/contentos/v1/media/
+  {sha256}`: raw-byte content-addressed upload with server-side SHA
+  recomputation, duplicate convergence, bytes in the S3/MinIO bucket
+  under `contentos/<sha>`; `POST /internal/contentos/v1/publications`:
+  the approved package mapped into the Guide family — deterministic
+  block→Markdown rendering with placeholders skipped, Turkish slug +
+  collision fallbacks, mechanical first-paragraph summary,
+  canonical `/rehber/<slug>` URL, atomic guide+publication insert,
+  manifest licensing applied to media assets, publication owner =
+  `CONTENTOS_AUTHOR_EMAIL` user with the organisation-byline
+  fallback); durable idempotency (`contentos_publications` binds
+  Idempotency-Key + request hash; replay 200, conflict 409, races
+  converge on the unique key); dedicated Bearer service token with
+  timing-safe compare (unset = 503, never an open door); the contract
+  error envelope via a scoped filter; additive Prisma models +
+  migration `20260902210000_contentos_publishing`; 20 new tests, full
+  turbo lint/typecheck/test green. THE REAL END-TO-END RAN: the real
+  ContentOS pipeline (research → … → named approval → package with a
+  genuinely bound media asset) published through the real wire into
+  the live containerized Konsepthane stack →
+  `guide:ec9ea1e4-089d-4b74-836f-d82a21205eff`, Guide
+  PUBLISHED/APPROVED/PUBLIC/INDEX, media bytes served from MinIO, the
+  public page live at `/tr/rehber/evde-balon-temali-dogum-gunu-plani`
+  with full Article JSON-LD, and a wire-level idempotent replay
+  returning the SAME publication_ref. (Local dev note: that
+  demonstration guide + two contentos media assets remain in the
+  ilham dev database/bucket.)
+
+## Current standing state (all phases 1–7 CLOSED; publishing E2E REAL)
 
 The full loop research → … → PUBLISHED runs end to end on real
 infrastructure (CI lane on every push), and the publishing client now
 implements the accepted v1 wire contract. Remaining feature work and
 its blockers:
 
-- Publishing GO-LIVE: (a) the Konsepthane backend implements the
-  receiving API in its own repo (owner: Konsepthane, per the
-  contract), (b) the operator deploys it and supplies
-  `CONTENTOS_PUBLISHING_API_URL` + `CONTENTOS_PUBLISHING_API_KEY` —
-  then a staging end-to-end run.
+- Publishing PRODUCTION go-live (both sides are code-complete and
+  E2E-verified locally): the operator deploys the updated Konsepthane
+  stack, issues a REAL ≥32-char `CONTENTOS_SERVICE_TOKEN` + sets a
+  production `CONTENTOS_AUTHOR_EMAIL` (ideally a user with an EDITOR
+  profile so the byline is a person, else the organisation), exposes
+  the endpoints at the production base URL (optionally the pretty
+  `/api/internal/contentos` shape via the edge proxy), and supplies
+  ContentOS with `CONTENTOS_PUBLISHING_API_URL` +
+  `CONTENTOS_PUBLISHING_API_KEY` — then repeat the E2E against
+  staging/production.
 - Distribution (Pinterest): account/API access + distribution policy.
 - Analytics: data sources + content-identity mapping.
 - Refresh: follows analytics.
 
 ## Next immediate task
 
-HOLD FOR OPERATOR INPUTS (updated): the ContentOS side of publishing
-is contract-complete and wire-verified. Next in dependency order when
-inputs arrive: (1) staging URL + key → run
-`verify_pg_live_transport`-style end-to-end against the REAL deployed
-endpoint and flip production config; (2) Pinterest inputs →
-PHASE8_DISTRIBUTION_ARCHITECTURE.md. If the operator explicitly
-authorizes work INSIDE the Konsepthane repo
-(C:\Users\BURAK\Desktop\ilham), the receiving-side implementation
-(NestJS module: media PUT + publications POST per the contract) is
-specified and ready to build — not started autonomously because that
-repository is outside this mandate. Routine autonomous work that
-remains legitimate meanwhile: keeping CI green, dependency/lock
-updates when needed, and docs truthfulness.
+HOLD FOR OPERATOR INPUTS (updated after the real E2E): publishing is
+feature-complete on BOTH sides and proven end to end against the live
+local Konsepthane stack — only production deployment values remain
+(see the go-live list above; the E2E driver script pattern is
+`verify_e2e_konsepthane.py` in the session scratchpad, parameterized
+by `KONSEPTHANE_PUBLISHING_URL`/`KONSEPTHANE_PUBLISHING_TOKEN`).
+Next feature phase when its inputs arrive: Distribution (Pinterest)
+per a fresh PHASE8_DISTRIBUTION_ARCHITECTURE.md. Routine autonomous
+work that remains legitimate meanwhile: keeping CI green,
+dependency/lock updates when needed, and docs truthfulness.
 
 Before implementing the affected integrations, resolve:
 
