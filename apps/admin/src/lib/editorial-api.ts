@@ -161,6 +161,8 @@ export const FINDING_ORIGINS = ["model_signal", "deterministic"] as const;
 export const QA_OUTCOMES = ["ready_for_human_review", "not_ready"] as const;
 export const QA_REPORT_STATUSES = ["active", "superseded"] as const;
 export const QA_WAIVABLE_GATES = ["media_needs"] as const;
+export const MEDIA_ORIGINS = ["human_upload", "ai_generated"] as const;
+export const MEDIA_SATISFACTION_STATUSES = ["active", "superseded"] as const;
 export const DECISION_KINDS = [
   "approved",
   "changes_requested",
@@ -757,6 +759,58 @@ const qaReportDetailSchema = z.object({
   status_events: z.array(qaReportStatusEventSchema),
 });
 
+const mediaActorSchema = z.object({
+  id: z.string().uuid(),
+  username: z.string(),
+  display_name: z.string(),
+});
+
+const mediaAssetSchema = z.object({
+  id: z.string().uuid(),
+  origin: z.enum(MEDIA_ORIGINS),
+  content_sha256: z.string(),
+  byte_size: z.number().int(),
+  media_type: z.string(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  title: z.string().nullable(),
+  alt_text: z.string(),
+  license_note: z.string(),
+  source_attribution: z.string().nullable(),
+  generation_attempt_id: z.string().uuid().nullable(),
+  created_by: mediaActorSchema,
+  created_at: timestampSchema,
+});
+
+const mediaSatisfactionSchema = z.object({
+  id: z.string().uuid(),
+  need_index: z.number().int(),
+  status: z.enum(MEDIA_SATISFACTION_STATUSES),
+  asset: mediaAssetSchema,
+  satisfied_by: mediaActorSchema,
+  reason: z.string(),
+  superseded_by_satisfaction_id: z.string().uuid().nullable(),
+  created_at: timestampSchema,
+});
+
+const needCoverageSchema = z.object({
+  need_index: z.number().int(),
+  role: z.string(),
+  purpose: z.string(),
+  constraints: z.string().nullable(),
+  // null means honestly UNSATISFIED.
+  satisfaction: mediaSatisfactionSchema.nullable(),
+});
+
+const mediaCoveragePageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  content_brief_id: z.string().uuid().nullable(),
+  needs: z.array(needCoverageSchema),
+  satisfied_needs: z.number().int(),
+  total_needs: z.number().int(),
+  history: z.array(mediaSatisfactionSchema),
+});
+
 const decisionSchema = z.object({
   id: z.string().uuid(),
   decision: z.enum(DECISION_KINDS),
@@ -837,6 +891,10 @@ export type QaReportSummaryView = z.infer<typeof qaReportSummarySchema>;
 export type QaReportListPage = z.infer<typeof qaReportListPageSchema>;
 export type QaReportDetail = z.infer<typeof qaReportDetailSchema>;
 export type QaWaiverView = z.infer<typeof qaWaiverSchema>;
+export type MediaAssetView = z.infer<typeof mediaAssetSchema>;
+export type MediaSatisfactionView = z.infer<typeof mediaSatisfactionSchema>;
+export type NeedCoverageView = z.infer<typeof needCoverageSchema>;
+export type MediaCoveragePage = z.infer<typeof mediaCoveragePageSchema>;
 export type DecisionView = z.infer<typeof decisionSchema>;
 export type ApprovalStatusView = z.infer<typeof approvalStatusSchema>;
 export type DecisionListPage = z.infer<typeof decisionListPageSchema>;
@@ -1045,6 +1103,27 @@ export async function fetchWorkItemDecisions(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, decisionListPageSchema, [200]);
+}
+
+export type MediaCoverageResult =
+  BackendResult<MediaCoveragePage> | { kind: "not_found" };
+
+export async function fetchWorkItemMedia(
+  workItemId: string,
+): Promise<MediaCoverageResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/media`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, mediaCoveragePageSchema, [200]);
 }
 
 export type EligibleEvidenceResult =

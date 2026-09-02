@@ -8,6 +8,9 @@ import type {
   ApprovalStatusView,
   DecisionListPage,
   DecisionView,
+  MediaAssetView,
+  MediaCoveragePage,
+  MediaSatisfactionView,
   DraftDetail,
   DraftListPage,
   DraftSummaryView,
@@ -729,6 +732,78 @@ export function decisionListPage(
     work_item_id: WORK_ITEM_ID,
     decisions,
     approval_status: status,
+  };
+}
+
+export const MEDIA_ASSET_ID = "c2000000-0000-4000-8000-00000000000c";
+
+export function mediaAsset(
+  overrides: Partial<MediaAssetView> = {},
+): MediaAssetView {
+  return {
+    id: MEDIA_ASSET_ID,
+    origin: "human_upload",
+    content_sha256: "a".repeat(64),
+    byte_size: 2048,
+    media_type: "image/png",
+    width: null,
+    height: null,
+    title: null,
+    alt_text: "Balon süslemeli parti masası",
+    license_note: "Konsepthane arşivi",
+    source_attribution: null,
+    generation_attempt_id: null,
+    created_by: {
+      id: REVIEWER_USER_ID,
+      username: "smoke-reviewer",
+      display_name: "Smoke Reviewer",
+    },
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function mediaSatisfaction(
+  overrides: Partial<MediaSatisfactionView> = {},
+): MediaSatisfactionView {
+  return {
+    id: "c3000000-0000-4000-8000-00000000000c",
+    need_index: 0,
+    status: "active",
+    asset: mediaAsset(),
+    satisfied_by: {
+      id: REVIEWER_USER_ID,
+      username: "smoke-reviewer",
+      display_name: "Smoke Reviewer",
+    },
+    reason: "kapak ihtiyacı arşiv görseliyle karşılandı",
+    superseded_by_satisfaction_id: null,
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function mediaCoveragePage(
+  overrides: Partial<MediaCoveragePage> = {},
+): MediaCoveragePage {
+  const needs = overrides.needs ?? [
+    {
+      need_index: 0,
+      role: "kapak görseli",
+      purpose: "Balon temasını görselleştirmek.",
+      constraints: null,
+      satisfaction: null,
+    },
+  ];
+  const satisfied = needs.filter((need) => need.satisfaction !== null).length;
+  return {
+    work_item_id: WORK_ITEM_ID,
+    content_brief_id: BRIEF_ID,
+    needs,
+    satisfied_needs: satisfied,
+    total_needs: needs.length,
+    history: [],
+    ...overrides,
   };
 }
 

@@ -13,6 +13,7 @@ vi.mock("@/lib/editorial-api", async () => {
     fetchWorkItemReviews: vi.fn(),
     fetchWorkItemQaReports: vi.fn(),
     fetchWorkItemDecisions: vi.fn(),
+    fetchWorkItemMedia: vi.fn(),
   };
 });
 
@@ -27,6 +28,7 @@ import {
   fetchWorkItemDetail,
   fetchWorkItemDecisions,
   fetchWorkItemDrafts,
+  fetchWorkItemMedia,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
 } from "@/lib/editorial-api";
@@ -38,6 +40,8 @@ import {
   briefView,
   decisionListPage,
   decisionView,
+  mediaCoveragePage,
+  mediaSatisfaction,
   draftListPage,
   draftSummary,
   qaReportListPage,
@@ -56,6 +60,7 @@ const draftsMock = vi.mocked(fetchWorkItemDrafts);
 const reviewsMock = vi.mocked(fetchWorkItemReviews);
 const qaMock = vi.mocked(fetchWorkItemQaReports);
 const decisionsMock = vi.mocked(fetchWorkItemDecisions);
+const mediaMock = vi.mocked(fetchWorkItemMedia);
 const currentUserMock = vi.mocked(fetchCurrentUser);
 
 async function renderPage(params: Record<string, string> = {}) {
@@ -94,6 +99,11 @@ beforeEach(() => {
     data: decisionListPage(),
     requestId: null,
   });
+  mediaMock.mockResolvedValue({
+    kind: "ok",
+    data: mediaCoveragePage(),
+    requestId: null,
+  });
   currentUserMock.mockResolvedValue({
     kind: "ok",
     data: {
@@ -127,6 +137,7 @@ describe("Editorial detail page", () => {
       "Writer drafts",
       "Editor reviews",
       "QA reports",
+      "Media",
       "Human decisions",
       "AI attempts",
       "Workflow history",
@@ -668,6 +679,94 @@ describe("Editorial detail page", () => {
     });
     await renderPage();
     expect(screen.getByText("operator · UNKNOWN")).toBeTruthy();
+  });
+
+  it("offers the media binding commands for an unsatisfied need", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "qa_review",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText("Coverage: 0 / 1 needs satisfied.")).toBeTruthy();
+    expect(screen.getByText("Unsatisfied")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upload & bind" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Bind existing asset" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate image" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Unbind" })).toBeNull();
+  });
+
+  it("shows the bound asset through the admin proxy and allows unbinding", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "qa_review",
+        },
+      }),
+      requestId: null,
+    });
+    mediaMock.mockResolvedValue({
+      kind: "ok",
+      data: mediaCoveragePage({
+        needs: [
+          {
+            need_index: 0,
+            role: "kapak görseli",
+            purpose: "Balon temasını görselleştirmek.",
+            constraints: null,
+            satisfaction: mediaSatisfaction(),
+          },
+        ],
+      }),
+      requestId: null,
+    });
+
+    const { container } = render(
+      await EditorialDetailPage({
+        params: Promise.resolve({ id: WORK_ITEM_ID }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByText("Coverage: 1 / 1 needs satisfied.")).toBeTruthy();
+    const image = screen.getByAltText(
+      "Balon süslemeli parti masası",
+    ) as HTMLImageElement;
+    expect(image.getAttribute("src")).toBe(
+      `/editorial/media-assets/${mediaSatisfaction().asset.id}/content`,
+    );
+    expect(screen.getByText(/Bound by Smoke Reviewer/)).toBeTruthy();
+    expect(screen.getByText("License: Konsepthane arşivi")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unbind" })).toBeTruthy();
+    // The bytes come only from the admin's own proxy route.
+    expect(container.innerHTML).not.toContain("127.0.0.1:8000");
+  });
+
+  it("freezes media commands under terminal review", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "awaiting_human_review",
+        },
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText(/Media commands are closed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upload & bind" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate image" })).toBeNull();
   });
 
   it("never renders the internal backend URL", async () => {

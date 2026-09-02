@@ -46,11 +46,15 @@ export type FetchedResponse = {
   status: number;
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
+  // Present on real fetch responses; used only by the media byte proxy.
+  arrayBuffer?(): Promise<ArrayBuffer>;
 };
 
 export type BackendRequestInit = {
   method?: "GET" | "POST";
   jsonBody?: unknown;
+  // Multipart uploads; fetch sets the boundary content-type itself.
+  formBody?: FormData;
 };
 
 export async function requestBackend(
@@ -75,7 +79,11 @@ export async function requestBackend(
       cache: "no-store",
       headers,
       body:
-        init.jsonBody !== undefined ? JSON.stringify(init.jsonBody) : undefined,
+        init.formBody !== undefined
+          ? init.formBody
+          : init.jsonBody !== undefined
+            ? JSON.stringify(init.jsonBody)
+            : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {

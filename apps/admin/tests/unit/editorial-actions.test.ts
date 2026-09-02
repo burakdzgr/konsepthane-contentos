@@ -30,6 +30,10 @@ vi.mock("@/lib/editorial-control-api", async () => {
     requestChangesDecision: vi.fn(),
     rejectPackage: vi.fn(),
     revokeApproval: vi.fn(),
+    uploadMediaAsset: vi.fn(),
+    satisfyMediaNeed: vi.fn(),
+    unsatisfyMediaNeed: vi.fn(),
+    generateMediaImage: vi.fn(),
   };
 });
 
@@ -40,6 +44,10 @@ import {
   runQaAction,
   waiveQaGateAction,
   approvePackageAction,
+  bindMediaAssetAction,
+  generateMediaImageAction,
+  unbindMediaAction,
+  uploadAndBindMediaAction,
   requestChangesDecisionAction,
   rejectPackageAction,
   revokeApprovalAction,
@@ -60,6 +68,10 @@ import {
   generateEditorReview,
   generateWriterDraft,
   runQaGates,
+  satisfyMediaNeed,
+  unsatisfyMediaNeed,
+  uploadMediaAsset,
+  generateMediaImage,
   waiveQaGate,
   rejectPackage,
   requestChangesDecision,
@@ -93,6 +105,10 @@ const approvePackageMock = vi.mocked(approvePackage);
 const requestChangesDecisionMock = vi.mocked(requestChangesDecision);
 const rejectPackageMock = vi.mocked(rejectPackage);
 const revokeApprovalMock = vi.mocked(revokeApproval);
+const uploadMediaMock = vi.mocked(uploadMediaAsset);
+const satisfyMediaMock = vi.mocked(satisfyMediaNeed);
+const unsatisfyMediaMock = vi.mocked(unsatisfyMediaNeed);
+const generateMediaImageMock = vi.mocked(generateMediaImage);
 
 function decidedResult(
   decision: "approved" | "changes_requested" | "rejected" | "approval_revoked",
@@ -598,6 +614,127 @@ describe("human decision actions", () => {
         form({ work_item_id: WORK_ITEM_ID, reason: "gerekce" }),
       ),
       `/editorial/${WORK_ITEM_ID}?error=conflict`,
+    );
+  });
+});
+
+describe("media actions", () => {
+  const SATISFIED = {
+    kind: "ok" as const,
+    data: {
+      status: "satisfied" as const,
+      work_item_id: WORK_ITEM_ID,
+      need_index: 0,
+      satisfaction_id: "c3000000-0000-4000-8000-00000000000c",
+      media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+    },
+  };
+
+  it("uploadAndBindMediaAction uploads then binds with the reason", async () => {
+    uploadMediaMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "registered",
+        media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+        content_sha256: "a".repeat(64),
+        media_type: "image/png",
+        byte_size: 3,
+      },
+    });
+    satisfyMediaMock.mockResolvedValue(SATISFIED);
+    const data = form({
+      work_item_id: WORK_ITEM_ID,
+      need_index: "0",
+      alt_text: "Balon masası",
+      license_note: "Arşiv",
+      reason: "kapak karşılandı",
+    });
+    data.set("file", new File([new Uint8Array([1, 2, 3])], "kapak.png"));
+    await expectRedirect(
+      uploadAndBindMediaAction(data),
+      `/editorial/${WORK_ITEM_ID}?notice=media-bound`,
+    );
+    const sent = uploadMediaMock.mock.calls[0]?.[0] as FormData;
+    expect(sent.get("alt_text")).toBe("Balon masası");
+    expect(sent.get("license_note")).toBe("Arşiv");
+    expect(satisfyMediaMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      0,
+      "c2000000-0000-4000-8000-00000000000c",
+      "kapak karşılandı",
+    );
+  });
+
+  it("uploadAndBindMediaAction refuses a missing file or fields locally", async () => {
+    await expectRedirect(
+      uploadAndBindMediaAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          need_index: "0",
+          alt_text: "a",
+          license_note: "b",
+          reason: "c",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(uploadMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("bind, unbind and generate route with bounded indexes", async () => {
+    satisfyMediaMock.mockResolvedValue(SATISFIED);
+    await expectRedirect(
+      bindMediaAssetAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          need_index: "0",
+          media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+          reason: "mevcut görsel uygun",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=media-bound`,
+    );
+
+    unsatisfyMediaMock.mockResolvedValue({
+      kind: "ok",
+      data: { ...SATISFIED.data, status: "unsatisfied" },
+    });
+    await expectRedirect(
+      unbindMediaAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          need_index: "0",
+          reason: "lisans şüphesi",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=media-unbound`,
+    );
+    expect(unsatisfyMediaMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      0,
+      "lisans şüphesi",
+    );
+
+    generateMediaImageMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "queued",
+        task: "generate_media_image",
+        entity_id: WORK_ITEM_ID,
+      },
+    });
+    await expectRedirect(
+      generateMediaImageAction(
+        form({ work_item_id: WORK_ITEM_ID, need_index: "0" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=media-image-queued`,
+    );
+
+    await expectRedirect(
+      generateMediaImageAction(
+        form({ work_item_id: WORK_ITEM_ID, need_index: "abc" }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
     );
   });
 });

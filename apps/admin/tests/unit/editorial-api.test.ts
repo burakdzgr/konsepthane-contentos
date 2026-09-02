@@ -348,3 +348,54 @@ describe("decision reads", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("media coverage reads", () => {
+  it("parses coverage with honest unsatisfied needs", async () => {
+    const { fetchWorkItemMedia } = await import("@/lib/editorial-api");
+    const { mediaCoveragePage } = await import("./editorial-fixtures");
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, mediaCoveragePage()),
+    );
+    const result = await fetchWorkItemMedia(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.total_needs).toBe(1);
+      expect(result.data.satisfied_needs).toBe(0);
+      expect(result.data.needs[0]?.satisfaction).toBeNull();
+    }
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/media`,
+    );
+  });
+
+  it("rejects an unknown origin as malformed and bad ids stay local", async () => {
+    const { fetchWorkItemMedia } = await import("@/lib/editorial-api");
+    const { mediaCoveragePage, mediaSatisfaction } =
+      await import("./editorial-fixtures");
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        mediaCoveragePage({
+          needs: [
+            {
+              need_index: 0,
+              role: "kapak",
+              purpose: "tema",
+              constraints: null,
+              satisfaction: mediaSatisfaction({
+                asset: {
+                  ...mediaSatisfaction().asset,
+                  origin: "scraped" as never,
+                },
+              }),
+            },
+          ],
+        }),
+      ),
+    );
+    expect((await fetchWorkItemMedia(WORK_ITEM_ID)).kind).toBe("malformed");
+    const fetchMock = stubFetch(async () => jsonResponse(200, {}));
+    expect((await fetchWorkItemMedia("junk")).kind).toBe("not_found");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

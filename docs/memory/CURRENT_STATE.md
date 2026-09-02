@@ -3048,18 +3048,47 @@ access protection belongs to future deployment infrastructure.
   engine run with provenance asset + idempotent reuse, downgrade
   guard refusing over real audit history); schema head `0024`
 
+- PHASE 6 Task M5 (admin media surface) complete: the editorial detail
+  page gained the Media section — coverage counts, per-need rows
+  (satisfied → thumbnail through the admin's OWN authenticated byte
+  proxy `app/editorial/media-assets/[assetId]/content/route.ts` — the
+  browser never talks to the backend — plus origin badge, alt text,
+  licensing, attribution and the named binding human; unsatisfied →
+  honest badge), state-gated commands (upload-and-bind with REQUIRED
+  alt text/license/reason, bind-existing-asset, generate-image with
+  the "you still bind it explicitly" note, unbind) closed with a
+  truthful frozen-package note outside {drafting, editing, qa_review,
+  changes_requested}, and the binding history line; libs —
+  `requestBackend` gained multipart `formBody` + optional
+  `arrayBuffer` (bytes proxy only), media coverage zod schemas +
+  `fetchWorkItemMedia`, control functions (uploadMediaAsset multipart
+  / satisfyMediaNeed / unsatisfyMediaNeed / generateMediaImage) and
+  the four actions (upload-and-bind chains upload→satisfy under one
+  form; bounded need_index parsing)
+- Task M5 verified: 11 new admin tests (page: unsatisfied commands +
+  coverage counts, bound-asset rendering through the proxy URL with
+  no backend URL leaked + unbind, frozen-state closure; control API:
+  multipart upload with honest dedupe parse, exact need-scoped paths,
+  409→conflict; actions: upload-then-bind chaining + local refusals +
+  bounded index fallback to invalid; reads: coverage parse + unknown
+  origin malformed + junk ids stay local) — suite 1279 backend + 227
+  admin, gate green; no migration (head stays `0024`)
+
 ## Next immediate task
 
-PHASE 6 TASK M5 (authorized under the autonomous continuation mandate)
-— ADMIN MEDIA SURFACE, per PHASE6_MEDIA_ARCHITECTURE.md §5/§7: the
-editorial detail page gains a Media section — needs coverage table
-(per need: satisfied → asset metadata incl. origin/alt/licensing/
-provenance + the thumbnail via the admin's server side, or honest
-UNSATISFIED), state-gated commands (upload form with required
-alt/license, satisfy-from-library, generate-image, unsatisfy),
-satisfaction history, leak tests (no store keys/backend URL); zod
-schemas + fetchers for the media coverage read model + control
-functions + actions; no migration. Then M6 the media closure audit.
+PHASE 6 TASK M6 (authorized under the autonomous continuation mandate)
+— MEDIA CLOSURE AUDIT, docs-only, against
+PHASE6_MEDIA_ARCHITECTURE.md §6 exit criteria (8): durable
+content-addressed provenance-carrying assets in the ContentOS-owned
+store only; human-only audited satisfactions with guarded
+supersession; the truthful satisfied/unsatisfied-with-exact-indexes/
+waived/not_applicable media gate under `qa-gates/2` with old reports
+valid under theirs; the AI boundary held for images; state-bounded
+commands with explicit QA re-runs; read models/admin with leak tests;
+real-PG verification for 0023 AND 0024; then the audit verdict.
+After M6: the publishing phase (architecture-first; must consume
+`require_current_approval` and the Publishing API contract — the open
+integration questions below).
 
 Before implementing the affected integrations, resolve:
 

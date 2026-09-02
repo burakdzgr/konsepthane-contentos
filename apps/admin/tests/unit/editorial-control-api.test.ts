@@ -604,3 +604,97 @@ describe("human decision commands", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("media commands", () => {
+  it("upload posts multipart and parses the honest dedupe result", async () => {
+    const { uploadMediaAsset } = await import("@/lib/editorial-control-api");
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "already_exists",
+        media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+        content_sha256: "a".repeat(64),
+        media_type: "image/png",
+        byte_size: 2048,
+      }),
+    );
+    const form = new FormData();
+    form.set("file", new Blob([new Uint8Array([1, 2, 3])]), "kapak.png");
+    form.set("alt_text", "Balon masası");
+    form.set("license_note", "Arşiv");
+    const result = await uploadMediaAsset(form);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.status).toBe("already_exists");
+    }
+    const [url, init] = fetchMock.mock.calls[0] as [URL, { body?: unknown }];
+    expect(String(url)).toContain("/internal/editorial/media-assets");
+    expect(init.body).toBeInstanceOf(FormData);
+  });
+
+  it("satisfy/unsatisfy/generate hit the exact need-scoped paths", async () => {
+    const { generateMediaImage, satisfyMediaNeed, unsatisfyMediaNeed } =
+      await import("@/lib/editorial-control-api");
+    let fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "satisfied",
+        work_item_id: WORK_ITEM_ID,
+        need_index: 0,
+        satisfaction_id: "c3000000-0000-4000-8000-00000000000c",
+        media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+      }),
+    );
+    await satisfyMediaNeed(
+      WORK_ITEM_ID,
+      0,
+      "c2000000-0000-4000-8000-00000000000c",
+      "kapak karşılandı",
+    );
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/media-needs/0/satisfy`,
+    );
+    expect(request.body).toEqual({
+      media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+      reason: "kapak karşılandı",
+    });
+
+    fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "unsatisfied",
+        work_item_id: WORK_ITEM_ID,
+        need_index: 0,
+        satisfaction_id: "c3000000-0000-4000-8000-00000000000c",
+        media_asset_id: "c2000000-0000-4000-8000-00000000000c",
+      }),
+    );
+    await unsatisfyMediaNeed(WORK_ITEM_ID, 0, "lisans şüphesi");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/media-needs/0/unsatisfy`,
+    );
+
+    fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        task: "generate_media_image",
+        entity_id: WORK_ITEM_ID,
+      }),
+    );
+    const queued = await generateMediaImage(WORK_ITEM_ID, 0);
+    expect(queued.kind).toBe("ok");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/media-needs/0/generate-image`,
+    );
+  });
+
+  it("maps a frozen-state 409 to conflict", async () => {
+    const { satisfyMediaNeed } = await import("@/lib/editorial-control-api");
+    stubFetch(async () => jsonResponse(409, { detail: "terminal review" }));
+    const result = await satisfyMediaNeed(
+      WORK_ITEM_ID,
+      0,
+      "c2000000-0000-4000-8000-00000000000c",
+      "geç bağlama",
+    );
+    expect(result).toEqual({ kind: "conflict" });
+  });
+});

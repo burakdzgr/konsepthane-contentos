@@ -8,6 +8,7 @@ import {
   fetchWorkItemDetail,
   fetchWorkItemDecisions,
   fetchWorkItemDrafts,
+  fetchWorkItemMedia,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
   type AiAttemptView,
@@ -15,6 +16,8 @@ import {
   type ContradictionView,
   type DecisionListPage,
   type DraftListPage,
+  type MediaCoveragePage,
+  type MediaSatisfactionView,
   type QaReportListPage,
   type ReviewListPage,
   type EligibleEvidenceItem,
@@ -46,6 +49,10 @@ import {
   acceptReviewAction,
   analyzeSearchIntentAction,
   approvePackageAction,
+  bindMediaAssetAction,
+  generateMediaImageAction,
+  unbindMediaAction,
+  uploadAndBindMediaAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
   composeBriefAction,
@@ -117,6 +124,11 @@ const DETAIL_NOTICES: Record<string, string> = {
   "package-rejected": "Package rejected, on the record.",
   "approval-revoked":
     "Approval revoked (the original record stays) and routed for rework.",
+  "media-bound":
+    "Media need bound to the asset. Gates were NOT re-run — run QA explicitly.",
+  "media-unbound": "Binding withdrawn; the need is honestly unsatisfied again.",
+  "media-image-queued":
+    "Image generation queued. Generation satisfies nothing by itself — bind the asset explicitly.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1720,6 +1732,268 @@ function QaSection({
   );
 }
 
+const MEDIA_COMMAND_STATES = new Set([
+  "drafting",
+  "editing",
+  "qa_review",
+  "changes_requested",
+]);
+
+function MediaSatisfactionCell({
+  satisfaction,
+}: {
+  satisfaction: MediaSatisfactionView;
+}) {
+  const asset = satisfaction.asset;
+  return (
+    <div>
+      {/* Bytes go through the admin's authenticated proxy, never the backend. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/editorial/media-assets/${asset.id}/content`}
+        alt={asset.alt_text}
+        width={120}
+        loading="lazy"
+      />
+      <p>
+        <span className="badge" data-tone="neutral">
+          {asset.origin}
+        </span>{" "}
+        {asset.media_type} · {asset.byte_size} bytes
+      </p>
+      <p className="muted">Alt: {asset.alt_text}</p>
+      <p className="muted">License: {asset.license_note}</p>
+      {asset.source_attribution !== null && (
+        <p className="muted">Attribution: {asset.source_attribution}</p>
+      )}
+      <p className="muted">
+        Bound by {satisfaction.satisfied_by.display_name} —{" "}
+        {satisfaction.reason}
+      </p>
+    </div>
+  );
+}
+
+function MediaSection({
+  detail,
+  media,
+}: {
+  detail: WorkItemDetail;
+  media: MediaCoveragePage | null;
+}) {
+  const workItemId = detail.work_item.id;
+  const commandsOpen = MEDIA_COMMAND_STATES.has(detail.work_item.current_state);
+  return (
+    <section aria-labelledby="detail-media">
+      <h2 id="detail-media">Media</h2>
+      <p className="muted">
+        A need is satisfied ONLY by an explicit human binding of one durable
+        asset. Generation and upload alone satisfy nothing.
+      </p>
+      {media === null && (
+        <p className="empty-note">The media coverage cannot be loaded.</p>
+      )}
+      {media !== null && media.total_needs === 0 && (
+        <p className="empty-note">
+          The accepted brief defines no media needs (or no accepted brief exists
+          yet).
+        </p>
+      )}
+      {media !== null && media.total_needs > 0 && (
+        <>
+          <p>
+            Coverage: {media.satisfied_needs} / {media.total_needs} needs
+            satisfied.
+          </p>
+          {!commandsOpen && (
+            <p role="note">
+              Media commands are closed in{" "}
+              <strong>{detail.work_item.current_state}</strong>: the package is
+              frozen while under terminal review.
+            </p>
+          )}
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Need</th>
+                  <th scope="col">Coverage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {media.needs.map((need) => (
+                  <tr key={need.need_index}>
+                    <td>{need.need_index}</td>
+                    <td>
+                      <strong>{need.role}</strong>
+                      <p className="muted">{need.purpose}</p>
+                      {need.constraints !== null && (
+                        <p className="muted">Constraints: {need.constraints}</p>
+                      )}
+                    </td>
+                    <td>
+                      {need.satisfaction !== null ? (
+                        <MediaSatisfactionCell
+                          satisfaction={need.satisfaction}
+                        />
+                      ) : (
+                        <span className="badge" data-tone="warning">
+                          Unsatisfied
+                        </span>
+                      )}
+                      {commandsOpen && need.satisfaction === null && (
+                        <div className="control-stack">
+                          <form
+                            action={uploadAndBindMediaAction}
+                            className="control-form"
+                          >
+                            <input
+                              type="hidden"
+                              name="work_item_id"
+                              value={workItemId}
+                            />
+                            <input
+                              type="hidden"
+                              name="need_index"
+                              value={need.need_index}
+                            />
+                            <input
+                              type="file"
+                              name="file"
+                              required
+                              accept="image/png,image/jpeg,image/webp"
+                              aria-label={`Upload file for need ${need.need_index}`}
+                            />
+                            <input
+                              type="text"
+                              name="alt_text"
+                              required
+                              maxLength={1000}
+                              placeholder="alt text (required)"
+                              aria-label={`Alt text for need ${need.need_index}`}
+                            />
+                            <input
+                              type="text"
+                              name="license_note"
+                              required
+                              maxLength={1000}
+                              placeholder="license note (required)"
+                              aria-label={`License note for need ${need.need_index}`}
+                            />
+                            <input
+                              type="text"
+                              name="reason"
+                              required
+                              maxLength={1000}
+                              placeholder="why this asset satisfies the need"
+                              aria-label={`Binding reason for need ${need.need_index}`}
+                            />
+                            <button type="submit">Upload & bind</button>
+                          </form>
+                          <form
+                            action={bindMediaAssetAction}
+                            className="control-form"
+                          >
+                            <input
+                              type="hidden"
+                              name="work_item_id"
+                              value={workItemId}
+                            />
+                            <input
+                              type="hidden"
+                              name="need_index"
+                              value={need.need_index}
+                            />
+                            <input
+                              type="text"
+                              name="media_asset_id"
+                              required
+                              className="mono"
+                              placeholder="existing media asset id"
+                              aria-label={`Asset id for need ${need.need_index}`}
+                            />
+                            <input
+                              type="text"
+                              name="reason"
+                              required
+                              maxLength={1000}
+                              placeholder="why this asset satisfies the need"
+                              aria-label={`Bind reason for need ${need.need_index}`}
+                            />
+                            <button type="submit">Bind existing asset</button>
+                          </form>
+                          <form
+                            action={generateMediaImageAction}
+                            className="control-form"
+                          >
+                            <input
+                              type="hidden"
+                              name="work_item_id"
+                              value={workItemId}
+                            />
+                            <input
+                              type="hidden"
+                              name="need_index"
+                              value={need.need_index}
+                            />
+                            <button type="submit">Generate image</button>
+                            <span className="muted">
+                              Produces a candidate asset with AI provenance; you
+                              still bind it explicitly.
+                            </span>
+                          </form>
+                        </div>
+                      )}
+                      {commandsOpen && need.satisfaction !== null && (
+                        <form
+                          action={unbindMediaAction}
+                          className="control-form"
+                        >
+                          <input
+                            type="hidden"
+                            name="work_item_id"
+                            value={workItemId}
+                          />
+                          <input
+                            type="hidden"
+                            name="need_index"
+                            value={need.need_index}
+                          />
+                          <input
+                            type="text"
+                            name="reason"
+                            required
+                            maxLength={1000}
+                            placeholder="why the binding no longer stands"
+                            aria-label={`Unbind reason for need ${need.need_index}`}
+                          />
+                          <button type="submit">Unbind</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {media !== null && media.history.length > media.satisfied_needs && (
+        <p className="muted" role="note">
+          Binding history:{" "}
+          {media.history
+            .map(
+              (row) =>
+                `#${row.need_index} ${row.status} — ${row.satisfied_by.display_name}: ${row.reason}`,
+            )
+            .join(" · ")}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function DecisionsSection({
   detail,
   decisions,
@@ -2064,6 +2338,8 @@ export default async function EditorialDetailPage({
   const qaReports = qaResult.kind === "ok" ? qaResult.data : null;
   const decisionsResult = await fetchWorkItemDecisions(detail.work_item.id);
   const decisions = decisionsResult.kind === "ok" ? decisionsResult.data : null;
+  const mediaResult = await fetchWorkItemMedia(detail.work_item.id);
+  const media = mediaResult.kind === "ok" ? mediaResult.data : null;
   const currentUserResult = await fetchCurrentUser();
   const isReviewer =
     currentUserResult.kind === "ok" &&
@@ -2107,6 +2383,7 @@ export default async function EditorialDetailPage({
       <DraftsSection detail={detail} drafts={drafts} />
       <ReviewsSection detail={detail} reviews={reviews} />
       <QaSection detail={detail} qaReports={qaReports} />
+      <MediaSection detail={detail} media={media} />
       <DecisionsSection
         detail={detail}
         decisions={decisions}

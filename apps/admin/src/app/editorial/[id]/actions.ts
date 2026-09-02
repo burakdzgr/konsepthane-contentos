@@ -14,6 +14,7 @@ import {
   evaluateOpportunity,
   generateEditorReview,
   generateIdeaCandidates,
+  generateMediaImage,
   generateWriterDraft,
   reassembleEvidencePack,
   rejectBlockedWorkItem,
@@ -24,6 +25,9 @@ import {
   requestWriterRework,
   resolveChangesRequested,
   runQaGates,
+  satisfyMediaNeed,
+  unsatisfyMediaNeed,
+  uploadMediaAsset,
   waiveQaGate,
   resolveContradiction,
   resolveWorkItemBlock,
@@ -468,4 +472,97 @@ export async function revokeApprovalAction(formData: FormData): Promise<void> {
     boundedResponsible(formData),
   );
   finish(workItemId, result, "approval-revoked");
+}
+
+function boundedNeedIndex(formData: FormData): number | null {
+  const raw = field(formData, "need_index");
+  if (!/^\d{1,3}$/.test(raw)) {
+    return null;
+  }
+  return Number.parseInt(raw, 10);
+}
+
+export async function uploadAndBindMediaAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const needIndex = boundedNeedIndex(formData);
+  const file = formData.get("file");
+  const altText = field(formData, "alt_text");
+  const licenseNote = field(formData, "license_note");
+  const reason = field(formData, "reason");
+  if (
+    needIndex === null ||
+    !(file instanceof File) ||
+    file.size === 0 ||
+    !altText ||
+    !licenseNote ||
+    !reason
+  ) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const backendForm = new FormData();
+  backendForm.set("file", file);
+  backendForm.set("alt_text", altText);
+  backendForm.set("license_note", licenseNote);
+  const title = field(formData, "title");
+  if (title) {
+    backendForm.set("title", title);
+  }
+  const attribution = field(formData, "source_attribution");
+  if (attribution) {
+    backendForm.set("source_attribution", attribution);
+  }
+  const uploaded = await uploadMediaAsset(backendForm);
+  if (uploaded.kind !== "ok") {
+    finish(workItemId, uploaded, "media-bound");
+    return;
+  }
+  const bound = await satisfyMediaNeed(
+    workItemId,
+    needIndex,
+    uploaded.data.media_asset_id,
+    reason,
+  );
+  finish(workItemId, bound, "media-bound");
+}
+
+export async function bindMediaAssetAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const needIndex = boundedNeedIndex(formData);
+  const mediaAssetId = field(formData, "media_asset_id");
+  const reason = field(formData, "reason");
+  if (needIndex === null || !mediaAssetId || !reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await satisfyMediaNeed(
+    workItemId,
+    needIndex,
+    mediaAssetId,
+    reason,
+  );
+  finish(workItemId, result, "media-bound");
+}
+
+export async function unbindMediaAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const needIndex = boundedNeedIndex(formData);
+  const reason = field(formData, "reason");
+  if (needIndex === null || !reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await unsatisfyMediaNeed(workItemId, needIndex, reason);
+  finish(workItemId, result, "media-unbound");
+}
+
+export async function generateMediaImageAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const needIndex = boundedNeedIndex(formData);
+  if (needIndex === null) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await generateMediaImage(workItemId, needIndex);
+  finish(workItemId, result, "media-image-queued");
 }

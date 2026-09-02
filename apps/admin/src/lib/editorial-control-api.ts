@@ -43,6 +43,7 @@ const EDITORIAL_TASKS = [
   "generate_writer_draft",
   "generate_editor_review",
   "run_qa_gates",
+  "generate_media_image",
 ] as const;
 
 const queuedResponseSchema = z.object({
@@ -128,6 +129,22 @@ const waiverResponseSchema = z.object({
   note: z.string(),
 });
 
+const mediaUploadResponseSchema = z.object({
+  status: z.enum(["registered", "already_exists"]),
+  media_asset_id: z.string().uuid(),
+  content_sha256: z.string(),
+  media_type: z.string(),
+  byte_size: z.number().int(),
+});
+
+const mediaSatisfactionResponseSchema = z.object({
+  status: z.enum(["satisfied", "unsatisfied"]),
+  work_item_id: z.string().uuid(),
+  need_index: z.number().int(),
+  satisfaction_id: z.string().uuid(),
+  media_asset_id: z.string().uuid(),
+});
+
 const decisionResponseSchema = z.object({
   status: z.literal("decided"),
   decision: z.enum(DECISION_KINDS),
@@ -164,6 +181,10 @@ export type DraftSubmissionResult = z.infer<
 export type AcceptReviewResult = z.infer<typeof acceptReviewResponseSchema>;
 export type WaiverResult = z.infer<typeof waiverResponseSchema>;
 export type DecisionResult = z.infer<typeof decisionResponseSchema>;
+export type MediaUploadResult = z.infer<typeof mediaUploadResponseSchema>;
+export type MediaSatisfactionResult = z.infer<
+  typeof mediaSatisfactionResponseSchema
+>;
 
 type ControlFailure =
   | { kind: "not_found" }
@@ -669,6 +690,70 @@ export function revokeApproval(
       `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/revoke-approval`,
       { reason, responsible_state: responsibleState },
       decisionResponseSchema,
+    ),
+  );
+}
+
+export async function uploadMediaAsset(
+  form: FormData,
+): Promise<ControlResult<MediaUploadResult>> {
+  const response = await requestBackend("/internal/editorial/media-assets", {
+    method: "POST",
+    formBody: form,
+  });
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  const failure = failureKind(response);
+  if (failure !== null) {
+    return failure;
+  }
+  const parsed = await parseBackendResponse(
+    response,
+    mediaUploadResponseSchema,
+    [200],
+  );
+  return parsed.kind === "ok" ? { kind: "ok", data: parsed.data } : parsed;
+}
+
+export function satisfyMediaNeed(
+  workItemId: string,
+  needIndex: number,
+  mediaAssetId: string,
+  reason: string,
+): Promise<ControlResult<MediaSatisfactionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/media-needs/${needIndex}/satisfy`,
+      { media_asset_id: mediaAssetId, reason },
+      mediaSatisfactionResponseSchema,
+    ),
+  );
+}
+
+export function unsatisfyMediaNeed(
+  workItemId: string,
+  needIndex: number,
+  reason: string,
+): Promise<ControlResult<MediaSatisfactionResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/media-needs/${needIndex}/unsatisfy`,
+      { reason },
+      mediaSatisfactionResponseSchema,
+    ),
+  );
+}
+
+export function generateMediaImage(
+  workItemId: string,
+  needIndex: number,
+): Promise<ControlResult<QueuedResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/media-needs/${needIndex}/generate-image`,
+      undefined,
+      queuedResponseSchema,
     ),
   );
 }
