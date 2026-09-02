@@ -3235,22 +3235,43 @@ access protection belongs to future deployment infrastructure.
   stale-409 mapping) — suite 1291 backend + 232 admin, gate green; no
   migration (head stays `0025`)
 
+- PHASE 7 Task P5 (publishing closure audit) complete — **PHASE 7 IS
+  CLOSED**: `docs/PHASE7_PUBLISHING_AUDIT.md` audits all 9 §6 exit
+  criteria as MET with code/test references (approval-guarded verbatim
+  packages, artifact-gated state advance with humans scheduling and
+  machines executing, the surfaced-never-ridden stale-approval path
+  with derived resolution, durable non-editorial failure facts with
+  BLOCKED-not-REJECTED, end-to-end idempotency, the held transport
+  boundary with no default endpoint, leak-tested read surfaces, both
+  real-infra verifications), documents the intended retirement of the
+  no-publication invariant (the ban test evolved into exact
+  route-space pins), and adds the publishing backlog items (real
+  time-based scheduler, attempt paging). The FULL LOOP now runs
+  research → … → APPROVED → SCHEDULED → PUBLISHING → PUBLISHED against
+  the fake transport; the LIVE integration stays blocked on the three
+  open operator inputs. Docs-only; no runtime changed.
+
 ## Next immediate task
 
-PHASE 7 TASK P5 (authorized under the autonomous continuation mandate)
-— PUBLISHING CLOSURE AUDIT, docs-only, against
-PHASE7_PUBLISHING_ARCHITECTURE.md §6 exit criteria (9), re-verifying
-that the no-publication invariant is retired the intended way
-(publication exists ONLY as this governed, approval-guarded path) and
-that the LIVE integration remains explicitly blocked on the three
-open inputs. After P5: per the roadmap the next phases are
-Scheduling/Distribution (Pinterest) → Analytics → Refresh — each
-blocked on their own open integration inputs (Pinterest account/API
-access, analytics data sources); with publishing feature-complete on
-the ContentOS side, evaluate with the operator whether to proceed
-there or to burn down the production-readiness backlog (real-infra CI
-lane, session hygiene, spend controls, capped listings, secrets
-management) which requires no external inputs.
+PRODUCTION-READINESS BACKLOG BURNDOWN (authorized under the autonomous
+continuation mandate). Rationale: the remaining roadmap phases —
+Distribution (Pinterest), Analytics, Refresh — are each BLOCKED on
+open external inputs the operator must supply (Pinterest account/API
+access + distribution policy; analytics data sources +
+content-identity mapping), and the Publishing live integration is
+blocked on its three inputs; the production-readiness backlog needs
+NO external inputs. Next task: **REAL-INFRASTRUCTURE CI LANE** — a
+containerized CI job (services: pgvector/pg16 + redis:7) running the
+migration chain 0001→head + a consolidated end-to-end verification
+derived from the scratchpad scripts (`verify_pg_publish_task.py`
+covers the full loop) committed into the repo (e.g.
+`apps/backend/tests/integration/` or `scripts/verify_full_chain.py`)
+so real-PG/Redis proof stops living only in session scratchpads; keep
+the lane a separate CI job so the unit gate stays fast. Then, in
+order: session hygiene (expired-session pruning command), capped
+listings, provider spend controls, secrets-management documentation.
+The blocked feature phases resume the moment the operator supplies
+the inputs listed below.
 
 Before implementing the affected integrations, resolve:
 
