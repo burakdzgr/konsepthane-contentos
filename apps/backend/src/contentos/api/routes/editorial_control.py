@@ -107,6 +107,8 @@ from contentos.opportunities.service import (
     OpportunityRejectionService,
     ResearchPromotionService,
 )
+from contentos.reviews.enums import ReviewVerdict
+from contentos.reviews.repository import ReviewRepository
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
 from contentos.workflow.errors import (
     InvalidWorkflowInputError,
@@ -138,6 +140,7 @@ EDITORIAL_TASK_LABELS = Literal[
     "analyze_search_intent",
     "compose_content_brief",
     "generate_writer_draft",
+    "generate_editor_review",
 ]
 
 # Contradiction resolution: "unresolved" is not a resolution — excluding it
@@ -289,6 +292,16 @@ class DraftSubmissionResponse(BaseModel):
     draft_status: DraftStatus
     work_item_id: uuid.UUID
     work_item_state: WorkflowState
+
+
+class AcceptReviewResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["accepted"]
+    work_item_id: uuid.UUID
+    work_item_state: WorkflowState
+    editorial_review_id: uuid.UUID
+    review_verdict: ReviewVerdict
 
 
 class QueuedResponse(BaseModel):
@@ -961,6 +974,7 @@ def generate_writer_draft(
 
 @router.post("/briefs/{brief_id}/submit-draft", response_model=DraftSubmissionResponse)
 def submit_operator_draft(
+    request: Request,
     session: Annotated[Session, Depends(get_db_session)],
     brief_id: uuid.UUID,
     body: SubmitDraftRequest,
@@ -969,7 +983,10 @@ def submit_operator_draft(
     same artifact gate as the machine path: durable draft first, then the
     explicit DRAFTING -> EDITING transition with the draft identity pinned.
     Resubmitting identical content while still DRAFTING reuses the draft
-    (manual-input idempotency) and completes the transition."""
+    (manual-input idempotency) and completes the transition. The Editor
+    review is dispatched AFTER the commit; a dispatch failure is logged
+    and non-fatal — state already advanced truthfully, and the explicit
+    generate-editor-review command covers the gap."""
     draft_body = DraftBodyInput(
         sections=tuple(
             DraftSection(
@@ -1034,6 +1051,23 @@ def submit_operator_draft(
         session.commit()
     item = WorkflowRepository(session).get_by_id(draft.work_item_id)
     assert item is not None
+    if item.current_state is WorkflowState.EDITING:
+        # Post-commit downstream dispatch (best-effort by design here: the
+        # durable state is already truthful; never 503 after a commit).
+        try:
+            _dispatcher(request).enqueue_generate_editor_review(
+                str(draft.work_item_id),
+                retry_number=0,
+                supersede_reason=None,
+                request_id=request_id,
+            )
+        except Exception as error:
+            _logger.warning(
+                "editorial_control_post_commit_dispatch_failed",
+                operation="generate_editor_review",
+                entity_id=str(draft.work_item_id),
+                error_type=type(error).__name__,
+            )
     return DraftSubmissionResponse(
         status="created" if creation.created else "reused",
         content_draft_id=draft.id,
@@ -1045,6 +1079,96 @@ def submit_operator_draft(
     )
 
 
+@router.post("/work-items/{work_item_id}/generate-editor-review", response_model=QueuedResponse)
+def generate_editor_review(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: GenerateDraftRequest,
+) -> QueuedResponse:
+    """Queue `generate_editor_review`; no provider call ever runs in
+    FastAPI. Re-review is the SAME explicit command with retry_number+1 —
+    the domain requires a supersede reason over an active review."""
+    if WorkflowRepository(session).get_by_id(work_item_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"no editorial work item with id {work_item_id}"
+        )
+    dispatcher = _dispatcher(request)
+    request_id = _current_request_id()
+    _enqueue_or_503(
+        "generate_editor_review",
+        work_item_id,
+        lambda: dispatcher.enqueue_generate_editor_review(
+            str(work_item_id),
+            retry_number=body.retry_number,
+            supersede_reason=body.supersede_reason,
+            request_id=request_id,
+        ),
+    )
+    return QueuedResponse(status="queued", task="generate_editor_review", entity_id=work_item_id)
+
+
+@router.post("/work-items/{work_item_id}/accept-review", response_model=AcceptReviewResponse)
+def accept_editor_review(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: ReasonRequest,
+) -> AcceptReviewResponse:
+    """The explicit HUMAN advance out of EDITING: requires an ACTIVE review
+    with verdict `pass` pinning the ACTIVE draft, then a WorkflowService
+    OPERATOR transition to QA_REVIEW with the review pinned. The Editor's
+    verdict is a signal; the human is the actor."""
+    if WorkflowRepository(session).get_by_id(work_item_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"no editorial work item with id {work_item_id}"
+        )
+    review = ReviewRepository(session).get_active_review(work_item_id)
+    active_draft = DraftRepository(session).get_active_draft(work_item_id)
+    if review is None or active_draft is None:
+        raise HTTPException(
+            status_code=409,
+            detail="accepting requires an ACTIVE editor review over an ACTIVE draft",
+        )
+    if review.content_draft_id != active_draft.id:
+        raise HTTPException(
+            status_code=409,
+            detail="the ACTIVE review does not cover the ACTIVE draft; re-review first",
+        )
+    if review.verdict is not ReviewVerdict.PASS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"the ACTIVE review verdict is '{review.verdict.value}', not 'pass'",
+        )
+    try:
+        item = WorkflowService(session).transition(
+            work_item_id,
+            WorkflowState.QA_REVIEW,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=body.reason,
+            artifact_refs={
+                "editorial_review_id": str(review.id),
+                "content_draft_id": str(active_draft.id),
+                "review_verdict": review.verdict.value,
+                "content_hash": active_draft.content_hash,
+            },
+            request_id=_current_request_id(),
+        )
+    except WorkItemNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    except InvalidWorkflowTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return AcceptReviewResponse(
+        status="accepted",
+        work_item_id=item.id,
+        work_item_state=item.current_state,
+        editorial_review_id=review.id,
+        review_verdict=review.verdict,
+    )
+
+
 @router.post("/work-items/{work_item_id}/request-rework", response_model=WorkItemStateResponse)
 def request_writer_rework(
     session: Annotated[Session, Depends(get_db_session)],
@@ -1052,8 +1176,9 @@ def request_writer_rework(
     body: ReasonRequest,
 ) -> WorkItemStateResponse:
     """EDITING -> CHANGES_REQUESTED with responsible=DRAFTING recorded
-    durably (the Task 6 routing foundation); the current active draft is
-    pinned server-side. Never an arbitrary target."""
+    durably (the Task 6 routing foundation); the current active draft —
+    and the ACTIVE editor review, when one exists — are pinned
+    server-side. Never an arbitrary target."""
     if WorkflowRepository(session).get_by_id(work_item_id) is None:
         raise HTTPException(
             status_code=404, detail=f"no editorial work item with id {work_item_id}"
@@ -1066,6 +1191,9 @@ def request_writer_rework(
             "draft_version": active.version,
             "content_brief_id": str(active.content_brief_id),
         }
+        active_review = ReviewRepository(session).get_active_review(work_item_id)
+        if active_review is not None:
+            refs["editorial_review_id"] = str(active_review.id)
     try:
         item = WorkflowService(session).transition(
             work_item_id,

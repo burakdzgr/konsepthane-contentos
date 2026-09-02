@@ -785,3 +785,190 @@ class TestWriterDraftCommands:
             {"reason": "yanlış aşama"},
         )
         assert response.status_code == 409
+
+
+class TestEditorReviewCommands:
+    """Phase 4 Task 13: editor review generation, acceptance, rework pins."""
+
+    def submitted(self, harness: Harness) -> Any:
+        """Accepted brief -> operator draft submitted -> work item EDITING."""
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        accepted = accepted_context(harness)
+        payload = writer_payload(accepted)
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft",
+            {
+                "reason": "operatör taslağı gönderdi",
+                "title_proposal": payload["title_proposal"],
+                "sections": payload["sections"],
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["work_item_state"] == "editing"
+        return accepted, response.json()["content_draft_id"]
+
+    def pass_review(self, harness: Harness, work_item_id: uuid.UUID) -> str:
+        from contentos.reviews.service import ReviewService
+
+        with harness.session() as session:
+            creation = ReviewService(session).create_review(work_item_id, [])
+            session.commit()
+            return str(creation.review.id)
+
+    def test_submit_draft_dispatches_editor_review_post_commit(self, harness: Harness) -> None:
+        accepted, _ = self.submitted(harness)
+        editor_calls = [
+            call for call in harness.dispatcher.calls if call[0] == "generate_editor_review"
+        ]
+        assert len(editor_calls) == 1
+        name, payload, request_id = editor_calls[0]
+        assert name == "generate_editor_review"
+        assert payload == {
+            "work_item_id": str(accepted.context.work_item_id),
+            "retry_number": 0,
+            "supersede_reason": None,
+        }
+        # The middleware-generated correlation id travels with the dispatch.
+        assert isinstance(request_id, str) and request_id
+
+    def test_submit_draft_dispatch_failure_is_non_fatal(self) -> None:
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        harness = Harness(dispatcher=FailingEditorialDispatcher())
+        accepted = accepted_context(harness)
+        payload = writer_payload(accepted)
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft",
+            {
+                "reason": "operatör taslağı",
+                "sections": payload["sections"],
+            },
+        )
+        # The durable state already advanced truthfully; never a 503 after
+        # commit, and no broker detail leaks.
+        assert response.status_code == 200
+        assert response.json()["work_item_state"] == "editing"
+        assert "redis://" not in response.text.lower()
+
+    def test_generate_editor_review_queues_exact_task(self, harness: Harness) -> None:
+        accepted, _ = self.submitted(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+            "/generate-editor-review",
+            {"retry_number": 1, "supersede_reason": "yeniden inceleme"},
+            headers={"X-Request-ID": "operator-req-81"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "queued"
+        assert body["task"] == "generate_editor_review"
+        assert harness.dispatcher.calls[-1] == (
+            "generate_editor_review",
+            {
+                "work_item_id": str(accepted.context.work_item_id),
+                "retry_number": 1,
+                "supersede_reason": "yeniden inceleme",
+            },
+            "operator-req-81",
+        )
+
+    def test_accept_review_advances_to_qa_review_with_pins(self, harness: Harness) -> None:
+        accepted, draft_id = self.submitted(harness)
+        review_id = self.pass_review(harness, accepted.context.work_item_id)
+
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/accept-review",
+            {"reason": "inceleme temiz; kalite kontrole geç"},
+            headers={"X-Request-ID": "operator-req-82"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "accepted"
+        assert body["work_item_state"] == "qa_review"
+        assert body["editorial_review_id"] == review_id
+        assert body["review_verdict"] == "pass"
+
+        with harness.session() as session:
+            last = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert last is not None
+            assert last.to_state is WorkflowState.QA_REVIEW
+            assert last.actor_origin is WorkflowActorOrigin.OPERATOR
+            assert last.artifact_refs["editorial_review_id"] == review_id
+            assert last.artifact_refs["content_draft_id"] == draft_id
+            assert last.artifact_refs["review_verdict"] == "pass"
+
+    def test_accept_review_without_review_conflicts(self, harness: Harness) -> None:
+        accepted, _ = self.submitted(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/accept-review",
+            {"reason": "inceleme yok"},
+        )
+        assert response.status_code == 409
+        assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.EDITING
+
+    def test_accept_review_with_revise_verdict_conflicts(self, harness: Harness) -> None:
+        from contentos.reviews.enums import (
+            FindingDimension,
+            FindingOrigin,
+            FindingSeverity,
+        )
+        from contentos.reviews.service import ReviewService
+        from contentos.reviews.values import ReviewFindingInput
+
+        accepted, _ = self.submitted(harness)
+        with harness.session() as session:
+            ReviewService(session).create_review(
+                accepted.context.work_item_id,
+                [
+                    ReviewFindingInput(
+                        finding_key="iddia-abartili",
+                        dimension=FindingDimension.CLAIM_FAITHFULNESS,
+                        severity=FindingSeverity.BLOCKING,
+                        origin=FindingOrigin.MODEL_SIGNAL,
+                        description="Metin iddiadan daha kesin konuşuyor.",
+                        block_id="giris-2",
+                    )
+                ],
+            )
+            session.commit()
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/accept-review",
+            {"reason": "geçirmeyi deniyorum"},
+        )
+        assert response.status_code == 409
+        assert "revise" in response.json()["error"]["message"]
+        assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.EDITING
+
+    def test_request_rework_pins_active_review(self, harness: Harness) -> None:
+        accepted, draft_id = self.submitted(harness)
+        review_id = self.pass_review(harness, accepted.context.work_item_id)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/request-rework",
+            {"reason": "insan kararı: yine de yeniden yazılsın"},
+        )
+        assert response.status_code == 200
+        with harness.session() as session:
+            last = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert last is not None
+            assert last.artifact_refs["editorial_review_id"] == review_id
+            assert last.artifact_refs["content_draft_id"] == draft_id
+            assert last.artifact_refs["responsible_state"] == "drafting"

@@ -79,13 +79,14 @@ from contentos.drafts.values import (
 from contentos.evidence_packs.repository import EvidencePackRepository
 from contentos.ideas.models import Idea
 from contentos.research.models import ResearchEvidence
+from contentos.reviews.repository import ReviewRepository
 from contentos.search_intent.models import SearchIntentAnalysis
 from contentos.sources.models import Source
 from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 WRITER_DRAFT_TEMPLATE_NAME = "writer-draft"
-WRITER_DRAFT_TEMPLATE_VERSION = "1"
+WRITER_DRAFT_TEMPLATE_VERSION = "2"
 
 MAX_EVIDENCE_STATEMENT_CHARS = 500
 MAX_OUTPUT_TOKENS = 16_000
@@ -118,6 +119,9 @@ Türkçe bir TASLAĞA dönüştürmek. Kurallar bağlayıcıdır:
    doldurma.
 9. Ton: brief'in hedef kitlesine uygun, doğal, pratik ve yardımsever
    Türkçe. Çeviri kokusu yok, kaynak yapısı taklidi yok.
+10. editorial_findings listesi doluysa bu bir YENİDEN YAZIMDIR: her
+    bulguyu ilgili yerde gider; bulgular talimattır, asla yeni olgu
+    kaynağı değildir.
 Çıktı: yalnızca writer-draft/1 şemasına uyan JSON.
 """
 
@@ -387,6 +391,49 @@ class WriterEngine:
         contradictions = self._packs.list_contradictions(pack.id)
         manifest = build_required_handling_manifest(brief, pack, contradictions, claims)
 
+        # Rework feedback (Editor loop): when this DRAFTING cycle was entered
+        # from CHANGES_REQUESTED and the durable rework entry pins an
+        # editorial review, that review's findings travel to the Writer as
+        # bounded ids + text — a policy signal, never a new fact channel.
+        editorial_findings: list[dict[str, Any]] = []
+        rework_review_id: str | None = None
+        drafting_entry = self._workflow.get_latest_entry_event(work_item.id, WorkflowState.DRAFTING)
+        if drafting_entry is not None and (
+            drafting_entry.from_state is WorkflowState.CHANGES_REQUESTED
+        ):
+            rework_entry = self._workflow.get_latest_entry_event(
+                work_item.id, WorkflowState.CHANGES_REQUESTED
+            )
+            raw_review_id = (
+                (rework_entry.artifact_refs or {}).get("editorial_review_id")
+                if rework_entry is not None
+                else None
+            )
+            if isinstance(raw_review_id, str):
+                try:
+                    parsed_review_id = uuid.UUID(raw_review_id)
+                except ValueError:
+                    parsed_review_id = None
+                if parsed_review_id is not None:
+                    for finding in ReviewRepository(self._session).list_findings(parsed_review_id):
+                        editorial_findings.append(
+                            {
+                                "finding_key": finding.finding_key,
+                                "dimension": finding.dimension.value,
+                                "severity": finding.severity.value,
+                                "block_id": finding.block_id,
+                                "brief_claim_id": (
+                                    str(finding.brief_claim_id)
+                                    if finding.brief_claim_id is not None
+                                    else None
+                                ),
+                                "description": finding.description,
+                                "recommendation": finding.recommendation,
+                            }
+                        )
+                    if editorial_findings:
+                        rework_review_id = raw_review_id
+
         # Flat evidence units (the composition-engine pattern): claims carry
         # evidence IDS only; the bounded unit list lives at the projection
         # root so nesting stays within the boundary's depth limits.
@@ -488,6 +535,7 @@ class WriterEngine:
                 "locale": work_item.locale,
                 "market": work_item.market,
             },
+            "editorial_findings": editorial_findings,
         }
         input_refs = {
             "schema": WRITER_DRAFT_INPUT_REFS_SCHEMA,
@@ -503,6 +551,8 @@ class WriterEngine:
             "validation_policy": f"{validation_policy.name}/{validation_policy.version}",
             "originality_policy": f"{originality_policy.name}/{originality_policy.version}",
         }
+        if rework_review_id is not None:
+            input_refs["rework_review_id"] = rework_review_id
         return _WriterContext(
             brief=brief,
             work_item_id=brief.work_item_id,

@@ -538,7 +538,7 @@ class TestRegistration:
         for name in RESEARCH_TASK_NAMES + EDITORIAL_TASK_NAMES:
             assert name in app.tasks
         assert len(RESEARCH_TASK_NAMES) == 5
-        assert len(EDITORIAL_TASK_NAMES) == 7
+        assert len(EDITORIAL_TASK_NAMES) == 8
 
 
 class TestPromotionAndScoring:
@@ -1019,8 +1019,12 @@ class TestWriterDraftTask:
             assert transition.artifact_refs["content_draft_id"] == draft_id
             assert transition.artifact_refs["content_brief_id"] == str(accepted.context.brief_id)
             assert transition.artifact_refs["draft_version"] == 1
-        # Editor does not exist: nothing is dispatched downstream.
-        assert dispatcher.calls == []
+        # The Editor review is dispatched AFTER the transition commit.
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+
+        [(next_name, next_payload, _)] = dispatcher.calls
+        assert next_name == GENERATE_EDITOR_REVIEW_TASK
+        assert next_payload == {"work_item_id": str(accepted.context.work_item_id)}
 
     def test_redelivery_reuses_draft_and_transition(self, harness: Harness) -> None:
         from test_writer_generation import writer_payload
@@ -1115,6 +1119,119 @@ class TestWriterDraftTask:
         harness.provider = FakeStructuredProvider(payload={})
         outcome = app.tasks[GENERATE_WRITER_DRAFT_TASK].apply(
             kwargs={"content_brief_id": str(context.brief_id)}
+        )
+        assert outcome.state == "FAILURE"
+        assert harness.provider.invocations == 0
+
+
+class TestEditorReviewTask:
+    """contentos.editorial.generate_editor_review (Phase 4 Task 13)."""
+
+    def in_editing(self, harness: Harness) -> Any:
+        from test_writer_generation import writer_payload
+
+        from contentos.worker.editorial_tasks import GENERATE_WRITER_DRAFT_TASK
+
+        dispatcher = RecordingDispatcher()
+        app = harness.app(dispatcher)
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)
+        harness.provider = FakeStructuredProvider(payload=writer_payload(accepted))
+        result = (
+            app.tasks[GENERATE_WRITER_DRAFT_TASK]
+            .apply(kwargs={"content_brief_id": str(accepted.context.brief_id)})
+            .get()
+        )
+        assert result["status"] == "completed"
+        return app, dispatcher, accepted, result["content_draft_id"]
+
+    def editor_payload(self) -> dict[str, Any]:
+        return {
+            "findings": [
+                {
+                    "finding_key": "ton-notu",
+                    "dimension": "clarity_style",
+                    "severity": "minor",
+                    "description": "Giriş tonu hedef kitle için sadeleştirilebilir.",
+                    "recommendation": None,
+                    "block_id": "giris-1",
+                    "claim_ref": None,
+                }
+            ]
+        }
+
+    def test_review_completes_without_workflow_transition(self, harness: Harness) -> None:
+        from contentos.reviews.models import EditorialReview
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+
+        app, dispatcher, accepted, draft_id = self.in_editing(harness)
+        harness.provider = FakeStructuredProvider(payload=self.editor_payload())
+        calls_before = len(dispatcher.calls)
+
+        result = (
+            app.tasks[GENERATE_EDITOR_REVIEW_TASK]
+            .apply(kwargs={"work_item_id": str(accepted.context.work_item_id)})
+            .get()
+        )
+        assert result["status"] == "completed"
+        assert result["review_verdict"] == "pass"
+
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            # Humans advance out of EDITING: the task never transitions.
+            assert item is not None and item.current_state is WorkflowState.EDITING
+            review = session.execute(select(EditorialReview)).scalar_one()
+            assert str(review.content_draft_id) == draft_id
+            assert str(review.id) == result["editorial_review_id"]
+        # QA does not exist: nothing is dispatched downstream.
+        assert len(dispatcher.calls) == calls_before
+
+    def test_redelivery_reuses_active_review_with_zero_invocations(self, harness: Harness) -> None:
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+
+        app, _, accepted, _ = self.in_editing(harness)
+        harness.provider = FakeStructuredProvider(payload=self.editor_payload())
+        kwargs = {"work_item_id": str(accepted.context.work_item_id)}
+        first = app.tasks[GENERATE_EDITOR_REVIEW_TASK].apply(kwargs=kwargs).get()
+        invocations_after_first = harness.provider.invocations
+
+        redelivered = app.tasks[GENERATE_EDITOR_REVIEW_TASK].apply(kwargs=kwargs).get()
+        assert redelivered["status"] == "reused"
+        assert redelivered["editorial_review_id"] == first["editorial_review_id"]
+        assert harness.provider.invocations == invocations_after_first
+
+    def test_validation_failure_keeps_editing_with_zero_rows(self, harness: Harness) -> None:
+        from contentos.reviews.models import EditorialReview
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+
+        app, _, accepted, _ = self.in_editing(harness)
+        bad = self.editor_payload()
+        bad["findings"][0]["block_id"] = "hayalet-blok"
+        harness.provider = FakeStructuredProvider(payload=bad)
+
+        result = (
+            app.tasks[GENERATE_EDITOR_REVIEW_TASK]
+            .apply(kwargs={"work_item_id": str(accepted.context.work_item_id)})
+            .get()
+        )
+        assert result["status"] == "ai_failed"
+        assert result["attempt_status"] == "validation_failed"
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(accepted.context.work_item_id)
+            assert item is not None and item.current_state is WorkflowState.EDITING
+            assert session.execute(select(EditorialReview)).scalar_one_or_none() is None
+
+    def test_not_in_editing_is_terminal_with_zero_invocations(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+
+        app = harness.app(RecordingDispatcher())
+        accepted = accepted_context(harness)  # work item stays DRAFTING
+        harness.provider = FakeStructuredProvider(payload=self.editor_payload())
+        outcome = app.tasks[GENERATE_EDITOR_REVIEW_TASK].apply(
+            kwargs={"work_item_id": str(accepted.context.work_item_id)}
         )
         assert outcome.state == "FAILURE"
         assert harness.provider.invocations == 0

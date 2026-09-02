@@ -13,7 +13,12 @@ import contentos.reviews.models  # noqa: F401
 from contentos.ai.dto import GenerationRequest, ProviderOutputSchema, ProviderResult
 from contentos.ai.enums import GenerationPurpose, GenerationStatus, ProviderFailureKind
 from contentos.ai.fake import FakeStructuredProvider
-from contentos.reviews.enums import FindingOrigin, ReviewVerdict
+from contentos.reviews.enums import (
+    FindingDimension,
+    FindingOrigin,
+    FindingSeverity,
+    ReviewVerdict,
+)
 from contentos.reviews.errors import (
     IncompleteReviewMaterializationError,
     ReviewPreconditionError,
@@ -212,6 +217,74 @@ class TestEditorGeneration:
                     accepted.context.work_item_id, provider=provider
                 )
             assert provider.invocations == 0
+
+    def test_rework_regeneration_receives_review_findings(self, harness: Harness) -> None:
+        """The Editor loop closes: a revise review pinned in the rework
+        entry travels to the Writer projection as bounded findings."""
+        from test_writer_generation import writer_payload
+
+        from contentos.drafts.generation import WriterEngine
+        from contentos.reviews.service import ReviewService
+        from contentos.reviews.values import ReviewFindingInput
+        from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
+        from contentos.workflow.service import WorkflowService
+
+        accepted, _, claim_id = editing_context(harness)
+        with harness.session() as session:
+            creation = ReviewService(session).create_review(
+                accepted.context.work_item_id,
+                [
+                    ReviewFindingInput(
+                        finding_key="iddia-cercevesi",
+                        dimension=FindingDimension.CLAIM_FAITHFULNESS,
+                        severity=FindingSeverity.BLOCKING,
+                        origin=FindingOrigin.MODEL_SIGNAL,
+                        description="Metin iddiadan daha kesin konuşuyor.",
+                        recommendation="Kaynak çerçevesine dön.",
+                        block_id="giris-2",
+                        brief_claim_id=claim_id,
+                    )
+                ],
+            )
+            session.commit()
+            service = WorkflowService(session)
+            service.transition(
+                accepted.context.work_item_id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="inceleme revize istedi",
+                artifact_refs={"editorial_review_id": str(creation.review.id)},
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            service.transition(
+                accepted.context.work_item_id,
+                WorkflowState.DRAFTING,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="yazara yönlendirildi",
+            )
+            session.commit()
+
+            from test_writer_generation import (
+                CapturingFake as WriterCapturingFake,
+            )
+
+            provider = WriterCapturingFake(payload=writer_payload(accepted))
+            result = WriterEngine(session).generate_draft(
+                accepted.context.brief_id,
+                provider=provider,
+                retry_number=1,
+                supersede_reason="editör bulgularıyla yeniden üretim",
+            )
+            session.commit()
+            assert result.draft is not None and result.draft.version == 2
+            request = provider.last_request
+            assert request is not None
+            findings = request.input_projection["editorial_findings"]
+            assert len(findings) == 1
+            assert findings[0]["finding_key"] == "iddia-cercevesi"
+            assert findings[0]["block_id"] == "giris-2"
+            assert findings[0]["brief_claim_id"] == str(claim_id)
+            assert request.input_refs["rework_review_id"] == str(creation.review.id)
 
     def test_incomplete_materialization_recovers_with_next_retry(
         self, harness: Harness, monkeypatch: pytest.MonkeyPatch

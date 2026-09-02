@@ -216,6 +216,26 @@ class FakeEditorialControlDispatcher:
             )
         )
 
+    def enqueue_generate_editor_review(
+        self,
+        work_item_id: str,
+        *,
+        retry_number: int,
+        supersede_reason: str | None,
+        request_id: str | None = None,
+    ) -> None:
+        self.calls.append(
+            (
+                "generate_editor_review",
+                {
+                    "work_item_id": work_item_id,
+                    "retry_number": retry_number,
+                    "supersede_reason": supersede_reason,
+                },
+                request_id,
+            )
+        )
+
 
 class FailingEditorialDispatcher(FakeEditorialControlDispatcher):
     def __getattribute__(self, name: str) -> Any:

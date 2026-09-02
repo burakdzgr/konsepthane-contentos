@@ -55,6 +55,9 @@ from contentos.opportunities.errors import OpportunityNotFoundError
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.opportunities.scoring_service import OpportunityScoringService
 from contentos.opportunities.service import ResearchPromotionService
+from contentos.reviews.errors import ReviewGenerationMaterializationError
+from contentos.reviews.generation import EditorEngine
+from contentos.reviews.repository import ReviewRepository
 from contentos.search_intent.service import SearchIntentService
 from contentos.worker.research_tasks import (
     MAX_RETRIES,
@@ -77,6 +80,7 @@ BUILD_EVIDENCE_PACK_TASK = "contentos.editorial.build_evidence_pack"
 ANALYZE_SEARCH_INTENT_TASK = "contentos.editorial.analyze_search_intent"
 COMPOSE_CONTENT_BRIEF_TASK = "contentos.editorial.compose_content_brief"
 GENERATE_WRITER_DRAFT_TASK = "contentos.editorial.generate_writer_draft"
+GENERATE_EDITOR_REVIEW_TASK = "contentos.editorial.generate_editor_review"
 
 EDITORIAL_TASK_NAMES = (
     PROMOTE_RESEARCH_TASK,
@@ -86,6 +90,7 @@ EDITORIAL_TASK_NAMES = (
     ANALYZE_SEARCH_INTENT_TASK,
     COMPOSE_CONTENT_BRIEF_TASK,
     GENERATE_WRITER_DRAFT_TASK,
+    GENERATE_EDITOR_REVIEW_TASK,
 )
 
 MAX_BLOCK_REASON_ITEMS = 5
@@ -560,12 +565,21 @@ def register_editorial_pipeline_tasks(
                         "content_draft_id",
                         str(latest.id),
                     )
+                    # Re-dispatch on redelivery: the original dispatch may
+                    # have been lost in the commit/broker gap; the Editor
+                    # task's own guard absorbs the duplicate.
+                    next_task = dispatch_next(
+                        self,
+                        GENERATE_EDITOR_REVIEW_TASK,
+                        {"work_item_id": str(work_item.id)},
+                    )
                     return _summary(
                         self,
                         "reused",
                         content_brief_id=content_brief_id,
                         content_draft_id=str(latest.id),
                         draft_version=latest.version,
+                        next_task=next_task,
                     )
 
             # TRANSACTION A: durable draft (or durable failed attempt).
@@ -597,7 +611,7 @@ def register_editorial_pipeline_tasks(
             # TRANSACTION B: the WORKFLOW.md artifact gate — a durable valid
             # draft exists, so DRAFTING -> EDITING via WorkflowService with
             # the exact draft identity pinned. Queue completion itself never
-            # advances state; NO downstream dispatch (Editor does not exist).
+            # advances state; the Editor review is dispatched AFTER commit.
             work_item = workflow_repo.get_by_id_for_update(draft.work_item_id)
             assert work_item is not None
             if work_item.current_state is WorkflowState.DRAFTING:
@@ -623,12 +637,87 @@ def register_editorial_pipeline_tasks(
                     "content_draft_id",
                     str(draft.id),
                 )
+            next_task = dispatch_next(
+                self,
+                GENERATE_EDITOR_REVIEW_TASK,
+                {"work_item_id": str(draft.work_item_id)},
+            )
             return _summary(
                 self,
                 "completed" if result.draft_created else "reused",
                 content_brief_id=content_brief_id,
                 content_draft_id=str(draft.id),
                 draft_version=draft.version,
+                attempt_id=str(result.attempt.id),
+                next_task=next_task,
+            )
+
+    # --- generate_editor_review ---------------------------------------------
+
+    def generate_editor_review(
+        self: Any,
+        work_item_id: str,
+        retry_number: int = 0,
+        supersede_reason: str | None = None,
+    ) -> dict[str, Any]:
+        parsed_item = _parse_uuid(work_item_id)
+        with task_session() as session:
+            reviews = ReviewRepository(session)
+            drafts = DraftRepository(session)
+
+            # Redelivery/idempotency: for a plain delivery (no explicit
+            # regeneration), an ACTIVE review already covering the ACTIVE
+            # draft means the work is done — zero provider spend.
+            if retry_number == 0 and supersede_reason is None:
+                active_draft = drafts.get_active_draft(parsed_item)
+                active_review = reviews.get_active_review(parsed_item)
+                if (
+                    active_draft is not None
+                    and active_review is not None
+                    and active_review.content_draft_id == active_draft.id
+                ):
+                    return _summary(
+                        self,
+                        "reused",
+                        work_item_id=work_item_id,
+                        editorial_review_id=str(active_review.id),
+                        review_verdict=active_review.verdict.value,
+                    )
+
+            # TRANSACTION A: durable review (or durable failed attempt).
+            try:
+                result = EditorEngine(session).generate_review(
+                    parsed_item,
+                    provider=runtime.create_generation_provider(),
+                    retry_number=retry_number + int(self.request.retries),
+                    supersede_reason=supersede_reason,
+                    request_id=_current_request_id(self),
+                )
+            except ReviewGenerationMaterializationError:
+                # The SUCCEEDED attempt is real audit history: keep it
+                # durable, then fail terminally (never relabeled).
+                session.commit()
+                raise
+            if handle_ai_outcome(self, session, result.status):
+                return _summary(
+                    self,
+                    "ai_failed",
+                    work_item_id=work_item_id,
+                    attempt_id=str(result.attempt.id),
+                    attempt_status=result.status.value,
+                )
+            session.commit()
+            review = result.review
+            assert review is not None
+            # NO workflow transition and NO downstream dispatch: humans
+            # advance out of EDITING (accept-review / request-rework), and
+            # the QA stage does not exist yet.
+            return _summary(
+                self,
+                "completed" if result.review_created else "reused",
+                work_item_id=work_item_id,
+                editorial_review_id=str(review.id),
+                review_verdict=review.verdict.value,
                 attempt_id=str(result.attempt.id),
             )
 
@@ -646,6 +735,7 @@ def register_editorial_pipeline_tasks(
     app.task(name=ANALYZE_SEARCH_INTENT_TASK, **common_options)(analyze_search_intent)
     app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(compose_content_brief)
     app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(generate_writer_draft)
+    app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(generate_editor_review)
 
 
 def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:

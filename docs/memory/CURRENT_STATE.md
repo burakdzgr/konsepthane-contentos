@@ -18,7 +18,8 @@ COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
 CLOSED; Task 9 Editor Architecture (design only) COMPLETE;
 Task 10 Editor Review Persistence + Provenance Foundation COMPLETE;
 Task 11 Editor Writer-Envelope Drift Guard COMPLETE;
-Task 12 Editor Projection + Output Schema + Engine COMPLETE)
+Task 12 Editor Projection + Output Schema + Engine COMPLETE;
+Task 13 Editor Orchestration + Commands COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2450,32 +2451,68 @@ access protection belongs to future deployment infrastructure.
   incomplete-materialization recovery); suite 1177 backend + 156 admin,
   gate green; no migration (head stays `0019`), no Celery/API/admin
 
+- PHASE 4 Task 13 (editor orchestration + commands) complete:
+  `contentos.editorial.generate_editor_review` Celery task (8th
+  editorial task; kwargs {work_item_id, retry_number, supersede_reason};
+  fast redelivery guard — for a plain delivery an ACTIVE review already
+  covering the ACTIVE draft is `reused` with ZERO provider spend; TX A
+  engine + commit with handle_ai_outcome retry separation and
+  ReviewGenerationMaterializationError committing the SUCCEEDED attempt
+  before failing terminally; NO workflow transition on success — humans
+  advance — and NO downstream dispatch (QA does not exist));
+  `generate_writer_draft` now dispatches the Editor task AFTER the
+  EDITING commit on both the success and redelivery branches (the
+  inherited DISPATCH-retry contract; the Editor guard absorbs
+  duplicates); the operator `submit-draft` route dispatches post-commit
+  best-effort (a dispatch failure after commit is logged and non-fatal
+  — never a 503 after truthful state advance; the explicit command
+  covers the gap); new commands:
+  `work-items/{id}/generate-editor-review` (queued, producer dispatcher
+  + label) and `work-items/{id}/accept-review` (direct HUMAN advance:
+  EDITING + ACTIVE `pass` review pinning the ACTIVE draft => OPERATOR
+  WorkflowService transition to QA_REVIEW with {editorial_review_id,
+  content_draft_id, review_verdict, content_hash} pinned; revise or
+  missing review conflicts truthfully); `request-rework` now pins the
+  ACTIVE review id; the Editor rework loop CLOSES: WriterEngine
+  regeneration after a review-driven rework projects the pinned
+  review's findings as bounded `editorial_findings` (ids + bounded
+  text, never a fact channel) with `rework_review_id` in input_refs and
+  the writer template bumped to `writer-draft/2` with the binding
+  rework rule
+- Task 13 verified: 12 new/updated unit tests (worker task quartet:
+  completed-without-transition, redelivery reuse with zero invocations,
+  validation failure stays EDITING, not-in-EDITING terminal with zero
+  invocations; control API: post-commit dispatch with correlation id,
+  non-fatal dispatch failure, queued generate-editor-review,
+  accept-review happy/no-review/revise conflicts, rework review pin;
+  writer rework findings projection); REAL PostgreSQL 16 + REAL Redis
+  verification passed (writer success dispatches the editor task after
+  the EDITING commit; editor failure truthfulness stays EDITING with
+  zero rows; broker message inspection incl. request_id header and no
+  URL leak -> durable PASS review with the drift guard recomputed and
+  NO transition; redelivery reused with zero provider calls;
+  accept-review artifact gate OPERATOR EDITING -> QA_REVIEW with the
+  review pinned); suite 1189 backend + 156 admin, gate green; no
+  migration (head stays `0019`)
+
 ## Next immediate task
 
-PHASE 4 TASK 13 (authorized under the autonomous continuation mandate)
-— EDITOR ORCHESTRATION + COMMANDS, per accepted
-PHASE4_EDITOR_ARCHITECTURE.md §8/§12: Celery task
-`contentos.editorial.generate_editor_review` (8th editorial task;
-kwargs {work_item_id, retry_number=0, supersede_reason=None}; TX A
-engine + commit; NO workflow transition on success — humans advance;
-redelivery guard: an ACTIVE review already covering the ACTIVE draft =>
-reused with no provider call; handle_ai_outcome retry separation with
-failed attempts committed first; materialization failure commits the
-SUCCEEDED attempt then fails terminally); post-commit dispatch of the
-Editor task from BOTH draft success paths (generate_writer_draft TX B
-and the operator submit-draft command — dispatch failure after commit
-is logged and non-fatal); operator commands:
-`work-items/{id}/generate-editor-review` (queued via the producer-only
-dispatcher; label added) and `work-items/{id}/accept-review` (direct:
-EDITING + ACTIVE review pinning the ACTIVE draft + verdict pass =>
-OPERATOR WorkflowService transition to QA_REVIEW with
-{editorial_review_id, content_draft_id, review_verdict, content_hash}
-pinned; required reason); `request-rework` extended to pin the ACTIVE
-review id when one exists; writer rework findings input (bounded ids +
-text from the review pinned in the CHANGES_REQUESTED entry) may land
-here or be split; real-PG + real-Redis verification (dispatch on draft
-success, failure truthfulness, redelivery reuse, accept-review artifact
-gate). No migration.
+PHASE 4 TASK 14 (authorized under the autonomous continuation mandate)
+— EDITOR READ MODELS + ADMIN, per accepted PHASE4_EDITOR_ARCHITECTURE.md
+§9/§12: `/internal/editorial` GET projections —
+`work-items/{id}/reviews` (all review versions: verdict, engine, draft
+pinned, finding counts by severity, integrity outcomes) and
+`reviews/{id}` (full detail: findings with anchors resolved to
+section/block and claim key/kind, integrity gate result incl. the
+writer-envelope recomputation, policy snapshots, status events, safe
+writer/editor attempt metadata with failures visible); admin: Reviews
+section on the editorial detail page (state-gated
+generate-editor-review / accept-review / request-rework forms with
+required reasons; truthful verdict badges) + read-only review detail
+page; the admin GENERATION_PURPOSES vocabulary gains `editor_review`;
+leak tests on both sides (no raw provider data, broker URLs, internal
+URLs). No migration, no new workflow semantics. After Task 14: Task 15
+Editor-stage audit (docs-only), then the QA architecture.
 
 Before implementing the affected integrations, resolve:
 
