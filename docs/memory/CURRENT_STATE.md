@@ -3338,21 +3338,48 @@ the inputs listed below.
   provider invocations and zero assets) — suite 1299 backend + 232
   admin, gate green; no migration (head stays `0026`)
 
-## Next production-readiness task
+- PRODUCTION-READINESS: secrets-management documentation complete
+  (final backlog item): `docs/OPERATIONS_SECRETS.md` — the full secret
+  inventory (DB/Redis URLs, OpenAI key, the default-None publishing
+  key, password hashes, session token hashes, the admin internal URL)
+  with how each is held (SecretStr / argon2id / sha256 / HttpOnly
+  cookie) and the leak tests that hold the posture, the compose-env
+  supply model and why it is acceptable ONLY single-tenant, rotation
+  procedures for every item, and the four documented acceptances that
+  BLOCK wider exposure (real secret store, TLS termination, login
+  rate-limiting, publishing key ownership). **The production-readiness
+  backlog carried from the phase audits is now COMPLETE** (real-infra
+  CI lane, session hygiene, capped listings, spend controls, secrets
+  docs; the remaining items — production media object store, real
+  time-based scheduler, dimension extraction, upload streaming — are
+  deliberate deferrals recorded in the audits, several dependent on
+  the open integration inputs).
 
-SECRETS-MANAGEMENT DOCUMENTATION (final backlog item) — a docs-only
-operations note (docs/OPERATIONS_SECRETS.md or similar) recording:
-which secrets exist (database url, redis urls, OpenAI key + models,
-publishing api key when it arrives, admin session cookie sececurity
-posture), how they are supplied today (compose env vars; SecretStr in
-settings; never logged/rendered — point at the leak tests), rotation
-procedure (CLI password rotation; provider key rotation = env change
-+ restart), and what production requires before exposure (a real
-secret store, TLS termination, login rate-limiting — the documented
-acceptances). After that the production-readiness backlog from the
-phase audits is COMPLETE; feature phases (Distribution/Analytics/
-Refresh + the publishing live integration) remain blocked on the
-operator inputs listed below and resume the moment they arrive.
+## Current standing state (all phases 1–7 CLOSED)
+
+The full loop research → … → APPROVED → SCHEDULED → PUBLISHING →
+PUBLISHED runs end to end on real infrastructure (the CI
+real-infrastructure lane proves it on every push). ALL remaining
+feature work is blocked on operator inputs:
+
+- Publishing LIVE integration: the Publishing API contract, service
+  authentication method, production owner sign-off.
+- Distribution (Pinterest): account/API access + distribution policy.
+- Analytics: data sources + content-identity mapping.
+- Refresh: follows analytics.
+
+## Next immediate task
+
+HOLD FOR OPERATOR INPUTS. Every dependency-correct implementable task
+is done: phases 1–7 closed with green audits, the production-readiness
+backlog burned down, CI green incl. the real-infrastructure lane. The
+next tasks in dependency order all require the operator inputs above.
+When any input arrives: Publishing live integration first (replace the
+skeleton contract, wire the real transport settings, run the
+end-to-end against a staging endpoint), then Distribution per a fresh
+PHASE8_DISTRIBUTION_ARCHITECTURE.md. Routine autonomous work that
+remains legitimate meanwhile: keeping CI green, dependency/lock
+updates when needed, and docs truthfulness.
 
 Before implementing the affected integrations, resolve:
 
