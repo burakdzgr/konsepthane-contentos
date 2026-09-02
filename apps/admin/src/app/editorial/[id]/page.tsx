@@ -6,10 +6,12 @@ import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemReviews,
   type AiAttemptView,
   type BriefView,
   type ContradictionView,
   type DraftListPage,
+  type ReviewListPage,
   type EligibleEvidenceItem,
   type IdeaView,
   type IntentAnalysisView,
@@ -25,6 +27,7 @@ import {
   generationStatusTone,
   originalityTone,
   packSufficiencyTone,
+  reviewVerdictTone,
   scoreEligibilityTone,
   verdictLabel,
   verdictTone,
@@ -35,6 +38,7 @@ import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
 import {
   acceptBriefAction,
+  acceptReviewAction,
   analyzeSearchIntentAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
@@ -42,6 +46,7 @@ import {
   deselectIdeaAction,
   evaluateOpportunityAction,
   generateDraftAction,
+  generateEditorReviewAction,
   generateIdeasAction,
   reassemblePackAction,
   rejectBlockedAction,
@@ -87,6 +92,10 @@ const DETAIL_NOTICES: Record<string, string> = {
     "Rework recorded: changes requested with the writer stage responsible.",
   "changes-request-resolved":
     "Routed out of changes-requested to the recorded responsible state.",
+  "review-queued":
+    "Editor review queued. The verdict appears when the worker finishes.",
+  "review-accepted":
+    "Review accepted; the item moved to QA review. This does not publish content.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1361,6 +1370,144 @@ function DraftsSection({
   );
 }
 
+function ReviewsSection({
+  detail,
+  reviews,
+}: {
+  detail: WorkItemDetail;
+  reviews: ReviewListPage | null;
+}) {
+  const workItemId = detail.work_item.id;
+  const state = detail.work_item.current_state;
+  const rows = reviews?.reviews ?? [];
+  const activeReview = rows.find((row) => row.status === "active");
+  return (
+    <section aria-labelledby="detail-reviews">
+      <h2 id="detail-reviews">Editor reviews</h2>
+      <p className="muted">
+        Findings are policy signals, never evidence. The verdict is computed
+        deterministically; a human advances the workflow.
+      </p>
+      {reviews === null && (
+        <p className="muted" role="note">
+          Review versions could not be loaded right now.
+        </p>
+      )}
+      {reviews !== null && rows.length === 0 && (
+        <p className="empty-note">No editor review versions exist yet.</p>
+      )}
+      {rows.length > 0 && (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Version</th>
+                <th scope="col">Verdict</th>
+                <th scope="col">Status</th>
+                <th scope="col">Findings (blocking / major / minor)</th>
+                <th scope="col">Envelope recheck</th>
+                <th scope="col">Created</th>
+                <th scope="col">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>v{row.version}</td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={reviewVerdictTone(row.verdict)}
+                    >
+                      {row.verdict}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={draftStatusTone(row.status)}
+                    >
+                      {row.status}
+                    </span>
+                  </td>
+                  <td>
+                    {row.finding_counts.blocking ?? 0} /{" "}
+                    {row.finding_counts.major ?? 0} /{" "}
+                    {row.finding_counts.minor ?? 0}
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={
+                        row.writer_envelope_recomputed === null
+                          ? "neutral"
+                          : "ok"
+                      }
+                    >
+                      {row.writer_envelope_recomputed === null
+                        ? "UNKNOWN"
+                        : row.writer_envelope_recomputed
+                          ? "recomputed"
+                          : "not recomputed"}
+                    </span>
+                  </td>
+                  <td>{formatUtcTimestamp(row.created_at)}</td>
+                  <td>
+                    <Link href={`/editorial/${workItemId}/reviews/${row.id}`}>
+                      Open review
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {state === "editing" && (
+        <form action={generateEditorReviewAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <input
+            type="number"
+            name="retry_number"
+            min={0}
+            max={50}
+            defaultValue={0}
+            aria-label="Review retry number"
+          />
+          {activeReview !== undefined && (
+            <input
+              type="text"
+              name="supersede_reason"
+              maxLength={1000}
+              placeholder="supersede reason (active review exists)"
+              aria-label="Review supersede reason"
+            />
+          )}
+          <button type="submit">Generate editor review</button>
+          <span className="muted">
+            Queues the model-assisted review; the verdict is computed by the
+            deterministic policy, never by the model.
+          </span>
+        </form>
+      )}
+      {state === "editing" && activeReview !== undefined && (
+        <ReasonForm
+          action={acceptReviewAction}
+          workItemId={workItemId}
+          hidden={{}}
+          label="Accept review"
+          placeholder="why this draft may proceed to QA"
+          helper={
+            activeReview.verdict === "pass"
+              ? "Advances to QA review with the pass review pinned. Not a publication decision."
+              : "The active review verdict is 'revise'; the backend will refuse until a pass review covers the active draft."
+          }
+        />
+      )}
+    </section>
+  );
+}
+
 function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
   return (
     <section aria-labelledby="detail-attempts">
@@ -1507,6 +1654,8 @@ export default async function EditorialDetailPage({
   const detail = result.data;
   const draftsResult = await fetchWorkItemDrafts(detail.work_item.id);
   const drafts = draftsResult.kind === "ok" ? draftsResult.data : null;
+  const reviewsResult = await fetchWorkItemReviews(detail.work_item.id);
+  const reviews = reviewsResult.kind === "ok" ? reviewsResult.data : null;
   // The pack builder needs the eligible evidence only while packs are built.
   let eligibleEvidence: EligibleEvidenceItem[] = [];
   if (
@@ -1544,6 +1693,7 @@ export default async function EditorialDetailPage({
       <SearchIntentSection detail={detail} />
       <BriefsSection detail={detail} />
       <DraftsSection detail={detail} drafts={drafts} />
+      <ReviewsSection detail={detail} reviews={reviews} />
       <AiAttemptsSection attempts={detail.ai_attempts} />
       <WorkflowHistorySection detail={detail} />
     </section>

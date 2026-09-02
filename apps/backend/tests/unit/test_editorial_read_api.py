@@ -441,3 +441,119 @@ class TestDraftReads:
             harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/drafts").status_code == 404
         )
         assert harness.get(f"/internal/editorial/drafts/{uuid.uuid4()}").status_code == 404
+
+
+class TestReviewReads:
+    """Phase 4 Task 14: review versions, findings, integrity, attempts."""
+
+    def reviewed(self, harness: Harness) -> tuple[object, str, str]:
+        """EDITING work item with one engine-generated review (one finding)."""
+        from test_reviews import editing_context
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.reviews.generation import EditorEngine
+
+        accepted, draft_id, claim_id = editing_context(harness)
+        with harness.session() as session:
+            result = EditorEngine(session).generate_review(
+                accepted.context.work_item_id,
+                provider=FakeStructuredProvider(
+                    payload={
+                        "findings": [
+                            {
+                                "finding_key": "iddia-cercevesi",
+                                "dimension": "claim_faithfulness",
+                                "severity": "major",
+                                "description": "Metin iddiadan daha kesin konuşuyor.",
+                                "recommendation": "Kaynak çerçevesine dön.",
+                                "block_id": "giris-2",
+                                "claim_ref": str(claim_id),
+                            }
+                        ]
+                    }
+                ),
+            )
+            session.commit()
+            assert result.review is not None
+            return accepted, str(result.review.id), str(draft_id)
+
+    def test_review_list_and_detail(self, harness: Harness) -> None:
+        accepted, review_id, draft_id = self.reviewed(harness)
+
+        listing = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/reviews"  # type: ignore[attr-defined]
+        )
+        assert listing.status_code == 200
+        page = listing.json()
+        assert page["total"] == 1
+        [row] = page["reviews"]
+        assert row["id"] == review_id
+        assert row["verdict"] == "revise"  # a major finding computes revise
+        assert row["status"] == "active"
+        assert row["content_draft_id"] == draft_id
+        assert row["finding_counts"] == {"blocking": 0, "major": 1, "minor": 0}
+        assert row["writer_envelope_recomputed"] is True
+        assert_no_leak(page)
+
+        detail_response = harness.get(f"/internal/editorial/reviews/{review_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["review"]["id"] == review_id
+        envelope = detail["integrity_gate_result"]["writer_envelope"]
+        assert envelope == {
+            "structure_contract": "ok",
+            "claim_ref_integrity": "ok",
+            "handling_coverage": "ok",
+        }
+        assert detail["verdict_policy_snapshot"]["version"] == "editor-verdict/1"
+        assert detail["review_scope"]["content_draft_id"] == draft_id
+
+        [finding] = detail["findings"]
+        assert finding["finding_key"] == "iddia-cercevesi"
+        assert finding["origin"] == "model_signal"
+        assert finding["block_id"] == "giris-2"
+        # The claim anchor resolves to its brief claim identity.
+        assert finding["claim_key"] == "konsept-detaylari"
+        assert finding["claim_kind"] == "factual"
+
+        attempts = detail["generation_attempts"]
+        assert len(attempts) == 1
+        assert attempts[0]["purpose"] == "editor_review"
+        assert attempts[0]["status"] == "succeeded"
+        assert_no_leak(detail)
+
+    def test_superseded_reviews_stay_visible_with_audit(self, harness: Harness) -> None:
+        from contentos.reviews.service import ReviewService
+
+        accepted, review_id, _ = self.reviewed(harness)
+        with harness.session() as session:
+            second = ReviewService(session).create_review(
+                accepted.context.work_item_id,  # type: ignore[attr-defined]
+                [],
+                supersede_reason="bulgular giderildi sayıldı (test)",
+            )
+            session.commit()
+            second_id = str(second.review.id)
+
+        page = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/reviews"  # type: ignore[attr-defined]
+        ).json()
+        assert page["total"] == 2
+        assert [row["version"] for row in page["reviews"]] == [2, 1]
+        by_id = {row["id"]: row for row in page["reviews"]}
+        assert by_id[review_id]["status"] == "superseded"
+        assert by_id[review_id]["superseded_by_review_id"] == second_id
+        assert by_id[second_id]["verdict"] == "pass"
+
+        detail = harness.get(f"/internal/editorial/reviews/{review_id}").json()
+        [event] = detail["status_events"]
+        assert event["from_status"] == "active"
+        assert event["to_status"] == "superseded"
+        assert event["replacement_review_id"] == second_id
+        assert event["reason"] == "bulgular giderildi sayıldı (test)"
+
+    def test_unknown_review_ids_404(self, harness: Harness) -> None:
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/reviews").status_code == 404
+        )
+        assert harness.get(f"/internal/editorial/reviews/{uuid.uuid4()}").status_code == 404

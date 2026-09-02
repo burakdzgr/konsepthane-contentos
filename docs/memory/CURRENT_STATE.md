@@ -19,7 +19,8 @@ CLOSED; Task 9 Editor Architecture (design only) COMPLETE;
 Task 10 Editor Review Persistence + Provenance Foundation COMPLETE;
 Task 11 Editor Writer-Envelope Drift Guard COMPLETE;
 Task 12 Editor Projection + Output Schema + Engine COMPLETE;
-Task 13 Editor Orchestration + Commands COMPLETE)
+Task 13 Editor Orchestration + Commands COMPLETE;
+Task 14 Editor Read Models + Admin COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2495,24 +2496,51 @@ access protection belongs to future deployment infrastructure.
   review pinned); suite 1189 backend + 156 admin, gate green; no
   migration (head stays `0019`)
 
+- PHASE 4 Task 14 (editor read models + admin) complete: backend
+  `api/read_models/reviews.py` — `work-items/{id}/reviews` (all review
+  versions newest first: computed verdict, status, engine identity,
+  finding counts by severity, truthful writer_envelope_recomputed with
+  null rendered as UNKNOWN, draft/brief pins) and `reviews/{id}` (full
+  detail: findings with block anchors AND claim anchors resolved to
+  claim_key/kind, the deterministic integrity record incl. the
+  per-check writer-envelope outcomes, verdict policy snapshot, review
+  scope, supersession audit, safe editor attempt metadata with failures
+  visible — queried by purpose EDITOR_REVIEW + pinned work_item_id);
+  admin: Editor reviews section on the editorial detail page (versions
+  table with verdict/status/envelope badges and finding counts,
+  state-gated generate-editor-review + accept-review forms with
+  required reasons and an HONEST helper when the active verdict is
+  revise — the backend refuses) + read-only review detail page
+  (`/editorial/[id]/reviews/[reviewId]`) rendering the computed-verdict
+  provenance ("never model-authored"), findings table with severity/
+  origin (drift- deterministic results visible), envelope per-check
+  record, audit trail, attempts, and cross-links to the exact reviewed
+  draft version; admin vocabularies gained `editor_review` purpose +
+  review/finding enums; leak tests on both sides
+- Task 14 verified: 3 new backend read tests (list+detail with resolved
+  claim anchors and editor attempt metadata, supersession audit
+  visibility, 404s) and 12 new/updated admin tests (fixtures, review
+  page quartet incl. deterministic drift finding visibility and UNKNOWN
+  envelope, detail-page review commands gated by state, control-api and
+  actions coverage, zod verdict rejection); suite 1192 backend + 171
+  admin (22 files), gate green; no migration (head stays `0019`)
+
 ## Next immediate task
 
-PHASE 4 TASK 14 (authorized under the autonomous continuation mandate)
-— EDITOR READ MODELS + ADMIN, per accepted PHASE4_EDITOR_ARCHITECTURE.md
-§9/§12: `/internal/editorial` GET projections —
-`work-items/{id}/reviews` (all review versions: verdict, engine, draft
-pinned, finding counts by severity, integrity outcomes) and
-`reviews/{id}` (full detail: findings with anchors resolved to
-section/block and claim key/kind, integrity gate result incl. the
-writer-envelope recomputation, policy snapshots, status events, safe
-writer/editor attempt metadata with failures visible); admin: Reviews
-section on the editorial detail page (state-gated
-generate-editor-review / accept-review / request-rework forms with
-required reasons; truthful verdict badges) + read-only review detail
-page; the admin GENERATION_PURPOSES vocabulary gains `editor_review`;
-leak tests on both sides (no raw provider data, broker URLs, internal
-URLs). No migration, no new workflow semantics. After Task 14: Task 15
-Editor-stage audit (docs-only), then the QA architecture.
+PHASE 4 TASK 15 (authorized under the autonomous continuation mandate)
+— EDITOR-STAGE CLOSURE AUDIT (docs-only), per accepted
+PHASE4_EDITOR_ARCHITECTURE.md §11/§12: audit the implemented Editor
+stage (Tasks 10-14) against the §11 exit criteria with an explicit
+criterion-by-criterion evidence matrix (actual code/tests/real-
+infrastructure runs); classify remaining limitations honestly
+(deferred-by-design vs production-readiness backlog); record the
+disposition in docs (PHASE4_EDITOR_AUDIT.md) and update CURRENT_STATE.
+No runtime changes expected. After the audit: the QA architecture
+(design only) — which must define the QA_REVIEW stage truthfully,
+including the WORKFLOW.md "eligible media set" entry gate (no media
+pipeline exists: an explicit UNKNOWN/failing gate, never a silent
+pass), QA hard gates, and the QA_REVIEW -> AWAITING_HUMAN_REVIEW
+artifact-gated advance that closes Phase 4.
 
 Before implementing the affected integrations, resolve:
 

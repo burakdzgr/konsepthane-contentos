@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   acceptBriefForDrafting,
+  acceptEditorReview,
+  generateEditorReview,
   generateWriterDraft,
   requestWriterRework,
   resolveChangesRequested,
@@ -22,6 +24,7 @@ import {
   ANALYSIS_ID,
   BRIEF_ID,
   DRAFT_ID,
+  REVIEW_ID,
   CONTRADICTION_ID,
   DOCUMENT_ID,
   EVIDENCE_ID,
@@ -394,6 +397,60 @@ describe("writer draft commands", () => {
   it("rework outside EDITING maps a 409 to conflict", async () => {
     stubFetch(async () => jsonResponse(409, { detail: "not allowed" }));
     const result = await requestWriterRework(WORK_ITEM_ID, "erken");
+    expect(result.kind).toBe("conflict");
+  });
+});
+
+describe("editor review commands", () => {
+  it("generate-editor-review posts the exact bounded command", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        task: "generate_editor_review",
+        entity_id: WORK_ITEM_ID,
+      }),
+    );
+    const result = await generateEditorReview(WORK_ITEM_ID, {
+      retryNumber: 1,
+      supersedeReason: "yeniden inceleme",
+    });
+    expect(result.kind).toBe("ok");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/generate-editor-review`,
+    );
+    expect(request.body).toEqual({
+      retry_number: 1,
+      supersede_reason: "yeniden inceleme",
+    });
+  });
+
+  it("accept-review posts the reason and parses the advance", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "accepted",
+        work_item_id: WORK_ITEM_ID,
+        work_item_state: "qa_review",
+        editorial_review_id: REVIEW_ID,
+        review_verdict: "pass",
+      }),
+    );
+    const result = await acceptEditorReview(WORK_ITEM_ID, "inceleme temiz");
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.work_item_state).toBe("qa_review");
+      expect(result.data.review_verdict).toBe("pass");
+    }
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/accept-review`,
+    );
+    expect(request.body).toEqual({ reason: "inceleme temiz" });
+  });
+
+  it("accept-review maps a revise 409 to conflict", async () => {
+    stubFetch(async () => jsonResponse(409, { detail: "revise" }));
+    const result = await acceptEditorReview(WORK_ITEM_ID, "denemek");
     expect(result.kind).toBe("conflict");
   });
 });

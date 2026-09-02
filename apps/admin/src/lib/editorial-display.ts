@@ -100,6 +100,25 @@ export function draftStatusTone(value: string): BadgeTone {
   return DRAFT_STATUS_TONES[value] ?? "neutral";
 }
 
+const REVIEW_VERDICT_TONES: Record<string, BadgeTone> = {
+  pass: "ok",
+  revise: "warn",
+};
+
+export function reviewVerdictTone(value: string): BadgeTone {
+  return REVIEW_VERDICT_TONES[value] ?? "neutral";
+}
+
+const FINDING_SEVERITY_TONES: Record<string, BadgeTone> = {
+  blocking: "bad",
+  major: "warn",
+  minor: "info",
+};
+
+export function findingSeverityTone(value: string): BadgeTone {
+  return FINDING_SEVERITY_TONES[value] ?? "neutral";
+}
+
 // A missing verdict is the truth "UNKNOWN", never a pass and never a zero.
 export function verdictLabel(value: string | null): string {
   return value === null ? "UNKNOWN" : value;

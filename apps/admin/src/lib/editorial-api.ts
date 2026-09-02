@@ -145,7 +145,19 @@ export const GENERATION_PURPOSES = [
   "brief_composition",
   "evidence_organization",
   "writer_draft",
+  "editor_review",
 ] as const;
+export const REVIEW_VERDICTS = ["pass", "revise"] as const;
+export const REVIEW_STATUSES = ["active", "superseded"] as const;
+export const FINDING_DIMENSIONS = [
+  "claim_faithfulness",
+  "exclusion_compliance",
+  "objective_fit",
+  "clarity_style",
+  "uncertainty_framing",
+] as const;
+export const FINDING_SEVERITIES = ["blocking", "major", "minor"] as const;
+export const FINDING_ORIGINS = ["model_signal", "deterministic"] as const;
 export const DRAFT_ORIGINS = ["writer_engine", "operator"] as const;
 export const DRAFT_STATUSES = ["active", "superseded"] as const;
 export const DRAFT_ACTOR_ORIGINS = ["operator", "system"] as const;
@@ -619,6 +631,68 @@ const draftDetailSchema = z.object({
   generation_attempts_truncated: z.boolean(),
 });
 
+const reviewSummarySchema = z.object({
+  id: z.string().uuid(),
+  work_item_id: z.string().uuid(),
+  content_draft_id: z.string().uuid(),
+  content_brief_id: z.string().uuid(),
+  version: z.number().int(),
+  verdict: z.enum(REVIEW_VERDICTS),
+  status: z.enum(REVIEW_STATUSES),
+  engine_name: z.string(),
+  engine_version: z.string(),
+  generation_attempt_id: z.string().uuid().nullable(),
+  superseded_by_review_id: z.string().uuid().nullable(),
+  finding_counts: z.record(z.string(), z.number().int()),
+  // null means the record carries no envelope: rendered UNKNOWN.
+  writer_envelope_recomputed: z.boolean().nullable(),
+  content_hash: z.string(),
+  created_at: timestampSchema,
+});
+
+const reviewListPageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  reviews: z.array(reviewSummarySchema),
+  total: countSchema,
+  truncated: z.boolean(),
+});
+
+const reviewFindingSchema = z.object({
+  id: z.string().uuid(),
+  finding_key: z.string(),
+  dimension: z.enum(FINDING_DIMENSIONS),
+  severity: z.enum(FINDING_SEVERITIES),
+  origin: z.enum(FINDING_ORIGINS),
+  block_id: z.string().nullable(),
+  brief_claim_id: z.string().uuid().nullable(),
+  claim_key: z.string().nullable(),
+  claim_kind: z.string().nullable(),
+  description: z.string(),
+  recommendation: z.string().nullable(),
+});
+
+const reviewStatusEventSchema = z.object({
+  id: z.number().int(),
+  from_status: z.enum(REVIEW_STATUSES),
+  to_status: z.enum(REVIEW_STATUSES),
+  actor_origin: z.enum(DRAFT_ACTOR_ORIGINS),
+  reason: z.string(),
+  request_id: z.string().nullable(),
+  replacement_review_id: z.string().uuid().nullable(),
+  occurred_at: timestampSchema,
+});
+
+const reviewDetailSchema = z.object({
+  review: reviewSummarySchema,
+  integrity_gate_result: jsonRecordSchema,
+  verdict_policy_snapshot: jsonRecordSchema,
+  review_scope: jsonRecordSchema,
+  findings: z.array(reviewFindingSchema),
+  status_events: z.array(reviewStatusEventSchema),
+  generation_attempts: z.array(aiAttemptSchema),
+  generation_attempts_truncated: z.boolean(),
+});
+
 const eligibleEvidenceSchema = z.object({
   items: z.array(
     z.object({
@@ -659,6 +733,10 @@ export type DraftSummaryView = z.infer<typeof draftSummarySchema>;
 export type DraftListPage = z.infer<typeof draftListPageSchema>;
 export type DraftDetail = z.infer<typeof draftDetailSchema>;
 export type DraftClaimUsageView = z.infer<typeof draftClaimUsageSchema>;
+export type ReviewSummaryView = z.infer<typeof reviewSummarySchema>;
+export type ReviewListPage = z.infer<typeof reviewListPageSchema>;
+export type ReviewDetail = z.infer<typeof reviewDetailSchema>;
+export type ReviewFindingView = z.infer<typeof reviewFindingSchema>;
 
 export type WorkQueueFilters = {
   workflowState?: (typeof WORKFLOW_STATES)[number];
@@ -759,6 +837,48 @@ export async function fetchDraftDetail(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, draftDetailSchema, [200]);
+}
+
+export type ReviewListResult =
+  BackendResult<ReviewListPage> | { kind: "not_found" };
+
+export async function fetchWorkItemReviews(
+  workItemId: string,
+): Promise<ReviewListResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/reviews`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, reviewListPageSchema, [200]);
+}
+
+export type ReviewDetailResult =
+  BackendResult<ReviewDetail> | { kind: "not_found" };
+
+export async function fetchReviewDetail(
+  reviewId: string,
+): Promise<ReviewDetailResult> {
+  if (!isUuid(reviewId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/reviews/${encodeURIComponent(reviewId)}`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, reviewDetailSchema, [200]);
 }
 
 export type EligibleEvidenceResult =

@@ -10,6 +10,7 @@ vi.mock("@/lib/editorial-api", async () => {
     fetchWorkItemDetail: vi.fn(),
     fetchEligibleEvidence: vi.fn(),
     fetchWorkItemDrafts: vi.fn(),
+    fetchWorkItemReviews: vi.fn(),
   };
 });
 
@@ -18,12 +19,15 @@ import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemReviews,
 } from "@/lib/editorial-api";
 import {
   WORK_ITEM_ID,
   briefView,
   draftListPage,
   draftSummary,
+  reviewListPage,
+  reviewSummary,
   eligibleEvidenceItem,
   eligiblePage,
   workItemDetail,
@@ -33,6 +37,7 @@ import {
 const detailMock = vi.mocked(fetchWorkItemDetail);
 const evidenceMock = vi.mocked(fetchEligibleEvidence);
 const draftsMock = vi.mocked(fetchWorkItemDrafts);
+const reviewsMock = vi.mocked(fetchWorkItemReviews);
 
 async function renderPage(params: Record<string, string> = {}) {
   render(
@@ -53,6 +58,11 @@ beforeEach(() => {
   draftsMock.mockResolvedValue({
     kind: "ok",
     data: draftListPage([]),
+    requestId: null,
+  });
+  reviewsMock.mockResolvedValue({
+    kind: "ok",
+    data: reviewListPage([]),
     requestId: null,
   });
 });
@@ -76,6 +86,7 @@ describe("Editorial detail page", () => {
       "Search intent",
       "Briefs & claims",
       "Writer drafts",
+      "Editor reviews",
       "AI attempts",
       "Workflow history",
     ]) {
@@ -335,6 +346,46 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(screen.getAllByText("UNKNOWN").length).toBe(2);
+  });
+
+  it("shows editor review commands and truthful verdicts in EDITING", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "editing",
+        },
+      }),
+      requestId: null,
+    });
+    reviewsMock.mockResolvedValue({
+      kind: "ok",
+      data: reviewListPage([reviewSummary({ verdict: "revise" })]),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(
+      screen.getByRole("button", { name: "Generate editor review" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Accept review" })).toBeTruthy();
+    expect(screen.getByText("revise")).toBeTruthy();
+    expect(screen.getByText(/backend will refuse/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open review" })).toBeTruthy();
+  });
+
+  it("hides review commands outside EDITING", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail(),
+      requestId: null,
+    });
+    await renderPage();
+    expect(
+      screen.queryByRole("button", { name: "Generate editor review" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept review" })).toBeNull();
   });
 
   it("never renders the internal backend URL", async () => {

@@ -8,6 +8,9 @@ import type {
   DraftDetail,
   DraftListPage,
   DraftSummaryView,
+  ReviewDetail,
+  ReviewListPage,
+  ReviewSummaryView,
   EligibleEvidenceItem,
   EligibleEvidencePage,
   IdeaView,
@@ -40,6 +43,7 @@ export const DECISION_ID = "a7111111-2222-4333-8444-555555555555";
 export const SOURCE_ID = "a8111111-2222-4333-8444-555555555555";
 export const DRAFT_ID = "a9111111-2222-4333-8444-555555555555";
 export const CLAIM_ID = "aa111111-2222-4333-8444-555555555555";
+export const REVIEW_ID = "ad111111-2222-4333-8444-555555555555";
 
 const AT = "2026-09-01T12:00:00+00:00";
 
@@ -539,6 +543,84 @@ export function draftDetail(overrides: Partial<DraftDetail> = {}): DraftDetail {
         purpose: "writer_draft",
         schema_name: "writer-draft",
         template_name: "writer-draft",
+      }),
+    ],
+    generation_attempts_truncated: false,
+    ...overrides,
+  };
+}
+
+export function reviewSummary(
+  overrides: Partial<ReviewSummaryView> = {},
+): ReviewSummaryView {
+  return {
+    id: REVIEW_ID,
+    work_item_id: WORK_ITEM_ID,
+    content_draft_id: DRAFT_ID,
+    content_brief_id: BRIEF_ID,
+    version: 1,
+    verdict: "pass",
+    status: "active",
+    engine_name: "editor",
+    engine_version: "1",
+    generation_attempt_id: ATTEMPT_ID,
+    superseded_by_review_id: null,
+    finding_counts: { blocking: 0, major: 0, minor: 1 },
+    writer_envelope_recomputed: true,
+    content_hash: "d".repeat(64),
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function reviewListPage(
+  reviews: ReviewSummaryView[] = [reviewSummary()],
+): ReviewListPage {
+  return {
+    work_item_id: WORK_ITEM_ID,
+    reviews,
+    total: reviews.length,
+    truncated: false,
+  };
+}
+
+export function reviewDetail(
+  overrides: Partial<ReviewDetail> = {},
+): ReviewDetail {
+  return {
+    review: reviewSummary(),
+    integrity_gate_result: {
+      version: "editor-integrity/1",
+      writer_envelope_recomputed: true,
+      writer_envelope: {
+        structure_contract: "ok",
+        claim_ref_integrity: "ok",
+        handling_coverage: "ok",
+      },
+    },
+    verdict_policy_snapshot: { version: "editor-verdict/1" },
+    review_scope: { content_draft_id: DRAFT_ID },
+    findings: [
+      {
+        id: "ae111111-2222-4333-8444-555555555555",
+        finding_key: "ton-notu",
+        dimension: "clarity_style",
+        severity: "minor",
+        origin: "model_signal",
+        block_id: "giris-1",
+        brief_claim_id: CLAIM_ID,
+        claim_key: "konsept-detaylari",
+        claim_kind: "factual",
+        description: "Giris tonu sadelesebilir.",
+        recommendation: "Cumleleri kisalt.",
+      },
+    ],
+    status_events: [],
+    generation_attempts: [
+      attemptView({
+        purpose: "editor_review",
+        schema_name: "editor-review",
+        template_name: "editor-review",
       }),
     ],
     generation_attempts_truncated: false,

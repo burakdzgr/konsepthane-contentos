@@ -19,6 +19,8 @@ vi.mock("@/lib/editorial-control-api", async () => {
     acceptBriefForDrafting: vi.fn(),
     resolveWorkItemBlock: vi.fn(),
     generateWriterDraft: vi.fn(),
+    generateEditorReview: vi.fn(),
+    acceptEditorReview: vi.fn(),
     submitOperatorDraft: vi.fn(),
     requestWriterRework: vi.fn(),
     resolveChangesRequested: vi.fn(),
@@ -27,6 +29,8 @@ vi.mock("@/lib/editorial-control-api", async () => {
 
 import {
   acceptBriefAction,
+  acceptReviewAction,
+  generateEditorReviewAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
   generateDraftAction,
@@ -37,8 +41,10 @@ import {
 } from "@/app/editorial/[id]/actions";
 import {
   acceptBriefForDrafting,
+  acceptEditorReview,
   buildEvidencePack,
   commissionOpportunity,
+  generateEditorReview,
   generateWriterDraft,
   requestWriterRework,
   resolveChangesRequested,
@@ -58,6 +64,8 @@ const buildPackMock = vi.mocked(buildEvidencePack);
 const acceptMock = vi.mocked(acceptBriefForDrafting);
 const resolveBlockMock = vi.mocked(resolveWorkItemBlock);
 const generateDraftMock = vi.mocked(generateWriterDraft);
+const generateReviewMock = vi.mocked(generateEditorReview);
+const acceptReviewMock = vi.mocked(acceptEditorReview);
 const submitDraftMock = vi.mocked(submitOperatorDraft);
 const requestReworkMock = vi.mocked(requestWriterRework);
 const resolveChangesMock = vi.mocked(resolveChangesRequested);
@@ -363,5 +371,47 @@ describe("writer draft actions", () => {
       `/editorial/${WORK_ITEM_ID}?notice=changes-request-resolved`,
     );
     expect(resolveChangesMock).toHaveBeenCalledWith(WORK_ITEM_ID, "yonlendir");
+  });
+});
+
+describe("editor review actions", () => {
+  it("generateEditorReviewAction queues with options", async () => {
+    generateReviewMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "queued",
+        task: "generate_editor_review",
+        entity_id: WORK_ITEM_ID,
+      },
+    });
+    await expectRedirect(
+      generateEditorReviewAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          retry_number: "0",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=review-queued`,
+    );
+    expect(generateReviewMock).toHaveBeenCalledWith(WORK_ITEM_ID, {
+      retryNumber: 0,
+      supersedeReason: undefined,
+    });
+  });
+
+  it("acceptReviewAction requires a reason", async () => {
+    await expectRedirect(
+      acceptReviewAction(form({ work_item_id: WORK_ITEM_ID })),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(acceptReviewMock).not.toHaveBeenCalled();
+  });
+
+  it("acceptReviewAction surfaces conflicts truthfully", async () => {
+    acceptReviewMock.mockResolvedValue({ kind: "conflict" });
+    await expectRedirect(
+      acceptReviewAction(form({ work_item_id: WORK_ITEM_ID, reason: "temiz" })),
+      `/editorial/${WORK_ITEM_ID}?error=conflict`,
+    );
   });
 });

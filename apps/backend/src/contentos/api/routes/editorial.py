@@ -30,6 +30,12 @@ from contentos.api.read_models.editorial import (
     list_eligible_evidence,
     list_work_items,
 )
+from contentos.api.read_models.reviews import (
+    ReviewDetail,
+    ReviewListPage,
+    get_review_detail,
+    list_work_item_reviews,
+)
 from contentos.db.session import get_db_session
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.workflow.enums import WorkflowState
@@ -100,6 +106,31 @@ def get_editorial_draft(
     detail = get_draft_detail(session, draft_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="content draft not found")
+    return detail
+
+
+@router.get("/work-items/{work_item_id}/reviews", response_model=ReviewListPage)
+def list_editorial_work_item_reviews(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> ReviewListPage:
+    """Every durable editor review version of one work item, newest first."""
+    page = list_work_item_reviews(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
+
+
+@router.get("/reviews/{review_id}", response_model=ReviewDetail)
+def get_editorial_review(
+    session: Annotated[Session, Depends(get_db_session)],
+    review_id: uuid.UUID,
+) -> ReviewDetail:
+    """One review version in full: findings with resolved anchors, the
+    deterministic integrity record, policy snapshots, audit, attempts."""
+    detail = get_review_detail(session, review_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="editorial review not found")
     return detail
 
 

@@ -13,6 +13,7 @@ import {
   OPPORTUNITY_DISPOSITIONS,
   PACK_SUFFICIENCIES,
   RESOLVED_CONTRADICTION_STATUSES,
+  REVIEW_VERDICTS,
   WORKFLOW_STATES,
 } from "@/lib/editorial-api";
 import { isUuid } from "@/lib/research-api";
@@ -39,6 +40,7 @@ const EDITORIAL_TASKS = [
   "analyze_search_intent",
   "compose_content_brief",
   "generate_writer_draft",
+  "generate_editor_review",
 ] as const;
 
 const queuedResponseSchema = z.object({
@@ -109,6 +111,14 @@ const draftSubmissionResponseSchema = z.object({
   work_item_state: z.enum(WORKFLOW_STATES),
 });
 
+const acceptReviewResponseSchema = z.object({
+  status: z.literal("accepted"),
+  work_item_id: z.string().uuid(),
+  work_item_state: z.enum(WORKFLOW_STATES),
+  editorial_review_id: z.string().uuid(),
+  review_verdict: z.enum(REVIEW_VERDICTS),
+});
+
 const briefAcceptanceResponseSchema = z.object({
   status: z.enum(["accepted", "already_accepted"]),
   brief_id: z.string().uuid(),
@@ -133,6 +143,7 @@ export type BriefAcceptanceResult = z.infer<
 export type DraftSubmissionResult = z.infer<
   typeof draftSubmissionResponseSchema
 >;
+export type AcceptReviewResult = z.infer<typeof acceptReviewResponseSchema>;
 
 type ControlFailure =
   | { kind: "not_found" }
@@ -494,6 +505,39 @@ export function submitOperatorDraft(
       `/internal/editorial/briefs/${encodeURIComponent(briefId)}/submit-draft`,
       body,
       draftSubmissionResponseSchema,
+    ),
+  );
+}
+
+export function generateEditorReview(
+  workItemId: string,
+  options: { retryNumber?: number; supersedeReason?: string } = {},
+): Promise<ControlResult<QueuedResult>> {
+  const body: Record<string, unknown> = {};
+  if (options.retryNumber !== undefined) {
+    body.retry_number = options.retryNumber;
+  }
+  if (options.supersedeReason !== undefined && options.supersedeReason !== "") {
+    body.supersede_reason = options.supersedeReason;
+  }
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/generate-editor-review`,
+      body,
+      queuedResponseSchema,
+    ),
+  );
+}
+
+export function acceptEditorReview(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<AcceptReviewResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/accept-review`,
+      { reason },
+      acceptReviewResponseSchema,
     ),
   );
 }

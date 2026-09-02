@@ -4,12 +4,14 @@ import { redirect } from "next/navigation";
 
 import {
   acceptBriefForDrafting,
+  acceptEditorReview,
   analyzeSearchIntent,
   buildEvidencePack,
   commissionOpportunity,
   composeContentBrief,
   deselectIdea,
   evaluateOpportunity,
+  generateEditorReview,
   generateIdeaCandidates,
   generateWriterDraft,
   reassembleEvidencePack,
@@ -356,4 +358,30 @@ export async function resolveChangesRequestedAction(
   }
   const result = await resolveChangesRequested(workItemId, reason);
   finish(workItemId, result, "changes-request-resolved");
+}
+
+export async function generateEditorReviewAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const retryRaw = field(formData, "retry_number");
+  const retryNumber = /^([0-9]|[1-4][0-9]|50)$/.test(retryRaw)
+    ? Number(retryRaw)
+    : undefined;
+  const supersedeReason = field(formData, "supersede_reason");
+  const result = await generateEditorReview(workItemId, {
+    retryNumber,
+    supersedeReason: supersedeReason || undefined,
+  });
+  finish(workItemId, result, "review-queued");
+}
+
+export async function acceptReviewAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await acceptEditorReview(workItemId, reason);
+  finish(workItemId, result, "review-accepted");
 }

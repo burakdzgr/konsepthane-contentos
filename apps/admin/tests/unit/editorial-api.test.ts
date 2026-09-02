@@ -3,18 +3,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchDraftDetail,
+  fetchReviewDetail,
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemReviews,
   fetchWorkQueue,
 } from "@/lib/editorial-api";
 import {
   WORK_ITEM_ID,
   OPPORTUNITY_ID,
   DRAFT_ID,
+  REVIEW_ID,
   draftDetail,
   draftListPage,
   draftSummary,
+  reviewDetail,
+  reviewListPage,
+  reviewSummary,
   eligibleEvidenceItem,
   eligiblePage,
   queuePage,
@@ -198,5 +204,45 @@ describe("draft reads", () => {
     const invalid = await fetchWorkItemDrafts("not-a-uuid");
     expect(invalid.kind).toBe("not_found");
     expect(fetchMock.mock.calls.length).toBe(1);
+  });
+});
+
+describe("review reads", () => {
+  it("parses the review list and truthful UNKNOWN envelope", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(
+        200,
+        reviewListPage([reviewSummary({ writer_envelope_recomputed: null })]),
+      ),
+    );
+    const result = await fetchWorkItemReviews(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.reviews[0]?.writer_envelope_recomputed).toBeNull();
+    }
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/reviews`,
+    );
+  });
+
+  it("parses the review detail with anchors and attempts", async () => {
+    stubFetch(async () => jsonResponse(200, reviewDetail()));
+    const result = await fetchReviewDetail(REVIEW_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.findings[0]?.claim_key).toBe("konsept-detaylari");
+      expect(result.data.generation_attempts[0]?.purpose).toBe("editor_review");
+    }
+  });
+
+  it("rejects an unknown verdict as malformed", async () => {
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        reviewListPage([reviewSummary({ verdict: "reject" as never })]),
+      ),
+    );
+    const result = await fetchWorkItemReviews(WORK_ITEM_ID);
+    expect(result.kind).toBe("malformed");
   });
 });
