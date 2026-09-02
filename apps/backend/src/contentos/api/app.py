@@ -7,12 +7,13 @@ from fastapi import Depends, FastAPI
 from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
 from contentos.api.routes.auth import router as auth_router
+from contentos.api.routes.decisions import router as decisions_router
 from contentos.api.routes.editorial import router as editorial_router
 from contentos.api.routes.editorial_control import router as editorial_control_router
 from contentos.api.routes.health import router as health_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
-from contentos.api.security import require_operator
+from contentos.api.security import require_operator, require_reviewer
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.db.session import create_database_engine, create_session_factory
@@ -53,6 +54,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(research_control_router, dependencies=operator_guard)
     app.include_router(editorial_router, dependencies=operator_guard)
     app.include_router(editorial_control_router, dependencies=operator_guard)
+    # Human decisions require the REVIEWER role (ADR 0004): a pure reviewer
+    # may decide without being able to drive the pipeline, and vice versa.
+    app.include_router(decisions_router, dependencies=[Depends(require_reviewer)])
     # Producer-only dispatchers for explicit operator job triggers; lazy, so
     # creating the app never touches Redis. Tests replace them on app.state.
     app.state.research_control_dispatcher = CeleryResearchControlDispatcher(resolved_settings)

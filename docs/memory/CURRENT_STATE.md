@@ -29,7 +29,8 @@ AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
 COMPLETE; Task 20 QA-Stage Audit COMPLETE; Task 21 PHASE 4 CLOSURE
 AUDIT COMPLETE — **PHASE 4 IS CLOSED**; PHASE 5 Governance
 Architecture (design only) COMPLETE; Task G1 Auth Foundation COMPLETE; Task G2 Admin Authentication
-COMPLETE)
+COMPLETE; Task G3 Human Decision Records + Workflow Wiring COMPLETE —
+**A NAMED HUMAN CAN NOW APPROVE**)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2797,32 +2798,66 @@ access protection belongs to future deployment infrastructure.
   build with the new middleware; no migration (head stays `0021`);
   username display in the chrome deferred to G4 (scope honesty)
 
+- PHASE 5 Task G3 (decision records + workflow wiring) complete:
+  migration `0022` — `human_decisions` (append-only decision EVENTS:
+  reviewer_user_id RESTRICT -> users, decision CHECK {approved,
+  changes_requested, rejected, approval_revoked}, required reason,
+  RESTRICT pins to qa report/draft/editor review, content_hash at
+  decision time, revocation self-FK with the
+  `(decision='approval_revoked') = (revokes_decision_id IS NOT NULL)`
+  CHECK, append-only trigger) + additive nullable
+  `editorial_workflow_events.actor_user_id` (FK users, indexed;
+  historical NULLs honestly UNKNOWN); `contentos.decisions` module —
+  DecisionService with the full gates (state-specific package
+  resolution: ACTIVE report covering the ACTIVE draft; approve
+  additionally requires outcome ready_for_human_review AND the
+  entry-pinned content_hash to still equal the ACTIVE draft hash — a
+  changed package cannot ride an old QA pass; defense-in-depth
+  reviewer-role re-check so a decision row can NEVER carry a
+  non-reviewer identity) and the hash-bound `approval_status`
+  primitive (latest non-revoked approval, current only while hashes
+  match); reviewer-guarded router (the ONLY require_reviewer surface):
+  approve / request-changes / reject-package / revoke-approval, each
+  decision-record -> commit -> WorkflowService transition with
+  decision_artifact_refs pinned + actor_user_id -> commit;
+  PERMITTED_RESPONSIBLE_STATES gained AWAITING_HUMAN_REVIEW and
+  APPROVED contexts ({DRAFTING, EDITING, QA_REVIEW}); direct-transition
+  operator routes (submit-draft, accept-review, request-rework) now
+  record the named actor; the Phase-3 "no approve route" ban test
+  updated truthfully (approval exists ONLY as the two governed
+  reviewer routes)
+- Task G3 verified: 10 new unit tests (approve with pins + named actor
+  on the event + approval_status current; hash-mismatch 409 with zero
+  decision rows; wrong-state 409; routed request-changes to qa_review
+  + resolve; human rejection; revocation referencing never editing +
+  approved=False; revoke-without-approval 409; operator-only 403 with
+  zero rows; reviewer-only user CAN decide but CANNOT drive the
+  pipeline) — suite 1249 backend + 199 admin, gate green; REAL
+  PostgreSQL 16 + Redis verification passed (the FULL chain to
+  AWAITING_HUMAN_REVIEW, then 0022 cycle over populated data, named
+  approval -> APPROVED with pins + actor, revocation -> CHANGES_
+  REQUESTED via qa_review, append-only trigger); schema head `0022`
+
 ## Next immediate task
 
-PHASE 5 TASK G3 (authorized under the autonomous continuation mandate)
-— DECISION RECORDS + WORKFLOW WIRING, per
-PHASE5_GOVERNANCE_ARCHITECTURE.md §2/§3/§7 Task G3: migration 0022 —
-`human_decisions` (append-only decision events: reviewer_user_id
-RESTRICT -> users, decision CHECK {approved, changes_requested,
-rejected, approval_revoked}, required reason, qa_report_id +
-content_draft_id + editorial_review_id RESTRICT pins, content_hash at
-decision time, self-FK revokes_decision_id for revocations,
-append-only trigger) + additive nullable
-`editorial_workflow_events.actor_user_id` column (+index; historical
-NULLs render UNKNOWN); a DecisionService with the full gates (work
-item in AWAITING_HUMAN_REVIEW entered with pins; the ACTIVE ready QA
-report must cover the ACTIVE draft and hashes must match for approve;
-reviewer identity comes ONLY from the authenticated session);
-reviewer-only commands `approve` / `request-changes` (bounded
-responsible choice via new PERMITTED_RESPONSIBLE_STATES entries for
-AWAITING_HUMAN_REVIEW {DRAFTING, EDITING, QA_REVIEW} and APPROVED
-{DRAFTING, EDITING, QA_REVIEW}) / `reject` / `revoke-approval`; each
-command: durable decision record -> commit -> WorkflowService
-transition with the decision pinned (+actor_user_id) -> commit; the
-`approval_is_current` primitive (latest non-revoked approval whose
-content_hash equals the ACTIVE draft hash); real-PG verification
-(migration cycle, append-only trigger, the approve artifact gate with
-hash-mismatch refusal, revocation flow). Read models/admin are G4.
+PHASE 5 TASK G4 (authorized under the autonomous continuation mandate)
+— DECISION READ MODELS + ADMIN DECISION SURFACE, per
+PHASE5_GOVERNANCE_ARCHITECTURE.md §5/§7 Task G4:
+`work-items/{id}/decisions` read model (decision events with reviewer
+display names — password/token material never reachable by
+construction) + approval status (approved/current/stale with hashes);
+workflow event read models surface actor_user_id resolved to a display
+name (NULL renders UNKNOWN); admin: the AWAITING_HUMAN_REVIEW view
+becomes the reviewer DECISION surface (full pinned package links +
+approve / request-changes with the bounded three-way choice / reject
+forms with required reasons; non-reviewer users see the package
+read-only with an honest "not an authorized reviewer" note — requires
+surfacing the current user's roles via /internal/auth/me in the admin,
+completing the deferred G2 chrome: username display + role awareness);
+APPROVED items show the approval record, its hash-bound validity
+(current | stale), and the revoke command; decisions history section;
+leak tests. No migration. After G4: G5 approval-validity surfacing +
+APPROVAL_EXPIRED wiring, then G6 the governance audit.
 
 Before implementing the affected integrations, resolve:
 

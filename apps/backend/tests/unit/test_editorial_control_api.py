@@ -605,8 +605,17 @@ class TestNoGenericEndpoints:
         paths = set(harness.app.openapi()["paths"])
         assert paths
         for path in paths:
-            for banned in ("publish", "schedule", "pinterest", "release", "approve"):
+            for banned in ("publish", "schedule", "pinterest", "release"):
                 assert banned not in path.lower(), path
+        # Phase 5 governance: approval exists ONLY as the reviewer decision
+        # surface — never as any other command shape.
+        approval_paths = {
+            path for path in paths if "approve" in path.lower() or "approval" in path.lower()
+        }
+        assert approval_paths == {
+            "/internal/editorial/work-items/{work_item_id}/approve",
+            "/internal/editorial/work-items/{work_item_id}/revoke-approval",
+        }
 
 
 class TestWriterDraftCommands:

@@ -60,6 +60,14 @@ PERMITTED_RESPONSIBLE_STATES: dict[WorkflowState, frozenset[WorkflowState]] = {
     # From QA_REVIEW, a failed package may be routed back to the writer
     # stage (content problems) or to the editor stage (re-review).
     WorkflowState.QA_REVIEW: frozenset({WorkflowState.DRAFTING, WorkflowState.EDITING}),
+    # Phase 5 governance: a human decision (or an approval revocation) may
+    # route the package to any production/review stage upstream.
+    WorkflowState.AWAITING_HUMAN_REVIEW: frozenset(
+        {WorkflowState.DRAFTING, WorkflowState.EDITING, WorkflowState.QA_REVIEW}
+    ),
+    WorkflowState.APPROVED: frozenset(
+        {WorkflowState.DRAFTING, WorkflowState.EDITING, WorkflowState.QA_REVIEW}
+    ),
 }
 
 # The structural canonical transition matrix from docs/WORKFLOW.md. BLOCKED
@@ -195,6 +203,7 @@ class WorkflowService:
         artifact_refs: dict[str, Any] | None = None,
         request_id: str | None = None,
         responsible_state: WorkflowState | None = None,
+        actor_user_id: uuid.UUID | None = None,
     ) -> EditorialWorkItem:
         """Apply one structurally validated transition under a row lock.
 
@@ -271,6 +280,7 @@ class WorkflowService:
                 reason=cleaned_reason,
                 artifact_refs=validated_refs,
                 request_id=validated_request_id,
+                actor_user_id=actor_user_id,
                 occurred_at=now,
             )
         )

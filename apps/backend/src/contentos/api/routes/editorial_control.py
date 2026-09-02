@@ -430,6 +430,13 @@ def _current_request_id() -> str | None:
     return candidate if is_valid_request_id(candidate) else None
 
 
+def _current_user_id(request: Request) -> uuid.UUID | None:
+    """The authenticated user resolved by the router-level guard; recorded
+    on directly-performed workflow transitions (Phase 5 G3)."""
+    user = getattr(request.state, "current_user", None)
+    return user.id if user is not None else None
+
+
 def _enqueue_or_503(operation: str, entity_id: uuid.UUID, publish: Any) -> None:
     """Publish one editorial job; a transport failure is never reported as queued."""
     try:
@@ -1078,6 +1085,7 @@ def submit_operator_draft(
                 "content_hash": draft.content_hash,
             },
             request_id=request_id,
+            actor_user_id=_current_user_id(request),
         )
         session.commit()
     item = WorkflowRepository(session).get_by_id(draft.work_item_id)
@@ -1184,6 +1192,7 @@ def accept_editor_review(
                 "content_hash": active_draft.content_hash,
             },
             request_id=_current_request_id(),
+            actor_user_id=_current_user_id(request),
         )
     except WorkItemNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from None
@@ -1214,6 +1223,7 @@ def accept_editor_review(
 
 @router.post("/work-items/{work_item_id}/request-rework", response_model=WorkItemStateResponse)
 def request_writer_rework(
+    request: Request,
     session: Annotated[Session, Depends(get_db_session)],
     work_item_id: uuid.UUID,
     body: ReworkRequest,
@@ -1251,6 +1261,7 @@ def request_writer_rework(
             artifact_refs=refs,
             request_id=_current_request_id(),
             responsible_state=WorkflowState(body.responsible_state),
+            actor_user_id=_current_user_id(request),
         )
     except WorkItemNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from None

@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0021"]
+    assert script.get_heads() == ["0022"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0022").down_revision == "0021"
     assert script.get_revision("0021").down_revision == "0020"
     assert script.get_revision("0020").down_revision == "0019"
     assert script.get_revision("0019").down_revision == "0018"
@@ -358,6 +359,22 @@ def test_auth_migration_contains_identity_and_protection() -> None:
     assert "CREATE TRIGGER trg_auth_sessions_guarded" in sql
     # Only hashes are ever stored; no raw secret columns exist.
     for forbidden in ("password VARCHAR", "raw_token", "plain_password", "secret_key"):
+        assert forbidden not in sql
+
+
+def test_human_decision_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0021:0022")
+
+    assert "CREATE TABLE human_decisions" in sql
+    assert "ck_human_decisions_decision" in sql
+    assert "ck_human_decisions_hash_format" in sql
+    assert "ck_human_decisions_revocation_reference" in sql
+    assert "CREATE TRIGGER trg_human_decisions_append_only" in sql
+    # The named actor lands additively on workflow events.
+    assert "ADD COLUMN actor_user_id" in sql
+    assert "ix_editorial_workflow_events_actor_user" in sql
+    # A decision is a human event: no machine identity, no status field.
+    for forbidden in ("worker_id", "'system'", "status VARCHAR", "superseded"):
         assert forbidden not in sql
 
 

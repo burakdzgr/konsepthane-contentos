@@ -18,6 +18,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+# Registered so the users FK target resolves wherever these models are used
+# (acyclic: contentos.auth.models imports only the db base).
+from contentos.auth import models as _auth_models  # noqa: F401
 from contentos.core.context import REQUEST_ID_MAX_LENGTH
 from contentos.db.base import Base
 from contentos.db.types import JSON_DICT, string_enum
@@ -131,4 +134,10 @@ class EditorialWorkflowEvent(Base):
     reason: Mapped[str] = mapped_column(Text(), nullable=False)
     artifact_refs: Mapped[dict[str, Any]] = mapped_column(JSON_DICT, nullable=False, default=dict)
     request_id: Mapped[str | None] = mapped_column(String(REQUEST_ID_MAX_LENGTH), nullable=True)
+    # Phase 5 G3: the authenticated human behind an OPERATOR-actor
+    # transition. Nullable — historical rows and service-internal
+    # transitions honestly stay UNKNOWN.
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

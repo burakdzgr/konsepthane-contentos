@@ -90,6 +90,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.ai.models  # noqa: F401
     import contentos.auth.models  # noqa: F401
     import contentos.briefs.models  # noqa: F401
+    import contentos.decisions.models  # noqa: F401
     import contentos.discovery.models  # noqa: F401
     import contentos.drafts.models  # noqa: F401
     import contentos.duplicates.models  # noqa: F401
@@ -146,6 +147,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "users",
         "user_events",
         "auth_sessions",
+        "human_decisions",
     }
 
 
