@@ -101,6 +101,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.normalization.models  # noqa: F401
     import contentos.opportunities.models  # noqa: F401
     import contentos.payloads.postgres  # noqa: F401
+    import contentos.publishing.models  # noqa: F401
     import contentos.qa.models  # noqa: F401
     import contentos.research.models  # noqa: F401
     import contentos.reviews.models  # noqa: F401
@@ -152,6 +153,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "media_assets",
         "media_need_satisfactions",
         "media_satisfaction_events",
+        "publication_packages",
+        "publication_attempts",
     }
 
 

@@ -3113,23 +3113,54 @@ access protection belongs to future deployment infrastructure.
   expiry resolution; transport + publish task; read models + admin;
   closure audit)
 
+- PHASE 7 Task P1 (publication package foundation) complete: migration
+  `0025` — `publication_packages` (IMMUTABLE by trigger, versioned per
+  work item, per-work-item UNIQUE `package_hash` so identical content
+  converges, full pin set {human_decision_id, content_draft_id,
+  content_brief_id, qa_report_id, content_hash}, JSONB payload under
+  `publication-package/1` + media_manifest, named
+  `assembled_by_user_id`) and `publication_attempts` (append-only
+  execution facts: per-package UNIQUE attempt_number, idempotency_key,
+  bounded NON-EDITORIAL status vocabulary {succeeded, transport_error,
+  rejected_by_api, timeout}, sanitized error_class, and the CHECK
+  `(status='succeeded') = (remote_publication_ref IS NOT NULL)`);
+  `contentos.publishing` — `PublicationAssembler.assemble`:
+  `require_current_approval` guard FIRST (StaleApprovalError
+  propagates typed; a stale approval leaves zero rows), the resolved
+  APPROVED package with ready-outcome + approved-hash equality
+  re-checks, the approved draft structure VERBATIM as payload (never
+  enriched), and the media manifest (ACTIVE bindings with
+  alt/licensing/origin; unmet unwaived needs REFUSE assembly; waived
+  unmet indexes are LISTED, never hidden); canonical-JSON package
+  hashing with honest created=False convergence
+- Task P1 verified: 4 new unit tests (verbatim payload + waived
+  manifest + idempotent convergence; bound-asset manifest over a
+  genuinely satisfied QA chain; guard refusals for missing/stale
+  approvals with zero rows left behind; the decision layer already
+  blocking not_ready approvals as defense-in-depth context) + the 0025
+  migration content test — suite 1277 backend + 227 admin, gate green;
+  REAL PostgreSQL 16 verification passed (full chain to APPROVED via
+  real services incl. eager writer/editor + named approval, 0025 cycle
+  over populated data, real assembly + idempotent reuse, package/
+  attempt trigger negatives + the remote-ref CHECK); schema head
+  `0025`
+
 ## Next immediate task
 
-PHASE 7 TASK P1 (authorized under the autonomous continuation mandate)
-— PUBLICATION PACKAGE FOUNDATION, per
-PHASE7_PUBLISHING_ARCHITECTURE.md §3/§7: migration `0025`
-(`publication_packages` immutable versioned append-only with the full
-pin set + payload/`publication-package/1`/package_hash/media_manifest,
-and `publication_attempts` append-only execution facts with
-per-package UNIQUE attempt_number, derived idempotency_key, bounded
-sanitized statuses {succeeded, transport_error, rejected_by_api,
-timeout} and remote ref presence tied to success);
-`contentos.publishing` assembler — deterministic canonical-JSON
-projection of the approved artifacts, refusing without a current
-approval / covering ready report / satisfied-or-waived media; unit
-tests; REAL PostgreSQL verification (0024→0025 cycle over populated
-data + trigger negatives + a real assembly over a fully approved
-chain). Then P2 scheduling + expiry resolution.
+PHASE 7 TASK P2 (authorized under the autonomous continuation mandate)
+— SCHEDULING + EXPIRY RESOLUTION, per
+PHASE7_PUBLISHING_ARCHITECTURE.md §2/§7: operator commands
+`assemble-publication-package` (direct, durable package) and
+`schedule-publication` (APPROVED → SCHEDULED gated on the current
+approval + a durable package whose hash equals the approved hash;
+pins {publication_package_id, package_hash, human_decision_id}; the
+named actor recorded); the APPROVAL_EXPIRED resolution commands
+(deterministic target gate: QA_REVIEW when the ACTIVE QA report no
+longer covers the ACTIVE draft, else AWAITING_HUMAN_REVIEW — with the
+re-entry pins carried so downstream package resolution keeps working);
+tests incl. the stale-at-scheduling path through
+`expire_stale_approval`. No migration. Then P3 transport + publish
+task.
 
 Before implementing the affected integrations, resolve:
 

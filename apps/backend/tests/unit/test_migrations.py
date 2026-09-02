@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0024"]
+    assert script.get_heads() == ["0025"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0025").down_revision == "0024"
     assert script.get_revision("0024").down_revision == "0023"
     assert script.get_revision("0023").down_revision == "0022"
     assert script.get_revision("0022").down_revision == "0021"
@@ -409,6 +410,23 @@ def test_media_image_purpose_migration_widens_and_guards() -> None:
     # The downgrade refuses to destroy or invalidate audit history.
     assert "cannot downgrade 0024" in source
     assert "purpose = 'media_image'" in source
+
+
+def test_publication_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0024:0025")
+
+    assert "CREATE TABLE publication_packages" in sql
+    assert "uq_publication_packages_version" in sql
+    assert "uq_publication_packages_content" in sql
+    assert "ck_publication_packages_package_hash_format" in sql
+    assert "CREATE TRIGGER trg_publication_packages_append_only" in sql
+    assert "CREATE TABLE publication_attempts" in sql
+    assert "uq_publication_attempts_number" in sql
+    assert "ck_publication_attempts_status" in sql
+    assert "ck_publication_attempts_remote_ref" in sql
+    assert "CREATE TRIGGER trg_publication_attempts_append_only" in sql
+    # Execution facts only: no editorial vocabulary in the attempt statuses.
+    assert "'rejected'" not in sql and "'approved'" not in sql
 
 
 def test_offline_upgrade_enables_pgvector_without_leaking_url() -> None:
