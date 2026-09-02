@@ -9,7 +9,8 @@ AWAITING_HUMAN_REVIEW) - IN PROGRESS
 (Task 1 Writer Architecture / Drafting Boundary Design COMPLETE — design
 accepted, including the operator-required architecture correction pass;
 Task 2 Draft Persistence + Provenance Foundation COMPLETE;
-Task 3 Writer Validation & Originality Policies COMPLETE)
+Task 3 Writer Validation & Originality Policies COMPLETE;
+Task 4 Writer Input Projection + Output Schema + Engine COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2178,22 +2179,58 @@ access protection belongs to future deployment infrastructure.
   harness brief gained an inference claim + link/media needs), 135 admin
   tests, and the full root quality gate passed
 
+- PHASE 4 Task 4 (writer input projection, output schema, engine)
+  complete: `contentos.drafts.generation_schemas` — strict `WriterDraftV1`
+  (`writer-draft/1`, extra=forbid, bounded sections/blocks/refs; evidence
+  ids are not in the model vocabulary — the model references CLAIMS only,
+  provenance resolves through the brief); `contentos.drafts.generation` —
+  `WriterEngine` (`writer/1`) through the EXISTING contentos.ai boundary
+  (purpose WRITER_DRAFT, template `writer-draft/1` with binding Turkish
+  writing rules, instructions never persisted/hashed): typed
+  preconditions BEFORE any provider call (exact ACCEPTED brief + DRAFTING
+  work item, zero invocations otherwise); deterministic bounded
+  projection (brief contract, claims with evidence IDs + flat bounded
+  `evidence_units` carrying statement<=500/verification/source-slug/
+  trust/freshness with ResearchEvidence identity attached, contradictions
+  with resolution states, required-handling manifest, intent, idea, work
+  item locale/market — no source bodies/clean_text/raw payloads/URLs,
+  test-pinned); attempt input_refs pin brief/work-item/idea/pack/intent
+  ids + claim/handling id sets + engine and policy identities; the domain
+  validator runs the SAME Writer policies as persistence (structure/
+  claim-ref/need-ref checks + coverage + fact-creation envelope +
+  originality) so a violating model output is a durable
+  VALIDATION_FAILED attempt with ZERO draft rows; SUCCEEDED output
+  materializes through DraftService.create_generated_draft (one draft per
+  attempt); same identity + retry reuses the durable attempt/draft with
+  no provider call; SUCCEEDED-attempt-without-draft is a typed
+  IncompleteDraftMaterializationError recovered ONLY by explicit
+  retry_number+1 (tested); deterministic persistence rejection keeps the
+  attempt's real status (DraftGenerationMaterializationError); explicit
+  retry_number+1 with a supersede reason produces version 2 with audited
+  supersession; the existing ADR-0009 OpenAI adapter works unchanged
+  through the boundary — no adapter change, no live calls in gates
+- Task 4 added no migration (schema head stays `0018`), no Celery, no
+  API/admin, no dependency changes
+- Task 4 verified: 1120 backend tests (1111 + 9 new writer-engine tests),
+  135 admin tests, and the full root quality gate passed
+
 ## Next immediate task
 
-PHASE 4 TASK 4 (authorized under the autonomous continuation mandate) —
-WRITER INPUT PROJECTION, OUTPUT SCHEMA, AND ENGINE, per accepted
-PHASE4_WRITER_ARCHITECTURE.md §22: deterministic bounded
-`WriterInputProjection` (brief contract, claims with bounded evidence
-statements + identities, pack cautions/contradictions, intent, idea,
-locale/market, required-handling manifest; canonical hash = attempt
-input hash; forbidden fields never enter), strict `WriterDraftV1` output
-schema + template/schema `writer-draft/1`, and the `WriterEngine`
-(`writer/1`) through the EXISTING contentos.ai boundary with the fake
-provider: attempt identity + pre-provider short-circuits, idempotent
-materialization via DraftService.create_generated_draft,
-IncompleteDraftMaterializationError + retry_number+1 recovery. The
-existing OpenAI adapter works unchanged through the boundary. No
-migration, no Celery, no API/admin, no live provider calls in gates.
+PHASE 4 TASK 5 (authorized under the autonomous continuation mandate) —
+WRITER ORCHESTRATION + DRAFTING->EDITING WIRING (initial generation
+only), per accepted PHASE4_WRITER_ARCHITECTURE.md §22:
+`contentos.editorial.generate_writer_draft` Celery job under the
+inherited Phase 2/3 delivery contract (WorkerRuntime provider seam,
+DOMAIN vs DISPATCH retry separation with failed attempts committed
+before DOMAIN retries, redelivery-compatible-entry guards, JSON-safe
+kwargs {content_brief_id, retry_number, supersede_reason}); TX A durable
+draft commit, TX B explicit SYSTEM WorkflowService transition
+DRAFTING -> EDITING with the draft id/version/content-hash pinned in the
+event (WORKFLOW.md's own artifact gate), commit, NO downstream dispatch
+(Editor does not exist); no rework/regeneration-from-EDITING exposure
+(depends on the Task 6 routing foundation). Real PG + real Redis
+verification of generate -> durable draft -> EDITING, failure
+truthfulness, and redelivery idempotency. No migration, no API/admin.
 
 Before implementing the affected integrations, resolve:
 

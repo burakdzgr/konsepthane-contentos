@@ -36,3 +36,15 @@ class DraftConflictError(DraftError):
 
 class DraftStatusConflictError(DraftError):
     """The requested status change violates the forward-only status model."""
+
+
+class IncompleteDraftMaterializationError(DraftError):
+    """A SUCCEEDED writer attempt has no materialized draft and its raw
+    output was (by design) never persisted; recovery is an explicit new
+    provider invocation with retry_number + 1."""
+
+
+class DraftGenerationMaterializationError(DraftError):
+    """Structurally valid, policy-passing Writer output was rejected by
+    deterministic draft persistence; the completed attempt keeps its real
+    SUCCEEDED status and is never relabeled."""
