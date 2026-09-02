@@ -171,6 +171,7 @@ EDITORIAL_TASK_LABELS = Literal[
     "generate_editor_review",
     "run_qa_gates",
     "generate_media_image",
+    "publish_package",
 ]
 
 # Contradiction resolution: "unresolved" is not a resolution — excluding it
@@ -1696,3 +1697,36 @@ def resolve_approval_expired(
     return WorkItemStateResponse(
         status="updated", work_item_id=item.id, current_state=item.current_state
     )
+
+
+@router.post("/work-items/{work_item_id}/publish", response_model=QueuedResponse)
+def publish_work_item(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> QueuedResponse:
+    """Queue the governed `publish_package` dispatch. Permitted from
+    SCHEDULED (normal) and PUBLISHING (re-drive after a crash or an
+    unconfigured transport); the worker re-checks the approval and a
+    stale one expires instead of publishing."""
+    item = WorkflowRepository(session).get_by_id(work_item_id)
+    if item is None:
+        raise HTTPException(
+            status_code=404, detail=f"no editorial work item with id {work_item_id}"
+        )
+    if item.current_state not in (WorkflowState.SCHEDULED, WorkflowState.PUBLISHING):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "publication requires SCHEDULED or PUBLISHING "
+                f"(current: {item.current_state.value})"
+            ),
+        )
+    dispatcher = _dispatcher(request)
+    request_id = _current_request_id()
+    _enqueue_or_503(
+        "publish_package",
+        work_item_id,
+        lambda: dispatcher.enqueue_publish(str(work_item_id), request_id=request_id),
+    )
+    return QueuedResponse(status="queued", task="publish_package", entity_id=work_item_id)

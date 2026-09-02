@@ -605,8 +605,15 @@ class TestNoGenericEndpoints:
         paths = set(harness.app.openapi()["paths"])
         assert paths
         for path in paths:
-            for banned in ("publish", "pinterest", "release"):
+            for banned in ("pinterest", "release"):
                 assert banned not in path.lower(), path
+        # Phase 7 P3: publication execution exists ONLY as the governed
+        # queue command whose worker re-checks the approval before any
+        # dispatch — never as any other command shape.
+        publish_paths = {path for path in paths if "publish" in path.lower()}
+        assert publish_paths == {
+            "/internal/editorial/work-items/{work_item_id}/publish",
+        }
         # Phase 5 governance: approval exists ONLY as the reviewer decision
         # surface plus the governed expiry-resolution command.
         approval_paths = {

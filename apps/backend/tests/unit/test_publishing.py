@@ -349,3 +349,172 @@ class TestExpiryResolution:
             {"reason": "erken çözüm denemesi"},
         )
         assert response.status_code == 409
+
+
+class TestPublishTask:
+    """P3: the governed dispatch behind the transport boundary."""
+
+    def worker_app(self, harness: Harness, transport=None):
+        from contentos.core.config import Environment, LogLevel, Settings
+        from contentos.queue.celery import create_celery_app
+        from contentos.worker.editorial_tasks import register_editorial_pipeline_tasks
+        from contentos.worker.runtime import WorkerRuntime
+
+        settings = Settings(
+            environment=Environment.TEST,
+            service_name="ContentOS Publish Task Test",
+            application_version="1.0.0-test",
+            log_level=LogLevel.INFO,
+            api_docs_enabled=False,
+            celery_task_always_eager=True,
+            celery_broker_connection_retry_on_startup=False,
+        )
+        runtime = WorkerRuntime(
+            settings,
+            session_factory=harness.session_factory,
+            publishing_transport_factory=((lambda: transport) if transport is not None else None),
+        )
+        app = create_celery_app(settings)
+        register_editorial_pipeline_tasks(app, runtime)
+        return app
+
+    def scheduled(self, harness: Harness) -> tuple[uuid.UUID, str]:
+        scheduler = TestScheduling()
+        work_item_id, package_id = scheduler.assembled(harness)
+        ok = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/schedule-publication",
+            {"publication_package_id": package_id, "reason": "yayin planina alindi"},
+        )
+        assert ok.status_code == 200
+        return work_item_id, package_id
+
+    def run(self, app, work_item_id: uuid.UUID) -> dict:
+        from contentos.worker.editorial_tasks import PUBLISH_PACKAGE_TASK
+
+        return (
+            app.tasks[PUBLISH_PACKAGE_TASK].apply(kwargs={"work_item_id": str(work_item_id)}).get()
+        )
+
+    def test_successful_dispatch_publishes_with_pins_and_idempotency(
+        self, harness: Harness
+    ) -> None:
+        from contentos.publishing.models import PublicationAttempt
+        from contentos.publishing.transport import FakePublishingTransport, TransportOutcome
+        from contentos.workflow.models import EditorialWorkflowEvent
+        from contentos.workflow.repository import WorkflowRepository
+
+        work_item_id, package_id = self.scheduled(harness)
+        transport = FakePublishingTransport(
+            outcome=TransportOutcome(
+                status="succeeded", remote_publication_ref="konsepthane-pub-42"
+            )
+        )
+        app = self.worker_app(harness, transport)
+        result = self.run(app, work_item_id)
+        assert result["status"] == "completed", result
+        assert result["remote_publication_ref"] == "konsepthane-pub-42"
+
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert item is not None and item.current_state.value == "published"
+            attempt = session.execute(select(PublicationAttempt)).scalar_one()
+            assert attempt.status == "succeeded"
+            assert attempt.remote_publication_ref == "konsepthane-pub-42"
+            assert attempt.idempotency_key.startswith("contentos-pub-")
+            assert transport.calls[0]["idempotency_key"] == attempt.idempotency_key
+            event = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert event is not None and event.to_state.value == "published"
+            assert event.artifact_refs["publication_package_id"] == package_id
+            assert event.artifact_refs["remote_publication_ref"] == "konsepthane-pub-42"
+
+        # Redelivery: reused, no second dispatch, no new attempt.
+        again = self.run(app, work_item_id)
+        assert again["status"] == "reused"
+        assert len(transport.calls) == 1
+        with harness.session() as session:
+            assert len(session.execute(select(PublicationAttempt)).scalars().all()) == 1
+
+    def test_stale_approval_expires_instead_of_publishing(self, harness: Harness) -> None:
+        from contentos.publishing.models import PublicationAttempt
+        from contentos.publishing.transport import FakePublishingTransport
+        from contentos.workflow.repository import WorkflowRepository
+
+        work_item_id, _ = self.scheduled(harness)
+        with harness.session() as session:
+            draft = session.execute(select(ContentDraft)).scalars().first()
+            assert draft is not None
+            draft.content_hash = "d" * 64  # drift: the approval goes stale
+            session.commit()
+        transport = FakePublishingTransport()
+        app = self.worker_app(harness, transport)
+        result = self.run(app, work_item_id)
+        assert result["status"] == "approval_expired"
+        assert transport.calls == []  # nothing was dispatched
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert item is not None and item.current_state.value == "approval_expired"
+            assert session.execute(select(PublicationAttempt)).scalar_one_or_none() is None
+
+    def test_terminal_rejection_blocks_never_rejects(self, harness: Harness) -> None:
+        from contentos.publishing.models import PublicationAttempt
+        from contentos.publishing.transport import FakePublishingTransport, TransportOutcome
+        from contentos.workflow.repository import WorkflowRepository
+
+        work_item_id, _ = self.scheduled(harness)
+        transport = FakePublishingTransport(
+            outcome=TransportOutcome(
+                status="rejected_by_api", error_class="publishing_api_rejected_422"
+            )
+        )
+        app = self.worker_app(harness, transport)
+        result = self.run(app, work_item_id)
+        assert result["status"] == "publish_failed"
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert item is not None
+            # Execution failure is NEVER an editorial decision.
+            assert item.current_state.value == "blocked"
+            assert item.rejected_reason is None
+            assert "publishing_api_rejected_422" in (item.blocked_reason or "")
+            attempt = session.execute(select(PublicationAttempt)).scalar_one()
+            assert attempt.status == "rejected_by_api"
+            assert attempt.remote_publication_ref is None
+
+    def test_unconfigured_transport_is_a_truthful_noop(self, harness: Harness) -> None:
+        from contentos.workflow.repository import WorkflowRepository
+
+        work_item_id, _ = self.scheduled(harness)
+        app = self.worker_app(harness, transport=None)  # no factory, no settings
+        result = self.run(app, work_item_id)
+        assert result["status"] == "transport_unconfigured"
+        assert "CONTENTOS_PUBLISHING_API_URL" in result["detail"]
+        with harness.session() as session:
+            item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert item is not None and item.current_state.value == "scheduled"
+
+    def test_publish_command_queues_only_from_publishing_states(self, harness: Harness) -> None:
+        work_item_id, _ = self.scheduled(harness)
+        before = len(harness.dispatcher.calls)
+        response = harness.post(f"/internal/editorial/work-items/{work_item_id}/publish")
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "queued",
+            "task": "publish_package",
+            "entity_id": str(work_item_id),
+        }
+        new_calls = harness.dispatcher.calls[before:]
+        assert len(new_calls) == 1 and new_calls[0][0] == "publish_package"
+
+        accepted, _ = approved_context(harness)
+        early = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/publish"
+        )
+        assert early.status_code == 409

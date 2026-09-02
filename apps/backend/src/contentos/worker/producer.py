@@ -23,6 +23,7 @@ from contentos.worker.editorial_tasks import (
     GENERATE_MEDIA_IMAGE_TASK,
     GENERATE_WRITER_DRAFT_TASK,
     PROMOTE_RESEARCH_TASK,
+    PUBLISH_PACKAGE_TASK,
     RUN_QA_GATES_TASK,
 )
 from contentos.worker.research_tasks import (
@@ -148,6 +149,8 @@ class EditorialControlDispatcher(Protocol):
         *,
         request_id: str | None = None,
     ) -> None: ...
+
+    def enqueue_publish(self, work_item_id: str, *, request_id: str | None = None) -> None: ...
 
 
 class CeleryEditorialControlDispatcher:
@@ -325,3 +328,6 @@ class CeleryEditorialControlDispatcher:
             },
             request_id,
         )
+
+    def enqueue_publish(self, work_item_id: str, *, request_id: str | None = None) -> None:
+        self._send(PUBLISH_PACKAGE_TASK, {"work_item_id": work_item_id}, request_id)

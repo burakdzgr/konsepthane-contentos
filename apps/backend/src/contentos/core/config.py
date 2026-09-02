@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
     openai_image_model: str | None = Field(default=None, min_length=1)
     openai_image_timeout_seconds: float = Field(default=120.0, ge=1.0, le=600.0)
+    # The Publishing API is the ONLY path toward Konsepthane production.
+    # Deliberately default-None: there is no default endpoint, and the
+    # HTTP transport refuses to construct without both values.
+    publishing_api_url: str | None = Field(default=None, min_length=1)
+    publishing_api_key: SecretStr | None = None
+    publishing_timeout_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
 
     @field_validator("database_url")
     @classmethod

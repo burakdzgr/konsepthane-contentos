@@ -11,15 +11,18 @@ else back to QA_REVIEW (with the review/draft pins the QA engine
 requires). The caller commits.
 """
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from contentos.decisions.service import ApprovalStatus, DecisionService
 from contentos.drafts.repository import DraftRepository
 from contentos.publishing.errors import PublicationPreconditionError
-from contentos.publishing.models import PublicationPackage
+from contentos.publishing.models import PublicationAttempt, PublicationPackage
+from contentos.publishing.transport import TransportOutcome
 from contentos.qa.enums import QaOutcome, QaReportStatus
 from contentos.qa.repository import QaRepository
 from contentos.reviews.enums import ReviewStatus
@@ -155,6 +158,67 @@ class PublishingService:
             artifact_refs=refs,
             request_id=request_id,
             actor_user_id=actor_user_id,
+        )
+
+    # --- dispatch attempts ----------------------------------------------------
+
+    @staticmethod
+    def idempotency_key(package: PublicationPackage) -> str:
+        """Derived from (work_item, package_hash): retries and redelivery
+        can never double-publish through an idempotent Publishing API."""
+        digest = hashlib.sha256(
+            f"{package.work_item_id}:{package.package_hash}".encode()
+        ).hexdigest()
+        return f"contentos-pub-{digest[:40]}"
+
+    def record_attempt(
+        self,
+        package: PublicationPackage,
+        outcome: TransportOutcome,
+        *,
+        transport_name: str,
+        request_id: str | None = None,
+    ) -> PublicationAttempt:
+        next_number = (
+            int(
+                self._session.scalar(
+                    select(func.max(PublicationAttempt.attempt_number)).where(
+                        PublicationAttempt.publication_package_id == package.id
+                    )
+                )
+                or 0
+            )
+            + 1
+        )
+        attempt = PublicationAttempt(
+            publication_package_id=package.id,
+            attempt_number=next_number,
+            idempotency_key=self.idempotency_key(package),
+            status=outcome.status,
+            error_class=outcome.error_class,
+            remote_publication_ref=outcome.remote_publication_ref,
+            transport_name=transport_name,
+            request_id=request_id,
+        )
+        self._session.add(attempt)
+        self._session.flush()
+        return attempt
+
+    def successful_attempt(self, package_id: uuid.UUID) -> PublicationAttempt | None:
+        return self._session.execute(
+            select(PublicationAttempt).where(
+                PublicationAttempt.publication_package_id == package_id,
+                PublicationAttempt.status == "succeeded",
+            )
+        ).scalar_one_or_none()
+
+    def list_attempts(self, package_id: uuid.UUID) -> list[PublicationAttempt]:
+        return list(
+            self._session.execute(
+                select(PublicationAttempt)
+                .where(PublicationAttempt.publication_package_id == package_id)
+                .order_by(PublicationAttempt.attempt_number)
+            ).scalars()
         )
 
     # --- internals ------------------------------------------------------------

@@ -538,7 +538,7 @@ class TestRegistration:
         for name in RESEARCH_TASK_NAMES + EDITORIAL_TASK_NAMES:
             assert name in app.tasks
         assert len(RESEARCH_TASK_NAMES) == 5
-        assert len(EDITORIAL_TASK_NAMES) == 10
+        assert len(EDITORIAL_TASK_NAMES) == 11
 
 
 class TestPromotionAndScoring:

@@ -3172,28 +3172,58 @@ access protection belongs to future deployment infrastructure.
   wrong-state resolution 409) — suite 1283 backend + 227 admin, gate
   green; no migration (head stays `0025`)
 
+- PHASE 7 Task P3 (transport + publish task) complete:
+  `contentos.publishing.transport` — the `PublishingTransport`
+  protocol (publish(payload, media_manifest, media_reader,
+  idempotency_key) → TransportOutcome with the bounded non-editorial
+  status vocabulary and the success⇔remote-ref invariant enforced in
+  the DTO itself), the deterministic `FakePublishingTransport`
+  (records dispatches, configurable outcome) used by ALL tests and
+  verification, and the configuration-gated `HttpPublishingTransport`
+  skeleton behind new default-None settings
+  `publishing_api_url`/`publishing_api_key` (+timeout) — construction
+  without them is a TYPED `TransportConfigurationError`, there is no
+  default endpoint and no silent no-op; media bytes cross only through
+  the bounded reader; `PublishingService` gained the derived
+  idempotency key (sha256 of work_item:package_hash),
+  `record_attempt` (per-package sequence) and `successful_attempt`;
+  the `publish_package` worker task (11th): transport resolved BEFORE
+  any state moves (unconfigured = truthful no-op, the item stays
+  SCHEDULED), stale approval → the wired `expire_stale_approval` path
+  fires INSTEAD of publishing with zero dispatches, SYSTEM SCHEDULED →
+  PUBLISHING pinned, durable attempt FIRST then SYSTEM → PUBLISHED
+  with the remote ref pinned, transient failures retry bounded,
+  terminal failures SYSTEM → BLOCKED with the truthful reason
+  (REJECTED unreachable), redelivery reuses the durable result with
+  one dispatch total; the operator `publish` queue command
+  (SCHEDULED|PUBLISHING re-drive; 409 elsewhere); the banned-word pin
+  test gained the exact governed publish path
+- Task P3 verified: 5 new tests (success with pins + idempotency key
+  round-trip + redelivery reuse; stale-approval expiry with zero
+  dispatches; terminal rejection → BLOCKED never REJECTED with the
+  truthful blocked_reason; unconfigured transport no-op; the queue
+  command gating) — suite 1288 backend + 227 admin, gate green; REAL
+  PostgreSQL 16 + Redis verification passed (chain to APPROVED,
+  assemble + schedule with the named human, publish via the real
+  broker with envelope inspection — durable attempt → SYSTEM
+  PUBLISHED with pins, redelivery reused with one dispatch); no
+  migration (head stays `0025`)
+
 ## Next immediate task
 
-PHASE 7 TASK P3 (authorized under the autonomous continuation mandate)
-— TRANSPORT + PUBLISH TASK, per PHASE7_PUBLISHING_ARCHITECTURE.md
-§4/§7: `PublishingTransport` protocol (identity + publish(payload,
-media_provider, idempotency_key) → TransportResult) with the
-deterministic `FakePublishingTransport` (records invocations,
-configurable failures) and the configuration-gated HTTP adapter
-skeleton (new settings `publishing_api_url`/`publishing_api_key`,
-both default-None; construction without them is a TYPED error — no
-default endpoint, ever); the `publish_package` queue task (11th
-editorial task): SCHEDULED → re-check the approval (stale →
-`expire_stale_approval` fires instead) → SYSTEM → PUBLISHING →
-transport dispatch with the derived idempotency key → durable
-publication_attempt → on success SYSTEM → PUBLISHED with
-{publication_package_id, package_hash, remote_publication_ref}
-pinned; failures = durable attempts → bounded retries → SYSTEM →
-BLOCKED (truthful reason; REJECTED unreachable); redelivery guards
-mirror the QA task incl. remote-ref reuse; the operator `publish`
-queue command (SCHEDULED only; the banned-word pin test gains the
-exact governed publish path); real-PG + real-Redis verification with
-the fake transport. Then P4 read models + admin publication surface.
+PHASE 7 TASK P4 (authorized under the autonomous continuation mandate)
+— PUBLICATION READ MODELS + ADMIN SURFACE, per
+PHASE7_PUBLISHING_ARCHITECTURE.md §5/§7: GET
+`work-items/{id}/publication` read model (packages with payload
+summary — never the full body dump — hashes, pins, assembler name;
+attempts exactly as recorded with sanitized error classes and remote
+refs; the approval currency of the latest package); admin detail page
+Publication section — state-gated assemble/schedule/publish commands,
+package + attempt history with honest failure classes, the
+APPROVAL_EXPIRED state rendering its resolution command and the exact
+hash mismatch, BLOCKED publication reasons visible; leak tests (no
+publishing URL/key material anywhere); no migration. Then P5 the
+publishing closure audit.
 
 Before implementing the affected integrations, resolve:
 

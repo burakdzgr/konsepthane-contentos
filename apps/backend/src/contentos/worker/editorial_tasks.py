@@ -86,6 +86,7 @@ GENERATE_WRITER_DRAFT_TASK = "contentos.editorial.generate_writer_draft"
 GENERATE_EDITOR_REVIEW_TASK = "contentos.editorial.generate_editor_review"
 RUN_QA_GATES_TASK = "contentos.editorial.run_qa_gates"
 GENERATE_MEDIA_IMAGE_TASK = "contentos.editorial.generate_media_image"
+PUBLISH_PACKAGE_TASK = "contentos.editorial.publish_package"
 
 EDITORIAL_TASK_NAMES = (
     PROMOTE_RESEARCH_TASK,
@@ -98,6 +99,7 @@ EDITORIAL_TASK_NAMES = (
     GENERATE_EDITOR_REVIEW_TASK,
     RUN_QA_GATES_TASK,
     GENERATE_MEDIA_IMAGE_TASK,
+    PUBLISH_PACKAGE_TASK,
 )
 
 MAX_BLOCK_REASON_ITEMS = 5
@@ -879,6 +881,203 @@ def register_editorial_pipeline_tasks(
                 media_asset_id=str(result.asset.id) if result.asset is not None else None,
             )
 
+    # --- publish_package -----------------------------------------------------
+
+    def publish_package(self: Any, work_item_id: str) -> dict[str, Any]:
+        """Phase 7 P3: execute ONE publication dispatch behind the gates.
+
+        SCHEDULED: the approval is RE-CHECKED (stale -> the wired
+        APPROVAL_EXPIRED path fires instead of publishing); then SYSTEM
+        SCHEDULED -> PUBLISHING pinned to the scheduled package. The
+        dispatch outcome is a durable publication attempt FIRST; success
+        advances SYSTEM -> PUBLISHED with the remote reference pinned,
+        transient failures retry bounded, terminal failures advance
+        SYSTEM -> BLOCKED with the truthful reason — execution failure
+        is never an editorial decision (REJECTED is unreachable).
+        """
+        from contentos.decisions.service import DecisionService
+        from contentos.publishing.models import PublicationPackage
+        from contentos.publishing.service import PublishingService
+        from contentos.publishing.transport import TransportConfigurationError
+
+        parsed_item = _parse_uuid(work_item_id)
+        with task_session() as session:
+            workflow_repo = WorkflowRepository(session)
+            item = workflow_repo.get_by_id(parsed_item)
+            if item is None:
+                return _summary(
+                    self,
+                    "precondition_failed",
+                    work_item_id=work_item_id,
+                    detail="no such editorial work item",
+                )
+            publishing = PublishingService(session)
+
+            def _resolve_pinned_package(entered: WorkflowState) -> PublicationPackage:
+                entry = workflow_repo.get_latest_entry_event(parsed_item, entered)
+                pinned = (
+                    (entry.artifact_refs or {}).get("publication_package_id") if entry else None
+                )
+                if pinned is None:
+                    raise WorkflowHistoryConflictError(
+                        f"the {entered.value} entry event does not pin a publication package"
+                    )
+                package = session.get(PublicationPackage, _parse_uuid(str(pinned)))
+                if package is None or package.work_item_id != parsed_item:
+                    raise WorkflowHistoryConflictError(
+                        "the pinned publication package does not resolve"
+                    )
+                return package
+
+            # Redelivery after completion: durable history must pin it all.
+            if item.current_state is WorkflowState.PUBLISHED:
+                package = _resolve_pinned_package(WorkflowState.PUBLISHED)
+                prior = publishing.successful_attempt(package.id)
+                if prior is None:
+                    raise WorkflowHistoryConflictError(
+                        "the work item is PUBLISHED without a successful attempt"
+                    )
+                return _summary(
+                    self,
+                    "reused",
+                    work_item_id=work_item_id,
+                    publication_package_id=str(package.id),
+                    remote_publication_ref=prior.remote_publication_ref,
+                )
+
+            if item.current_state not in (WorkflowState.SCHEDULED, WorkflowState.PUBLISHING):
+                return _summary(
+                    self,
+                    "precondition_failed",
+                    work_item_id=work_item_id,
+                    detail=(
+                        "publication requires SCHEDULED or PUBLISHING "
+                        f"(current: {item.current_state.value})"
+                    ),
+                )
+
+            # The transport must exist BEFORE any state moves: an
+            # unconfigured boundary is a truthful no-op, never a stuck item.
+            try:
+                transport = runtime.create_publishing_transport()
+            except TransportConfigurationError as error:
+                return _summary(
+                    self,
+                    "transport_unconfigured",
+                    work_item_id=work_item_id,
+                    detail=str(error),
+                )
+
+            if item.current_state is WorkflowState.SCHEDULED:
+                decisions = DecisionService(session)
+                if not decisions.approval_is_current(parsed_item):
+                    # The wired G5 path: a stale approval is surfaced,
+                    # never published.
+                    decisions.expire_stale_approval(
+                        parsed_item,
+                        reason=("the approval no longer covers the ACTIVE draft at publish time"),
+                        request_id=_current_request_id(self),
+                    )
+                    session.commit()
+                    return _summary(self, "approval_expired", work_item_id=work_item_id)
+                package = _resolve_pinned_package(WorkflowState.SCHEDULED)
+                WorkflowService(session).transition(
+                    parsed_item,
+                    WorkflowState.PUBLISHING,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=f"publication dispatch of package {package.id} starting",
+                    artifact_refs={
+                        "publication_package_id": str(package.id),
+                        "package_hash": package.package_hash,
+                    },
+                    request_id=_current_request_id(self),
+                )
+                session.commit()
+            else:
+                package = _resolve_pinned_package(WorkflowState.PUBLISHING)
+
+            # Redelivery inside PUBLISHING: an already-successful dispatch
+            # is reused — the idempotency key made the remote side safe too.
+            prior = publishing.successful_attempt(package.id)
+            if prior is None:
+                outcome = transport.publish(
+                    package.payload,
+                    package.media_manifest,
+                    runtime.create_media_store().read,
+                    publishing.idempotency_key(package),
+                )
+                attempt = publishing.record_attempt(
+                    package,
+                    outcome,
+                    transport_name=transport.name,
+                    request_id=_current_request_id(self),
+                )
+                session.commit()  # the execution fact is durable FIRST
+                if outcome.status != "succeeded":
+                    if (
+                        outcome.status in ("transport_error", "timeout")
+                        and self.request.retries < MAX_RETRIES
+                    ):
+                        raise self.retry(countdown=_retry_countdown(self.request.retries))
+                    WorkflowService(session).transition(
+                        parsed_item,
+                        WorkflowState.BLOCKED,
+                        actor_origin=WorkflowActorOrigin.SYSTEM,
+                        reason=(
+                            "publication dispatch failed terminally "
+                            f"({outcome.status}: {outcome.error_class}); "
+                            "execution failure is not an editorial decision"
+                        ),
+                        artifact_refs={
+                            "publication_package_id": str(package.id),
+                            "attempt_number": attempt.attempt_number,
+                        },
+                        request_id=_current_request_id(self),
+                    )
+                    session.commit()
+                    return _summary(
+                        self,
+                        "publish_failed",
+                        work_item_id=work_item_id,
+                        publication_package_id=str(package.id),
+                        attempt_status=outcome.status,
+                        error_class=outcome.error_class,
+                    )
+                prior = attempt
+
+            item = workflow_repo.get_by_id_for_update(parsed_item)
+            assert item is not None
+            if item.current_state is WorkflowState.PUBLISHING:
+                WorkflowService(session).transition(
+                    parsed_item,
+                    WorkflowState.PUBLISHED,
+                    actor_origin=WorkflowActorOrigin.SYSTEM,
+                    reason=(f"publication package {package.id} accepted by the publishing api"),
+                    artifact_refs={
+                        "publication_package_id": str(package.id),
+                        "package_hash": package.package_hash,
+                        "remote_publication_ref": prior.remote_publication_ref,
+                    },
+                    request_id=_current_request_id(self),
+                )
+                session.commit()
+            else:
+                _require_compatible_entry(
+                    workflow_repo,
+                    parsed_item,
+                    WorkflowState.PUBLISHED,
+                    "publication_package_id",
+                    str(package.id),
+                )
+            # No downstream dispatch: distribution/measuring are later phases.
+            return _summary(
+                self,
+                "completed",
+                work_item_id=work_item_id,
+                publication_package_id=str(package.id),
+                remote_publication_ref=prior.remote_publication_ref,
+            )
+
     common_options: dict[str, Any] = {
         "bind": True,
         "shared": False,
@@ -896,6 +1095,7 @@ def register_editorial_pipeline_tasks(
     app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(generate_editor_review)
     app.task(name=RUN_QA_GATES_TASK, **common_options)(run_qa_gates)
     app.task(name=GENERATE_MEDIA_IMAGE_TASK, **common_options)(generate_media_image)
+    app.task(name=PUBLISH_PACKAGE_TASK, **common_options)(publish_package)
 
 
 def _require_commissioned(session: Session, opportunity_id: uuid.UUID) -> Any:

@@ -17,10 +17,12 @@ from contentos.fetching.client import FetchClient
 from contentos.fetching.policy import build_fetch_policy
 from contentos.media.store import MediaStore
 from contentos.payloads.postgres import PostgresRawPayloadStore
+from contentos.publishing.transport import PublishingTransport
 
 SessionFactory = Callable[[], Session]
 FetchClientFactory = Callable[[], FetchClient]
 ProviderFactory = Callable[[], StructuredGenerationProvider]
+PublishingTransportFactory = Callable[[], PublishingTransport]
 
 
 class WorkerRuntime:
@@ -35,6 +37,7 @@ class WorkerRuntime:
         structured_generation_provider_factory: ProviderFactory | None = None,
         image_generation_provider_factory: ProviderFactory | None = None,
         media_store: MediaStore | None = None,
+        publishing_transport_factory: PublishingTransportFactory | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -42,6 +45,7 @@ class WorkerRuntime:
         self._provider_factory = structured_generation_provider_factory
         self._image_provider_factory = image_generation_provider_factory
         self._media_store = media_store
+        self._publishing_transport_factory = publishing_transport_factory
 
     @property
     def settings(self) -> Settings:
@@ -100,3 +104,16 @@ class WorkerRuntime:
         if self._media_store is None:
             self._media_store = MediaStore(self._settings.media_store_root)
         return self._media_store
+
+    def create_publishing_transport(self) -> PublishingTransport:
+        """The Publishing API transport. Lazy and injectable; the default
+        HTTP adapter raises a typed configuration error when the API url
+        or key is not explicitly configured — there is no default
+        endpoint and no silent no-op transport."""
+        if self._publishing_transport_factory is not None:
+            return self._publishing_transport_factory()
+        from contentos.publishing.transport import (
+            create_http_publishing_transport_from_settings,
+        )
+
+        return create_http_publishing_transport_from_settings(self._settings)
