@@ -227,6 +227,62 @@ class WorkflowService:
         self._session.flush()
         return item
 
+    def resolve_block(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        reason: str,
+        request_id: str | None = None,
+    ) -> EditorialWorkItem:
+        """Explicit operator resolution of BLOCKED back to the prior state.
+
+        The resume target is derived ONLY from durable event history (the
+        state the item entered BLOCKED from) — the caller can never supply
+        a target. No prior resumable state is a typed conflict.
+        """
+        item = self._repository.get_by_id(work_item_id)
+        if item is None:
+            raise WorkItemNotFoundError(f"no editorial work item with id {work_item_id}")
+        if item.current_state is not WorkflowState.BLOCKED:
+            raise InvalidWorkflowTransitionError(
+                f"block resolution requires BLOCKED (current: {item.current_state.value})"
+            )
+        prior = self._entry_from_state(item.id, WorkflowState.BLOCKED)
+        if prior is None:
+            raise InvalidWorkflowTransitionError(
+                "durable history records no state to resume to from BLOCKED"
+            )
+        return self.transition(
+            work_item_id,
+            prior,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=reason,
+            request_id=request_id,
+        )
+
+    def reject_blocked(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        reason: str,
+        request_id: str | None = None,
+    ) -> EditorialWorkItem:
+        """Explicit operator BLOCKED -> REJECTED with a required reason."""
+        item = self._repository.get_by_id(work_item_id)
+        if item is None:
+            raise WorkItemNotFoundError(f"no editorial work item with id {work_item_id}")
+        if item.current_state is not WorkflowState.BLOCKED:
+            raise InvalidWorkflowTransitionError(
+                f"blocked rejection requires BLOCKED (current: {item.current_state.value})"
+            )
+        return self.transition(
+            work_item_id,
+            WorkflowState.REJECTED,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=reason,
+            request_id=request_id,
+        )
+
     def _allowed_targets(self, item: EditorialWorkItem) -> frozenset[WorkflowState]:
         current = item.current_state
         if current is WorkflowState.BLOCKED:

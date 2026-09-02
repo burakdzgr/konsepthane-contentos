@@ -6,6 +6,8 @@ from fastapi import FastAPI
 
 from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
+from contentos.api.routes.editorial import router as editorial_router
+from contentos.api.routes.editorial_control import router as editorial_control_router
 from contentos.api.routes.health import router as health_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
@@ -13,7 +15,10 @@ from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.db.session import create_database_engine, create_session_factory
 from contentos.queue.redis import create_redis_client
-from contentos.worker.producer import CeleryResearchControlDispatcher
+from contentos.worker.producer import (
+    CeleryEditorialControlDispatcher,
+    CeleryResearchControlDispatcher,
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -39,9 +44,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(research_router)
     app.include_router(research_control_router)
-    # Producer-only dispatcher for explicit operator job triggers; lazy, so
-    # creating the app never touches Redis. Tests replace it on app.state.
+    app.include_router(editorial_router)
+    app.include_router(editorial_control_router)
+    # Producer-only dispatchers for explicit operator job triggers; lazy, so
+    # creating the app never touches Redis. Tests replace them on app.state.
     app.state.research_control_dispatcher = CeleryResearchControlDispatcher(resolved_settings)
+    app.state.editorial_control_dispatcher = CeleryEditorialControlDispatcher(resolved_settings)
     # RequestContextMiddleware must stay outermost so the request ID context and
     # X-Request-ID header also cover envelope responses for unhandled errors.
     app.add_middleware(RequestContextMiddleware)

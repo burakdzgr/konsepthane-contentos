@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "/", label: "Status" },
   { href: "/sources", label: "Sources" },
   { href: "/research", label: "Research Pipeline" },
+  { href: "/editorial", label: "Editorial" },
 ] as const;
 
 function isCurrent(href: string, pathname: string): boolean {

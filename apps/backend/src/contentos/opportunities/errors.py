@@ -44,3 +44,9 @@ class CommissioningGateError(OpportunityError):
 class CommissioningConflictError(OpportunityError):
     """The commissioning command contradicts durable disposition/workflow
     history; nothing is silently repaired."""
+
+
+class RejectionConflictError(OpportunityError):
+    """The rejection command contradicts durable disposition/workflow
+    history (not OPEN, not IDEA_SCORING, or an inconsistently recorded
+    prior rejection); nothing is silently repaired."""

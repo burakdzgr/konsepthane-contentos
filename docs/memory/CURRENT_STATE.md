@@ -14,7 +14,8 @@ boundary COMPLETE; Task 9 OpenAI adapter + model-assisted idea generation
 engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE; Task 11
 ContentBrief persistence + claim map + acceptance gate COMPLETE; Task 12
 Brief Composition Engine COMPLETE; Task 13 Celery editorial orchestration
-+ operator commissioning command COMPLETE)
++ operator commissioning command COMPLETE; Task 14 admin/operator
+visibility + explicit editorial command surface COMPLETE)
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -1782,6 +1783,109 @@ main
   no Beat scheduling, and no live-provider tests
 - Task 13 verified: 1042 backend tests (1016 + 26 new), 96 admin tests,
   and the full root quality gate passed; schema head `0017`
+- PHASE 3 Task 14 (admin/operator visibility + explicit editorial command
+  surface) complete: NO migration (schema head stays `0017`), no dependency
+  changes, no auth/RBAC, no publication surface anywhere
+- read models: `contentos.api.read_models.editorial` — read-only, bounded,
+  transport-facing projections of durable PostgreSQL facts (no commit/
+  flush/queue/AI/network); the accepted observability rule is binding —
+  every surfaced score/idea/pack/analysis/brief carries engine identity,
+  exact pinned inputs, missing signals, and its decision trail
+- `GET /internal/editorial/work-items`: bounded work-queue page (filters:
+  workflow_state, opportunity_disposition, locale, market, blocked,
+  bounded text search, limit/offset; ordering current_state_entered_at
+  DESC, created_at DESC, id) with per-row effective score (band/
+  eligibility/value/missing signals/risk flags/engine), effective selected
+  idea + originality, latest pack/analysis/brief identities — absent
+  artifacts are absent, never invented; a fixed set-based query count
+  independent of page size (window-function latest/effective subqueries
+  reusing the domain's own orderings)
+- `GET /internal/editorial/work-items/{id}`: the principal explainability
+  projection — work item (+ history-derived blocked resume state), full
+  bounded workflow event history (totals + truncated flags), opportunity,
+  research inputs with duplicate outcome + source/trust/title provenance,
+  score history with per-component availability (UNKNOWN rendered as
+  UNKNOWN, never 0) + weights/threshold/input snapshots + the EXACT
+  effective score marked by the repository's own ordering, immutable idea
+  versions + append-only selection history + exact effective selection,
+  pack versions with members (roles/clusters/bounded statements/source
+  trust) + contradictions (unresolved means unresolved) + sufficiency
+  detail, intent analyses with frozen known_signal_refs + live signal
+  ages (observed/as-of/recorded) + missing signals + Task-10
+  cannibalization truth-states, brief versions with full writing contract
+  + claim map with exact claim -> ResearchEvidence links + status events,
+  and safe AI attempt metadata (provider/model/schema/template/hash/
+  refs/status/retry/usage — never prompts/raw output/keys)
+- `GET /internal/editorial/opportunities/{id}/eligible-evidence`: paged
+  over `EvidencePackService.list_eligible_evidence` (the domain's own
+  eligibility rule) — safe evidence fields for the HUMAN to select from;
+  no excerpts, no bodies, no selection heuristic
+- explicit commands (`contentos.api.routes.editorial_control`, thin
+  adapters, strict extra=forbid request models, error mapping 404/409/
+  422/503, server-side request_id from RequestContextMiddleware — client
+  body request_ids are never trusted): queue commands promote,
+  evaluate, generate-ideas, evidence-packs/build (EXACT Task-13 bounded
+  selection/contradiction command shape), analyze-search-intent
+  (SEO_RESEARCH-gated, exact signal pins, no implicit latest),
+  compose-brief; direct domain commands reopen-duplicate
+  (promote_duplicate_override; decision never falsified, never
+  auto-evaluated), commission, reject, ideas select/deselect,
+  contradictions resolve (parent pack sufficiency NEVER retroactively
+  changed), evidence-packs reassemble (new immutable version; workflow
+  never advances by itself — continuing with a READY reassembled pack is
+  the next explicit operator step, reported as the accepted Task-13
+  boundary), work-items resolve-block / reject-blocked, briefs accept
+  (Task-11 gates; NOT publication); NO /action, /execute, /state,
+  /transition, /command, and no publish/schedule/approve anywhere
+  (test-pinned over the OpenAPI paths)
+- new narrow domain commands (accepted-design gaps only):
+  `OpportunityRejectionService.reject_opportunity` (rule reported:
+  rejection applies ONLY to an OPEN opportunity in IDEA_SCORING; row
+  lock + post-lock re-read; REJECTED disposition audit + OPERATOR
+  IDEA_SCORING -> REJECTED via WorkflowService; idempotent only when
+  history consistently records it; caller commits) and
+  `WorkflowService.resolve_block` / `reject_blocked` (resume target
+  derived ONLY from durable event history; caller can never supply one)
+- producer: `EditorialControlDispatcher` protocol +
+  `CeleryEditorialControlDispatcher` in `contentos.worker.producer` —
+  publishes ONLY the six frozen Task-13 names with their exact JSON-safe
+  kwargs; lazy (no broker/DB/provider/task registration at app
+  creation); queue transport failure is 503 with a safe stable detail,
+  never reported as queued
+- private Next.js admin: `/editorial` work queue (state/disposition/
+  search filters, pagination, truthful per-row projections, blocked
+  reasons, research-intake promote + reopen-duplicate forms) and
+  `/editorial/[id]` detail (workflow + blocked resolution, opportunity +
+  explainable scores next to Commission/Reject, research inputs, idea
+  cards with select/deselect + generation metadata, evidence packs with
+  members/contradictions + explicit operator pack-builder form over
+  eligible evidence (nothing auto-selected), search intent with known vs
+  missing signals + "Not checked" cannibalization wording, briefs with
+  claim map + two visibly separate actions Compose Draft and Accept for
+  drafting (UI text states acceptance does NOT publish), safe AI attempt
+  table, workflow history); server-only backend boundary preserved (the
+  internal URL never reaches browser JS/HTML, test-pinned); commands are
+  server actions with explicit operator reasons — no auto-filled
+  rationale; UNKNOWN/absent values render as Unknown/Not observed/Not
+  checked/Not reported, never 0/none/safe
+- verified end-to-end against real ephemeral pgvector PostgreSQL + real
+  Redis: the REAL FastAPI app with the REAL lazy producer published every
+  queue command to the real broker (message name/JSON payload/request_id
+  header verified, no secrets/URLs in messages), each message was then
+  executed by the REAL registered Task-13 worker tasks (fake AI provider
+  through the runtime seam) — full §19 operator story: promote ->
+  evaluate (REAL commissionable/strong score) -> commission (idempotent
+  repeat) -> generate ideas -> select -> eligible evidence -> explicit
+  pack build (READY -> SEO_RESEARCH) -> analyze with exact signal pin
+  (BRIEFING) -> compose (DRAFT) -> contradiction resolve + reassemble v2
+  (old pack untouched) -> accept-for-drafting (ACCEPTED_FOR_DRAFTING +
+  DRAFTING); plus rejection on a second eligible item, block resolution
+  to the history-derived state on a third, duplicate reopen over a REAL
+  DUPLICATE decision (decision untouched, OPERATOR work item), and
+  GET-endpoints-change-nothing; teardown complete
+- Task 14 verified: 1081 backend tests (1042 + 39 new), 135 admin tests
+  (96 + 39 new), admin build, and the full root quality gate passed;
+  schema head `0017`
 
 ## Current documentation structure
 
@@ -1858,11 +1962,14 @@ generation, SearchIntentAnalysis (deterministic + optional
 INTENT_SYNTHESIS), ContentBrief persistence + claim map + acceptance
 gate, and the Brief Composition Engine (deterministic assembly +
 model-assisted wording via BRIEF_COMPOSITION) exist as synchronous domain
-engines, now also orchestrated through the six registered §18 editorial
-Celery tasks; commissioning exists as the transport-neutral
-`commission_opportunity` operator command (no API/admin surface yet), and
-brief acceptance remains an explicit operator command that no Celery task
-ever performs. Automated tests and gates never call a real AI provider. The admin exposes exactly the minimal
+engines, orchestrated through the six registered §18 editorial Celery
+tasks and now exposed through the `/internal/editorial` read models,
+explicit POST command surface, and the private Next.js `/editorial`
+screens; commissioning, rejection, selection, contradiction resolution,
+block resolution, brief acceptance, and duplicate reopen are explicit
+operator commands with required reasons, and brief acceptance remains a
+decision no Celery task ever performs. Automated tests and gates never
+call a real AI provider. The admin exposes exactly the minimal
 Task 19 operator controls (registration, lifecycle, admission, requeue,
 discovery/fetch triggers); there are no normalize/duplicate/evidence stage
 triggers, no Celery control panel, no deletes, no source editing, and no
@@ -1877,17 +1984,13 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 14 (awaiting explicit authorization) — admin/operator
-visibility + explicit command surface, per the accepted design §19: expose
-the Phase 3 pipeline read-only (work items, opportunities, scores, ideas,
-packs, intent analyses, briefs with their exact pinned artifact identities
-and workflow history) plus the explicit operator commands that already
-exist as domain services (promotion trigger, re-scoring, commissioning,
-idea generation/selection, evidence-pack building with explicit
-selections, intent analysis, brief composition, brief acceptance) —
-transport surfaces over the existing commands, never new editorial
-semantics; human boundaries (commissioning, acceptance) stay explicit
-operator actions.
+PHASE 3 TASK 15 (awaiting explicit authorization) — PHASE 3 CLOSURE
+AUDIT: audit the completed Phase 3 implementation (Tasks 1-14) against
+the accepted design and exit criteria (§23), record the formal closure
+decision and any deferred/known limitations (including the documented
+commit/broker dispatch gap and the reassembled-pack continuation
+boundary) truthfully, and declare Phase 3 complete or enumerate exact
+blockers. No new features.
 
 Before implementing the affected integrations, resolve:
 

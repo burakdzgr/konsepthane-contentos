@@ -957,6 +957,26 @@ itself is invalid — every surfaced score/idea/pack/brief must render its
 engine versions, inputs, missing signals, and decision trail from the
 immutable records of §10.
 
+Realized in Phase 3 Task 14: read models in
+`contentos.api.read_models.editorial`; reads
+`GET /internal/editorial/work-items`, `.../work-items/{id}`,
+`.../opportunities/{id}/eligible-evidence`; explicit POST commands under
+`/internal/editorial/...` — `research/{id}/promote`,
+`research/{id}/reopen-duplicate`, `opportunities/{id}/evaluate`,
+`/commission`, `/reject`, `/generate-ideas`, `/evidence-packs/build`,
+`/analyze-search-intent`, `ideas/{id}/select`, `/deselect`,
+`contradictions/{id}/resolve`, `evidence-packs/{id}/reassemble`,
+`work-items/{id}/resolve-block`, `/reject-blocked`, `/compose-brief`,
+`briefs/{id}/accept` (thin adapters over existing domain services and a
+producer-only `CeleryEditorialControlDispatcher` publishing the six
+frozen §18 job names). Private admin routes `/editorial` and
+`/editorial/[id]` extend the Task-17/19 server-only pattern.
+Acknowledged recovery limitation (for the closure audit): a READY pack
+produced by `reassemble` does not advance workflow or dispatch analysis
+by itself — continuing with it is the operator's next explicit command,
+because no accepted Task-13 orchestration semantics cover automatic
+continuation from reassembly.
+
 ---
 
 ## 20. Security (unchanged boundaries)
