@@ -10,6 +10,7 @@ class GenerationPurpose(StrEnum):
     INTENT_SYNTHESIS = "intent_synthesis"
     BRIEF_COMPOSITION = "brief_composition"
     EVIDENCE_ORGANIZATION = "evidence_organization"
+    WRITER_DRAFT = "writer_draft"
 
 
 class GenerationStatus(StrEnum):

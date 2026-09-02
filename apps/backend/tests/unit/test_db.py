@@ -90,6 +90,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.ai.models  # noqa: F401
     import contentos.briefs.models  # noqa: F401
     import contentos.discovery.models  # noqa: F401
+    import contentos.drafts.models  # noqa: F401
     import contentos.duplicates.models  # noqa: F401
     import contentos.evidence_packs.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
@@ -130,6 +131,9 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "brief_claims",
         "brief_claim_evidence",
         "brief_status_events",
+        "content_drafts",
+        "draft_claim_usages",
+        "draft_status_events",
     }
 
 

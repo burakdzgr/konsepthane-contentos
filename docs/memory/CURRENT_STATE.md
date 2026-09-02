@@ -7,7 +7,8 @@ Last updated: 2026-09-02
 PHASE 4 - Content Production (Writer -> Editor -> QA, ending at
 AWAITING_HUMAN_REVIEW) - IN PROGRESS
 (Task 1 Writer Architecture / Drafting Boundary Design COMPLETE — design
-accepted, including the operator-required architecture correction pass)
+accepted, including the operator-required architecture correction pass;
+Task 2 Draft Persistence + Provenance Foundation COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2086,22 +2087,80 @@ ContentOS is a private single-operator control panel. Application-level users,
 authentication, authorization, roles, and RBAC are outside the Phase 1 design;
 access protection belongs to future deployment infrastructure.
 
+- PHASE 4 Task 2 (draft persistence + provenance foundation) complete:
+  `contentos.drafts` package (enums/errors/values/models/repository/
+  service) + migration `0018` (schema head now `0018`): `content_drafts`
+  (immutable versioned rows, identity work_item_id+version, RESTRICT FKs
+  to work item/accepted brief/attempt, `UNIQUE(generation_attempt_id)`,
+  partial-unique single ACTIVE row per work item, partial-unique
+  manual-identity `(work_item_id, manual_input_hash) WHERE
+  origin='operator'`, origin<->attempt and origin<->manual-hash paired
+  CHECKs, content_hash whole-version integrity), append-only
+  `draft_claim_usages` (1:1 relational mirror of body claim refs -> exact
+  BriefClaim with section/block anchors; evidence links deliberately NOT
+  duplicated at draft level — provenance resolves Draft ->
+  DraftClaimUsage -> BriefClaim -> BriefClaimEvidence -> ResearchEvidence),
+  append-only `draft_status_events`, and the guarded PG trigger (DELETE
+  forbidden; content fields immutable; exactly two legal update shapes:
+  forward-only active->superseded, then a one-shot replacement-pointer
+  set — reverse transitions and pointer rewrites blocked);
+  `ai_generation_attempts` purpose CHECK widened with `writer_draft`
+  (runtime enum too); downgrade refuses to destroy writer_draft attempt
+  audit history (guard raises instead of deleting)
+- bounded body contract `writer-draft-body/1` implemented in
+  `contentos.drafts.values`: ordered sections keyed to the brief section
+  contract, typed blocks (paragraph/list/how_to_step/callout/faq_item/
+  internal_link_need/media_need) with inline text, per-block claim_refs/
+  uncertainty_refs, deterministic URL/HTML/script ban on every text field,
+  slug block ids unique across the draft, bounded counts/lengths;
+  placeholder blocks reference brief link/media-need entries by index and
+  can never carry URLs, assets, or claim refs
+- `DraftService` (flush; caller commits): `create_operator_draft` (origin
+  operator, engine manual-draft-input/1, NO fake AI attempt, durable
+  `manual_input_hash` idempotency identity — identical resubmission/
+  redelivery reuses the same draft, changed submission is a new version)
+  and `create_generated_draft` (validates the attempt: purpose
+  WRITER_DRAFT + SUCCEEDED + pinned brief match; one draft per attempt,
+  redelivery reuses; conflicting content for the same attempt is a typed
+  refusal); BOTH origins pass identical structural gates (exact
+  ACCEPTED_FOR_DRAFTING brief + work item in DRAFTING revalidated under
+  the work-item row lock, section-contract conformance, claim refs must
+  be claims of the pinned brief, need-ref bounds, claim-usage mirroring);
+  supersession requires an explicit reason, keeps history immutable
+  (status event + one-shot replacement pointer), and the row lock
+  serializes concurrent submissions (PG race: one winner, loser converges
+  idempotently); persisted snapshots stay truthful for Task 2
+  (validation policy `writer-structural/1`, uncertainty_coverage
+  `not_evaluated`, originality `not_checked` — the Task-3 policies
+  replace them)
+- verified on real ephemeral pgvector PostgreSQL: 0017->0018 upgrade over
+  a populated Phase 3 chain (REAL commissionable score, accepted brief),
+  downgrade->re-upgrade cycle with attempt audit intact, operator draft
+  create/idempotent-reuse/supersede, the manual-identity race, all
+  immutability triggers (content/delete/append-only/reverse/pointer),
+  writer_draft purpose acceptance + generated-draft materialization, and
+  the audit-protecting downgrade refusal; teardown complete
+- Task 2 added no AI generation, no Writer policies beyond the structural
+  gates (Task 3), no workflow transition, no API/admin surface, and no
+  dependency changes
+- Task 2 verified: 1103 backend tests (1081 + 21 new + 1 migration), 135
+  admin tests, and the full root quality gate passed; schema head `0018`
+
 ## Next immediate task
 
-PHASE 4 TASK 2 (awaiting explicit authorization) — DRAFT PERSISTENCE +
-PROVENANCE FOUNDATION, per the accepted PHASE4_WRITER_ARCHITECTURE.md
-§22: the contentos.drafts models/values/repository + migration (expected
-`0018`: content_drafts, draft_claim_usages, draft_status_events, and the
-ai_generation_attempts purpose CHECK gaining `writer_draft`); the
-writer-draft-body/1 structural body validation; DraftService.create_draft
-for BOTH origins with structural gates (claim-ref validity, URL/HTML ban,
-brief section-contract conformance, claim-usage mirroring), the
-manual_input_hash idempotency identity for operator-authored drafts
-(partial-unique per work item + race recovery), supersession,
-and append-only/status-only-forward immutability triggers; SQLite +
-real-PG verification including trigger and downgrade/upgrade cycles. No
-AI generation, no Writer policies (Task 3), no workflow transition, no
-API/admin.
+PHASE 4 TASK 3 (authorized under the autonomous continuation mandate) —
+WRITER VALIDATION & ORIGINALITY POLICIES, per accepted
+PHASE4_WRITER_ARCHITECTURE.md §22: versioned `writer-validation/1`
+(numeric-assertion gate, claim-kind framing rules incl. SOURCE_ASSERTION
+attribution and INFERENCE framing, mechanically checkable exclusion
+enforcement) and `writer-originality/1` (evidence-statement
+verbatim-overlap cap, brief-structure conformance, heading-similarity
+guard reusing the Phase 3 structure-guard mechanics); the deterministic
+required-handling manifest builder (brief uncertainty notes, pack
+cautions/staleness/locale limits, contradiction handling, claim handling)
+with coverage validation and a persisted coverage record — all enforced
+inside DraftService for BOTH origins, with policy snapshots persisted per
+draft. No migration expected. No provider calls, no Celery, no API/admin.
 
 Before implementing the affected integrations, resolve:
 

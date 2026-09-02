@@ -355,8 +355,16 @@ def brief_payload(evidence_ids: list[uuid.UUID]) -> dict[str, Any]:
         "title_constraints": [],
         "additional_exclusions": [],
         "additional_uncertainty_notes": [],
-        "internal_link_needs": [],
-        "media_needs": [],
+        "internal_link_needs": [
+            {"topic": "ev partisi oyunları", "purpose": "İlgili rehbere yönlendirme."}
+        ],
+        "media_needs": [
+            {
+                "role": "kapak görseli",
+                "purpose": "Balon temasını görselleştirmek.",
+                "constraints": None,
+            }
+        ],
         "faq_questions": [],
         "acceptance_criteria": [],
         "claims": [

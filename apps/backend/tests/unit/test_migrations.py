@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0017"]
+    assert script.get_heads() == ["0018"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0018").down_revision == "0017"
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:
@@ -267,6 +268,31 @@ def test_content_brief_migration_contains_identity_and_protection() -> None:
     assert sql.count("ON DELETE RESTRICT") == 10
     # A brief is a contract, never the article.
     for forbidden in ("article_body", "markdown_body", "html_body", "draft_text"):
+        assert forbidden not in sql
+
+
+def test_content_draft_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0017:0018")
+
+    assert "CREATE TABLE content_drafts" in sql
+    assert "CREATE TABLE draft_claim_usages" in sql
+    assert "CREATE TABLE draft_status_events" in sql
+    assert "uq_content_drafts_version" in sql
+    assert "uq_content_drafts_attempt" in sql
+    assert "uq_content_drafts_active" in sql
+    assert "uq_content_drafts_manual_identity" in sql
+    assert "uq_draft_claim_usages_anchor" in sql
+    assert "ck_content_drafts_operator_attempt" in sql
+    assert "ck_content_drafts_manual_hash_origin" in sql
+    assert "ck_content_drafts_hash_format" in sql
+    assert "CREATE TRIGGER trg_content_drafts_guarded" in sql
+    assert "CREATE TRIGGER trg_draft_claim_usages_append_only" in sql
+    assert "CREATE TRIGGER trg_draft_status_events_append_only" in sql
+    # The attempt purpose vocabulary gains the Writer purpose.
+    assert "writer_draft" in sql
+    assert sql.count("ON DELETE RESTRICT") == 8
+    # A draft is structured content, never article HTML.
+    for forbidden in ("html_body", "article_html", "raw_output", "prompt"):
         assert forbidden not in sql
 
 
