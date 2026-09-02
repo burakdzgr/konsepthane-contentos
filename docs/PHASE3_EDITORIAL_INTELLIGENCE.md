@@ -1,7 +1,11 @@
 # Phase 3 - Editorial Intelligence / Idea Engine Design
 
-Status: Accepted design — Phase 3 Task 1. No Phase 3 runtime code exists
-yet; nothing below is implemented unless CURRENT_STATE.md says so.
+Status: Accepted design — written as Phase 3 Task 1, before any Phase 3
+runtime code existed. The design was subsequently implemented (Tasks
+2–14); implementation status is tracked by `docs/memory/CURRENT_STATE.md`
+and the formal closure decision by `docs/PHASE3_CLOSURE_AUDIT.md`. The
+design text below is preserved as accepted; "Realized in …" notes mark
+where implementation details were recorded later.
 
 Scope: the middle of the pipeline —
 eligible Phase 2 research → EditorialWorkItem → EditorialOpportunity →

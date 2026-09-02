@@ -4,7 +4,7 @@ Last updated: 2026-09-02
 
 ## Current phase
 
-PHASE 3 - Editorial Intelligence / Idea Engine - IN PROGRESS
+PHASE 3 - Editorial Intelligence / Idea Engine - COMPLETE (2026-09-02)
 (Task 1 architecture accepted; Task 2 workflow foundation COMPLETE;
 Task 3 opportunity persistence + promotion COMPLETE; Task 4 deterministic
 opportunity scoring v1 COMPLETE; Task 5 provider-neutral search-signal
@@ -15,7 +15,21 @@ engine COMPLETE; Task 10 SearchIntentAnalysis COMPLETE; Task 11
 ContentBrief persistence + claim map + acceptance gate COMPLETE; Task 12
 Brief Composition Engine COMPLETE; Task 13 Celery editorial orchestration
 + operator commissioning command COMPLETE; Task 14 admin/operator
-visibility + explicit editorial command surface COMPLETE)
+visibility + explicit editorial command surface COMPLETE; Task 15 Phase 3
+closure audit COMPLETE)
+
+The formal closure decision is recorded in docs/PHASE3_CLOSURE_AUDIT.md
+(final decision: PHASE 3 COMPLETE, zero remaining Phase 3 blockers, all
+14 exit criteria PASS with evidence, closed at commit 20a6550f, schema
+head 0017). The four known closure questions were dispositioned there:
+the DB-commit/broker-dispatch (outbox) decision is production-readiness
+backlog, not a phase blocker; the READY reassembled-pack continuation and
+the minimal admin contradiction-declaration input are accepted Phase 3
+boundaries; stale documentation was corrected by Task 15. Phase 3
+completion does NOT mean production readiness — the production-readiness
+backlog in PHASE3_CLOSURE_AUDIT.md §8.2 (inherited from Phase 2 plus the
+outbox decision, OpenAI production configuration, and editorial runbooks)
+stands. Phase 4 entry criteria are fixed in PHASE3_CLOSURE_AUDIT.md §10.
 
 Phase 3 design: docs/PHASE3_EDITORIAL_INTELLIGENCE.md (Accepted). Phase 3
 takes eligible Phase 2 research to an auditable ContentBrief:
@@ -60,8 +74,10 @@ through a read-only internal API and read-only admin screens.
 A minimal Python backend package, FastAPI application factory, typed settings,
 structured logging, request-correlation, API error-envelope, SQLAlchemy
 engine/session, Alembic migration, Redis/Celery queue, health-endpoint, local
-Docker/Compose, and Next.js admin foundation are implemented. No editorial
-business logic exists yet.
+Docker/Compose, and Next.js admin foundation are implemented. (This
+paragraph describes the Phase 1 foundation; the Phase 3 editorial
+business logic that now exists on top of it is recorded in the Phase 3
+sections below.)
 
 ## Repository
 
@@ -1886,6 +1902,18 @@ main
 - Task 14 verified: 1081 backend tests (1042 + 39 new), 135 admin tests
   (96 + 39 new), admin build, and the full root quality gate passed;
   schema head `0017`
+- PHASE 3 Task 15 (Phase 3 closure audit) complete:
+  docs/PHASE3_CLOSURE_AUDIT.md created — independent evidence audit of
+  Tasks 1-14 at HEAD 20a6550f against design §23; all 14 exit criteria
+  PASS; end-to-end chain, invariant/security, and provenance audits
+  performed on actual code (targeted greps + model/FK inspection, not
+  documentation); four closure questions dispositioned (outbox ->
+  production-readiness backlog; reassembled-pack continuation and
+  minimal contradiction-declaration UI -> accepted Phase 3 boundaries;
+  stale docs -> corrected); Phase 4 entry criteria fixed; FINAL
+  DECISION: PHASE 3 COMPLETE; documentation-only task — no migration
+  (head stays `0017`), no dependency change, no runtime code, no ADR
+  (no new architecture decision was required)
 
 ## Current documentation structure
 
@@ -1897,6 +1925,7 @@ main
 - docs/PHASE2_RESEARCH_DISCOVERY.md
 - docs/PHASE2_CLOSURE_AUDIT.md
 - docs/PHASE3_EDITORIAL_INTELLIGENCE.md
+- docs/PHASE3_CLOSURE_AUDIT.md
 - docs/memory/PROJECT_MEMORY.md
 - docs/memory/CURRENT_STATE.md
 - docs/memory/GLOSSARY.md
@@ -1954,7 +1983,7 @@ Analytics integration: not started
 
 ## Important current constraint
 
-Phase 2 implementation is authorized only one atomic task at a time.
+Implementation is authorized only one atomic task at a time.
 
 No AI pack organization, Beat scheduling, Writer/Editor/QA, publication
 approval, or pre-commit configuration exists yet. Model-assisted idea
@@ -1969,11 +1998,13 @@ screens; commissioning, rejection, selection, contradiction resolution,
 block resolution, brief acceptance, and duplicate reopen are explicit
 operator commands with required reasons, and brief acceptance remains a
 decision no Celery task ever performs. Automated tests and gates never
-call a real AI provider. The admin exposes exactly the minimal
-Task 19 operator controls (registration, lifecycle, admission, requeue,
-discovery/fetch triggers); there are no normalize/duplicate/evidence stage
-triggers, no Celery control panel, no deletes, no source editing, and no
-manual discovery-item creation. Backend
+call a real AI provider. On the research side the admin exposes exactly
+the minimal Phase 2 Task 19 operator controls (registration, lifecycle,
+admission, requeue, discovery/fetch triggers) — no normalize/duplicate/
+evidence stage triggers, no Celery control panel, no deletes, no source
+editing, no manual discovery-item creation; on the editorial side it
+exposes exactly the Phase 3 Task 14 read projections and explicit
+commands described above. Backend
 unit tests remain offline and require no running PostgreSQL or Redis. Docker Compose
 covers local development only; production deployment does not exist. The admin app
 has no login, authentication, users, roles, or RBAC by design.
@@ -1984,13 +2015,16 @@ access protection belongs to future deployment infrastructure.
 
 ## Next immediate task
 
-PHASE 3 TASK 15 (awaiting explicit authorization) — PHASE 3 CLOSURE
-AUDIT: audit the completed Phase 3 implementation (Tasks 1-14) against
-the accepted design and exit criteria (§23), record the formal closure
-decision and any deferred/known limitations (including the documented
-commit/broker dispatch gap and the reassembled-pack continuation
-boundary) truthfully, and declare Phase 3 complete or enumerate exact
-blockers. No new features.
+PHASE 4 TASK 1 (awaiting explicit authorization) — WRITER ARCHITECTURE /
+DRAFTING BOUNDARY DESIGN. DESIGN ONLY: define how a future Writer
+consumes exactly one ACCEPTED_FOR_DRAFTING ContentBrief version and its
+pinned evidence contract under the immutable Phase 4 entry criteria
+recorded in docs/PHASE3_CLOSURE_AUDIT.md §10 (provenance non-bypassable,
+AI output never evidence, contradictions/uncertainty never silently
+resolved, draft creation is not publication approval, ADR 0004 untouched,
+no Konsepthane production access, Phase 3 artifacts immutable, Writer
+failure is execution failure). No Writer implementation, no publication,
+no scheduling.
 
 Before implementing the affected integrations, resolve:
 
@@ -2003,7 +2037,9 @@ Before implementing the affected integrations, resolve:
 
 ## Known blockers
 
-No known blockers. Phase 1 closed cleanly.
+No known blockers. Phases 1, 2, and 3 closed cleanly (Phase 3 closure:
+docs/PHASE3_CLOSURE_AUDIT.md — zero Phase 3 blockers; production
+readiness remains a separate open backlog, not a phase blocker).
 
 The integration and governance inputs listed above are intentionally unresolved
 and will block their respective implementation or launch work, not this phase.
