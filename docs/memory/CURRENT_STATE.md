@@ -3074,21 +3074,40 @@ access protection belongs to future deployment infrastructure.
   origin malformed + junk ids stay local) — suite 1279 backend + 227
   admin, gate green; no migration (head stays `0024`)
 
+- PHASE 6 Task M6 (media closure audit) complete — **PHASE 6 IS
+  CLOSED**: `docs/PHASE6_MEDIA_AUDIT.md` audits all 8 §6 exit criteria
+  as MET with code/test references (content-addressed immutable
+  provenance-carrying assets; human-only audited satisfactions —
+  generation/upload alone satisfy nothing; the truthful four-answer
+  media gate under `qa-gates/2` with v1 reports surviving under their
+  own version; the AI boundary held for images incl. the
+  bytes-over-provider's-word domain validator and the 0024 downgrade
+  guard; state-bounded commands with explicit QA re-runs; leak-tested
+  read models with the store internal at every hop; real-PG
+  verification for both migrations), spot re-verifies ADR 0004/0007,
+  failure≠decision and the no-publication pin, and adds the media
+  backlog items (production object store + retention, dimensions,
+  upload streaming). Docs-only; no runtime changed.
+
 ## Next immediate task
 
-PHASE 6 TASK M6 (authorized under the autonomous continuation mandate)
-— MEDIA CLOSURE AUDIT, docs-only, against
-PHASE6_MEDIA_ARCHITECTURE.md §6 exit criteria (8): durable
-content-addressed provenance-carrying assets in the ContentOS-owned
-store only; human-only audited satisfactions with guarded
-supersession; the truthful satisfied/unsatisfied-with-exact-indexes/
-waived/not_applicable media gate under `qa-gates/2` with old reports
-valid under theirs; the AI boundary held for images; state-bounded
-commands with explicit QA re-runs; read models/admin with leak tests;
-real-PG verification for 0023 AND 0024; then the audit verdict.
-After M6: the publishing phase (architecture-first; must consume
-`require_current_approval` and the Publishing API contract — the open
-integration questions below).
+PUBLISHING PHASE — ARCHITECTURE FIRST (authorized under the autonomous
+continuation mandate), per the roadmap (Media done → Publishing →
+Scheduling/Distribution → Analytics → Refresh): write
+`docs/PHASE7_PUBLISHING_ARCHITECTURE.md` before any code. Binding
+inputs: publishing consumes `DecisionService.require_current_approval`
+(a stale approval is surfaced via the wired SCHEDULED →
+APPROVAL_EXPIRED path, never ridden); ContentOS NEVER touches the
+Konsepthane production DB/filesystem — only a versioned +
+authenticated + idempotent Publishing API; the Publishing API
+contract, service authentication method and production owner are OPEN
+integration questions (listed below) — the architecture must define
+the ContentOS SIDE (package assembly from the approved artifacts,
+APPROVED → SCHEDULED → PUBLISHING → PUBLISHED workflow wiring with
+artifact gates, idempotency keys, failure honesty) while explicitly
+BLOCKING the live integration on those unresolved inputs (design +
+in-repo contract + fake-transport verification; no real endpoint
+until the operator supplies one).
 
 Before implementing the affected integrations, resolve:
 
