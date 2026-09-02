@@ -2917,24 +2917,42 @@ access protection belongs to future deployment infrastructure.
   pruning/rate-limiting, spend controls, capped listings, manual-draft
   editor UX, secrets management). Docs-only; no runtime changed.
 
+- PHASE 6 architecture written (docs-only):
+  `docs/PHASE6_MEDIA_ARCHITECTURE.md` — media needs become satisfiable
+  honestly. Binding decisions: a satisfied need is an explicit audited
+  HUMAN binding (need → asset), never a flag and never an automatic
+  effect of generation (ADR 0004); assets are content-addressed
+  (sha256 UNIQUE), immutable, provenance-carrying (named uploader OR
+  generation attempt via CHECK), with REQUIRED alt text + licensing
+  posture, bytes in a ContentOS-owned store only (no Konsepthane
+  access; publishing later moves bytes via the Publishing API);
+  origins {human_upload, ai_generated} with the full contentos.ai
+  boundary for images (new purpose MEDIA_IMAGE, no prompts persisted,
+  keys never client-side, the image itself is the durable artifact);
+  no new workflow states — satisfaction commands state-bounded to
+  {DRAFTING, EDITING, QA_REVIEW, CHANGES_REQUESTED}, QA re-runs stay
+  explicit; QA gate v2 (`qa-gates/2`) learns `satisfied` + exact
+  unmet indexes while old reports stay valid under `qa-gates/1`;
+  §6 exit criteria (8) + §7 atomic tasks M1–M6 (foundation migration
+  `0023`; commands + read models + streaming route; QA gate v2; AI
+  image generation; admin surface; closure audit)
+
 ## Next immediate task
 
-MEDIA PHASE — ARCHITECTURE FIRST (authorized under the autonomous
-continuation mandate), per the roadmap (Governance done → Media →
-Publishing → Scheduling/Distribution → Analytics → Refresh): write
-`docs/PHASE6_MEDIA_ARCHITECTURE.md` before any code — scope: satisfy
-the QA `media_needs` gate honestly (today it blocks `unsatisfied` or
-is waived by a human). Decisions to design: durable media artifacts
-(what a satisfied media need IS: sourced/generated image with
-provenance + licensing posture; AI image generation would go through
-contentos.ai purposes with the same no-raw-persistence rules), where
-media lives (no Konsepthane production filesystem access — a
-ContentOS-owned store), how media needs bind to draft blocks
-(placeholder keys already exist in writer drafts), the workflow shape
-(media work inside which states; QA re-run after satisfaction), admin
-surface, and what is deliberately deferred. Then implement in atomic
-migration-verified tasks per the established loop. Publishing phase
-afterwards must consume `require_current_approval`.
+PHASE 6 TASK M1 (authorized under the autonomous continuation mandate)
+— MEDIA FOUNDATION, per PHASE6_MEDIA_ARCHITECTURE.md §3/§7: migration
+`0023` (`media_assets` append-only content-addressed with the
+origin/attempt CHECK + `media_need_satisfactions` with the two-shape
+guarded supersession trigger and partial-unique ACTIVE per
+(work_item, brief, need_index)); `MediaStore` (put/open/exists by
+sha256 under a `media_store_root` setting; keys internal);
+`contentos.media` service — asset registration (server-side hashing,
+dedupe by hash, required alt_text/license fields, named creator) and
+satisfy/replace/unsatisfy with the §2 state bounds and required
+reasons; unit tests; REAL PostgreSQL verification (0022→0023 cycle
+over populated data + trigger negatives). Then M2 commands + read
+models. Publishing phase afterwards must consume
+`require_current_approval`.
 
 Before implementing the affected integrations, resolve:
 
