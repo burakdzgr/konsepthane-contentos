@@ -27,7 +27,8 @@ Task 17 QA Gate Engine COMPLETE; Task 18 QA Orchestration +
 Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
 AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
 COMPLETE; Task 20 QA-Stage Audit COMPLETE; Task 21 PHASE 4 CLOSURE
-AUDIT COMPLETE — **PHASE 4 IS CLOSED**)
+AUDIT COMPLETE — **PHASE 4 IS CLOSED**; PHASE 5 Governance
+Architecture (design only) COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2712,29 +2713,52 @@ access protection belongs to future deployment infrastructure.
   revocation, one recorded test-evidence gap, media/link pipelines)
   is recorded SEPARATELY from feature completion
 
+- PHASE 5 governance architecture (design only) complete:
+  `docs/PHASE5_GOVERNANCE_ARCHITECTURE.md`. Core decisions:
+  authentication is PLATFORM-WIDE first (all /internal/* except health
+  + all admin pages behind sessions; approval-scoped auth would be
+  theater), two frozen roles {operator, reviewer}; decisions are
+  APPEND-ONLY HumanDecision records pinning the exact package (draft
+  hash + qa report + review + reviewer) with the WorkflowService
+  transition gated on the durable record; approval validity is
+  HASH-BOUND (`approval_is_current`; APPROVAL_EXPIRED wiring shipped
+  but unreachable until the publishing phase); boring standard
+  credentials (argon2id, hashed opaque server-side sessions, HttpOnly
+  cookies, CLI provisioning with audited user_events, no
+  self-registration, no OAuth in v1); workflow wiring: approve /
+  request-changes / reject / revoke-approval as reviewer-only commands
+  with PERMITTED_RESPONSIBLE_STATES extended for AWAITING_HUMAN_REVIEW
+  ({DRAFTING, EDITING, QA_REVIEW}) and APPROVED (same); the frozen
+  WorkflowActorOrigin enum stays — named identity lives in the
+  decision record plus a new additive nullable
+  editorial_workflow_events.actor_user_id column (historical NULLs
+  render UNKNOWN); APPROVED -> SCHEDULED is NOT built (publishing
+  phase). Exit criteria (§6) and implementation order Tasks G1-G6
+  (§7) recorded.
+
 ## Next immediate task
 
-PHASE 5 — GOVERNANCE ARCHITECTURE (design only; authorized under the
-autonomous continuation mandate's long-term roadmap). Phase 4 is
-closed; the pipeline parks validated packages at AWAITING_HUMAN_REVIEW
-with no exit surface. The governance phase must design (then
-implement) exactly what ADR 0004 requires before APPROVED can exist:
-authentication for the operator/admin surfaces (the current
-single-operator deployment boundary is the recorded production-
-readiness gap), named authorized human reviewers, the
-AWAITING_HUMAN_REVIEW decision surface (APPROVED with a durable
-named-human approval record pinning the exact package /
-CHANGES_REQUESTED via the routing foundation with a QA_REVIEW-or-
-upstream responsible vocabulary / REJECTED with reasons),
-approval-validity semantics (APPROVAL_EXPIRED per WORKFLOW.md — the
-approved package hash must still match at scheduling time), and the
-governance data model (append-only approval records; never a fake
-approval mechanism). Constraints unchanged: WorkflowService-only,
-artifact gates, append-only audit, no publication boundary yet
-(SCHEDULED/PUBLISHING remain the publishing phase behind the future
-Konsepthane Publishing API). The design document should follow the
-Phase 4 pattern: decisions, data model, exit criteria, atomic
-dependency-correct implementation tasks.
+PHASE 5 TASK G1 (authorized under the autonomous continuation mandate)
+— AUTH FOUNDATION, per accepted PHASE5_GOVERNANCE_ARCHITECTURE.md §7
+Task G1: migration 0021 creating `users` (unique immutable username,
+argon2id password_hash, roles JSONB from the frozen {operator,
+reviewer} vocabulary, is_active, credential-rotation timestamp;
+trigger: DELETE forbidden, UPDATE limited to credential/role/active
+fields), `user_events` (append-only provisioning/role/activation
+audit) and `auth_sessions` (token_hash sha256 — the opaque token is
+never stored, fixed TTL expires_at, one-shot revoked_at);
+`contentos.auth` module (argon2id hashing via argon2-cffi — NEW
+dependency added properly through uv, session issue/verify/revoke
+service with typed errors, user provisioning/rotation/deactivation
+commands exposed via a management CLI entrypoint that writes audited
+user_events); FastAPI `require_user(role=...)` dependency applied to
+EVERY /internal/* router except health, with typed 401/403 and
+login/logout endpoints; the API test harness gains real login seeding
+(tests authenticate through the real flow — never a bypass fixture
+that weakens the boundary); real-PG verification (migration cycle,
+triggers, session lifecycle incl. expiry/revocation, no
+credential/token material anywhere but the designed hashes). Admin
+login is Task G2.
 
 Before implementing the affected integrations, resolve:
 
