@@ -6,6 +6,8 @@ import {
   acceptEditorReview,
   generateEditorReview,
   generateWriterDraft,
+  runQaGates,
+  waiveQaGate,
   requestWriterRework,
   resolveChangesRequested,
   submitOperatorDraft,
@@ -452,5 +454,63 @@ describe("editor review commands", () => {
     stubFetch(async () => jsonResponse(409, { detail: "revise" }));
     const result = await acceptEditorReview(WORK_ITEM_ID, "denemek");
     expect(result.kind).toBe("conflict");
+  });
+});
+
+describe("qa commands", () => {
+  it("run-qa posts to the exact backend path", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        task: "run_qa_gates",
+        entity_id: WORK_ITEM_ID,
+      }),
+    );
+    const result = await runQaGates(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/run-qa`,
+    );
+  });
+
+  it("waive-qa-gate posts the bounded gate key and reason", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "waived",
+        work_item_id: WORK_ITEM_ID,
+        gate_key: "media_needs",
+        note: "The waiver is recorded and audited; gates were NOT re-run.",
+      }),
+    );
+    const result = await waiveQaGate(
+      WORK_ITEM_ID,
+      "media_needs",
+      "gorsel bilincli ertelendi",
+    );
+    expect(result.kind).toBe("ok");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/waive-qa-gate`,
+    );
+    expect(request.body).toEqual({
+      gate_key: "media_needs",
+      reason: "gorsel bilincli ertelendi",
+    });
+  });
+
+  it("rework carries the bounded responsible-state choice", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "changes_requested",
+      }),
+    );
+    const { requestWriterRework } = await import("@/lib/editorial-control-api");
+    await requestWriterRework(WORK_ITEM_ID, "editore donmeli", "editing");
+    expect(requestOf(fetchMock).body).toEqual({
+      reason: "editore donmeli",
+      responsible_state: "editing",
+    });
   });
 });

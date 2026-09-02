@@ -25,7 +25,8 @@ Closure Audit COMPLETE — EDITOR STAGE CLOSED; QA Architecture (design
 only) COMPLETE; Task 16 QA Report Persistence Foundation COMPLETE;
 Task 17 QA Gate Engine COMPLETE; Task 18 QA Orchestration +
 Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
-AWAITING_HUMAN_REVIEW END-TO-END)
+AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
+COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2661,24 +2662,51 @@ access protection belongs to future deployment infrastructure.
   package pinned; broker message inspection; redelivery reuse); suite
   1222 backend + 171 admin, gate green; no migration (head `0020`)
 
+- PHASE 4 Task 19 (QA read models + admin) complete: backend
+  `api/read_models/qa.py` — `work-items/{id}/qa-reports` (report
+  versions newest first with per-gate result summaries where a
+  malformed record surfaces as "UNKNOWN" never a pass, plus the work
+  item's audited waivers always visible) and `qa-reports/{id}` (gate
+  results exactly as persisted with bounded details, the versioned
+  `qa-gates/1` policy snapshot incl. waivable vocabulary, waivers,
+  supersession audit); admin: QA reports section on the editorial
+  detail page (per-gate badges — unsatisfied warns / UNKNOWN neutral /
+  never softened to pass; state-gated run-qa / waive-media-gate with an
+  explicit audited-waiver WARNING and never-reruns note / rework with
+  the bounded responsible-state select) and the explicit
+  AWAITING_HUMAN_REVIEW statement ("Human decision pending... approval
+  surface does not exist yet by design"); read-only QA report detail
+  page (`/editorial/[id]/qa-reports/[reportId]`) with the deterministic
+  outcome provenance, per-gate table, waivers, audit, and package
+  cross-links (draft + editor review); rework action forwards the
+  bounded responsible_state; leak tests on both sides
+- Task 19 verified: 3 new backend read tests (truthful gate summaries
+  + waiver/supersession visibility + 404s) and 13 new/updated admin
+  tests (fixtures, QA page quartet incl. malformed-gate UNKNOWN and
+  waiver visibility, detail-page QA commands gated by state + the
+  human-decision statement with no approve button, control-api/actions
+  coverage incl. bounded gate-key/responsible-state, zod outcome
+  rejection); suite 1225 backend + 185 admin (23 files), gate green;
+  no migration (head stays `0020`)
+
 ## Next immediate task
 
-PHASE 4 TASK 19 (authorized under the autonomous continuation mandate)
-— QA READ MODELS + ADMIN, per accepted PHASE4_QA_ARCHITECTURE.md §6/§8
-Task 19: `/internal/editorial` GET projections —
-`work-items/{id}/qa-reports` (report versions: outcome, per-gate result
-summary, waiver presence, package pins) and `qa-reports/{id}` (full
-detail: gate_results with bounded details, gate policy snapshot,
-waivers, status events); admin: QA section on the editorial detail
-page (report table with per-gate badges — unsatisfied/UNKNOWN never
-rendered as pass — run-qa / waive-media / rework forms with required
-reasons and an explicit waiver warning, plus the bounded
-responsible-state choice on rework from QA_REVIEW) + read-only report
-detail page; AWAITING_HUMAN_REVIEW items render the full pinned
-package with the explicit "human decision pending; approval surface
-does not exist yet" statement; leak tests on both sides. No migration,
-no new workflow semantics. After Task 19: Task 20 QA-stage audit
-(docs-only), then Task 21 the PHASE 4 CLOSURE AUDIT.
+PHASE 4 TASK 20 (authorized under the autonomous continuation mandate)
+— QA-STAGE CLOSURE AUDIT (docs-only) against PHASE4_QA_ARCHITECTURE.md
+§7 with the criterion-by-criterion evidence matrix and honest
+limitation classification (PHASE4_QA_AUDIT.md), immediately followed
+by PHASE 4 TASK 21 — the PHASE 4 CLOSURE AUDIT (docs-only): the
+complete Research -> Opportunity -> Evidence -> Idea -> Brief ->
+Writer -> Editor -> QA -> AWAITING_HUMAN_REVIEW story audited against
+the phase's binding invariants (provenance chain resolvability, AI
+output never Evidence, failures never editorial decisions,
+WorkflowService-only transitions with artifact gates, no publication/
+approval surface, truthful UNKNOWN), backed by a real-infrastructure
+FULL-CHAIN verification run (single script: seeded research ->
+AWAITING_HUMAN_REVIEW on real PG + Redis) and the consolidated
+production-readiness backlog. Then Phase 4 is CLOSED; the next phase
+(governance: authentication, authorized reviewers, APPROVED) begins
+with its own architecture.
 
 Before implementing the affected integrations, resolve:
 

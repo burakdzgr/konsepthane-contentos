@@ -6,11 +6,13 @@ import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemQaReports,
   fetchWorkItemReviews,
   type AiAttemptView,
   type BriefView,
   type ContradictionView,
   type DraftListPage,
+  type QaReportListPage,
   type ReviewListPage,
   type EligibleEvidenceItem,
   type IdeaView,
@@ -55,8 +57,10 @@ import {
   resolveBlockAction,
   resolveChangesRequestedAction,
   resolveContradictionAction,
+  runQaAction,
   selectIdeaAction,
   submitDraftAction,
+  waiveQaGateAction,
 } from "./actions";
 
 // One editorial work item's full explainability projection from durable
@@ -96,6 +100,9 @@ const DETAIL_NOTICES: Record<string, string> = {
     "Editor review queued. The verdict appears when the worker finishes.",
   "review-accepted":
     "Review accepted; the item moved to QA review. This does not publish content.",
+  "qa-queued": "QA gate run queued. Re-runs are idempotent.",
+  "qa-gate-waived":
+    "Waiver recorded and audited. Gates were NOT re-run — run QA explicitly.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1508,6 +1515,197 @@ function ReviewsSection({
   );
 }
 
+const QA_GATE_ORDER = [
+  "package_integrity",
+  "provenance_chain",
+  "writer_envelope",
+  "content_safety",
+  "editorial_review_currency",
+  "media_needs",
+  "internal_link_needs",
+] as const;
+
+function qaGateTone(
+  result: string,
+): "ok" | "warn" | "bad" | "neutral" | "info" {
+  if (result === "pass" || result === "not_applicable" || result === "none") {
+    return "ok";
+  }
+  if (result === "waived_by_human" || result === "pending") {
+    return "info";
+  }
+  if (result === "unsatisfied") {
+    return "warn";
+  }
+  if (result === "fail") {
+    return "bad";
+  }
+  return "neutral"; // UNKNOWN and anything unexpected: never a pass.
+}
+
+function QaSection({
+  detail,
+  qaReports,
+}: {
+  detail: WorkItemDetail;
+  qaReports: QaReportListPage | null;
+}) {
+  const workItemId = detail.work_item.id;
+  const state = detail.work_item.current_state;
+  const rows = qaReports?.reports ?? [];
+  const waivers = qaReports?.waivers ?? [];
+  return (
+    <section aria-labelledby="detail-qa">
+      <h2 id="detail-qa">QA reports</h2>
+      <p className="muted">
+        Deterministic hard gates over the exact pinned package. The absence of a
+        result is never a pass; a ready report advances the item to the human
+        decision automatically.
+      </p>
+      {qaReports === null && (
+        <p className="muted" role="note">
+          QA reports could not be loaded right now.
+        </p>
+      )}
+      {qaReports !== null && rows.length === 0 && (
+        <p className="empty-note">No QA report versions exist yet.</p>
+      )}
+      {rows.length > 0 && (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Version</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Status</th>
+                <th scope="col">Gates</th>
+                <th scope="col">Created</th>
+                <th scope="col">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>v{row.version}</td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={
+                        row.outcome === "ready_for_human_review" ? "ok" : "warn"
+                      }
+                    >
+                      {row.outcome}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      data-tone={draftStatusTone(row.status)}
+                    >
+                      {row.status}
+                    </span>
+                  </td>
+                  <td>
+                    {QA_GATE_ORDER.map((gate) => {
+                      const result = row.gate_summary[gate] ?? "UNKNOWN";
+                      return (
+                        <span
+                          key={gate}
+                          className="badge"
+                          data-tone={qaGateTone(result)}
+                          title={gate}
+                        >
+                          {gate}: {result}
+                        </span>
+                      );
+                    })}
+                  </td>
+                  <td>{formatUtcTimestamp(row.created_at)}</td>
+                  <td>
+                    <Link
+                      href={`/editorial/${workItemId}/qa-reports/${row.id}`}
+                    >
+                      Open report
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {waivers.length > 0 && (
+        <p className="muted" role="note">
+          Audited waivers:{" "}
+          {waivers
+            .map((waiver) => `${waiver.gate_key} — ${waiver.reason}`)
+            .join(" · ")}
+        </p>
+      )}
+      {state === "qa_review" && (
+        <div className="control-stack">
+          <form action={runQaAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <button type="submit">Run QA gates</button>
+            <span className="muted">
+              Deterministic re-run; identical results reuse the report.
+            </span>
+          </form>
+          <form action={waiveQaGateAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <input type="hidden" name="gate_key" value="media_needs" />
+            <input
+              type="text"
+              name="reason"
+              required
+              maxLength={1000}
+              placeholder="why the media requirement is deliberately deferred"
+              aria-label="Waive media gate reason"
+            />
+            <button type="submit">Waive media gate</button>
+            <span className="muted">
+              WARNING: an audited human waiver — the media needs stay visible
+              and gates are NOT re-run automatically.
+            </span>
+          </form>
+          <form action={requestReworkAction} className="control-form">
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <select
+              name="responsible_state"
+              defaultValue="drafting"
+              aria-label="Responsible state"
+            >
+              <option value="drafting">writer stage (drafting)</option>
+              <option value="editing">editor stage (editing)</option>
+            </select>
+            <input
+              type="text"
+              name="reason"
+              required
+              maxLength={1000}
+              placeholder="what must change and who is responsible"
+              aria-label="QA rework reason"
+            />
+            <button type="submit">Request rework</button>
+            <span className="muted">
+              Routes via the recorded responsible state; the choice is bounded,
+              never arbitrary.
+            </span>
+          </form>
+        </div>
+      )}
+      {state === "awaiting_human_review" && (
+        <p role="note">
+          <strong>Human decision pending.</strong> The full package (draft,
+          editor review, QA report) is pinned in the workflow history. An
+          approval surface does not exist yet by design — approval belongs to
+          the governance phase with authenticated, authorized reviewers.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
   return (
     <section aria-labelledby="detail-attempts">
@@ -1656,6 +1854,8 @@ export default async function EditorialDetailPage({
   const drafts = draftsResult.kind === "ok" ? draftsResult.data : null;
   const reviewsResult = await fetchWorkItemReviews(detail.work_item.id);
   const reviews = reviewsResult.kind === "ok" ? reviewsResult.data : null;
+  const qaResult = await fetchWorkItemQaReports(detail.work_item.id);
+  const qaReports = qaResult.kind === "ok" ? qaResult.data : null;
   // The pack builder needs the eligible evidence only while packs are built.
   let eligibleEvidence: EligibleEvidenceItem[] = [];
   if (
@@ -1694,6 +1894,7 @@ export default async function EditorialDetailPage({
       <BriefsSection detail={detail} />
       <DraftsSection detail={detail} drafts={drafts} />
       <ReviewsSection detail={detail} reviews={reviews} />
+      <QaSection detail={detail} qaReports={qaReports} />
       <AiAttemptsSection attempts={detail.ai_attempts} />
       <WorkflowHistorySection detail={detail} />
     </section>

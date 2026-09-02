@@ -8,6 +8,9 @@ import type {
   DraftDetail,
   DraftListPage,
   DraftSummaryView,
+  QaReportDetail,
+  QaReportListPage,
+  QaReportSummaryView,
   ReviewDetail,
   ReviewListPage,
   ReviewSummaryView,
@@ -44,6 +47,7 @@ export const SOURCE_ID = "a8111111-2222-4333-8444-555555555555";
 export const DRAFT_ID = "a9111111-2222-4333-8444-555555555555";
 export const CLAIM_ID = "aa111111-2222-4333-8444-555555555555";
 export const REVIEW_ID = "ad111111-2222-4333-8444-555555555555";
+export const QA_REPORT_ID = "b0111111-2222-4333-8444-555555555555";
 
 const AT = "2026-09-01T12:00:00+00:00";
 
@@ -624,6 +628,73 @@ export function reviewDetail(
       }),
     ],
     generation_attempts_truncated: false,
+    ...overrides,
+  };
+}
+
+export function qaReportSummary(
+  overrides: Partial<QaReportSummaryView> = {},
+): QaReportSummaryView {
+  return {
+    id: QA_REPORT_ID,
+    work_item_id: WORK_ITEM_ID,
+    content_draft_id: DRAFT_ID,
+    editorial_review_id: REVIEW_ID,
+    content_brief_id: BRIEF_ID,
+    version: 1,
+    outcome: "not_ready",
+    status: "active",
+    gate_summary: {
+      package_integrity: "pass",
+      provenance_chain: "pass",
+      writer_envelope: "pass",
+      content_safety: "pass",
+      editorial_review_currency: "pass",
+      media_needs: "unsatisfied",
+      internal_link_needs: "pending",
+    },
+    engine_name: "qa",
+    engine_version: "1",
+    superseded_by_report_id: null,
+    content_hash: "e".repeat(64),
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function qaReportListPage(
+  reports: QaReportSummaryView[] = [qaReportSummary()],
+  waivers: QaReportListPage["waivers"] = [],
+): QaReportListPage {
+  return {
+    work_item_id: WORK_ITEM_ID,
+    reports,
+    waivers,
+    total: reports.length,
+    truncated: false,
+  };
+}
+
+export function qaReportDetail(
+  overrides: Partial<QaReportDetail> = {},
+): QaReportDetail {
+  return {
+    report: qaReportSummary(),
+    gate_results: {
+      package_integrity: { result: "pass" },
+      provenance_chain: { result: "pass", evidence_links: 3 },
+      writer_envelope: { result: "pass" },
+      content_safety: { result: "pass" },
+      editorial_review_currency: { result: "pass" },
+      media_needs: { result: "unsatisfied", needs: 2 },
+      internal_link_needs: { result: "pending", needs: 1, blocking: false },
+    },
+    gate_policy_snapshot: {
+      version: "qa-gates/1",
+      waivable_gates: ["media_needs"],
+    },
+    waivers: [],
+    status_events: [],
     ...overrides,
   };
 }

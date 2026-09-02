@@ -11,6 +11,7 @@ vi.mock("@/lib/editorial-api", async () => {
     fetchEligibleEvidence: vi.fn(),
     fetchWorkItemDrafts: vi.fn(),
     fetchWorkItemReviews: vi.fn(),
+    fetchWorkItemQaReports: vi.fn(),
   };
 });
 
@@ -19,6 +20,7 @@ import {
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemQaReports,
   fetchWorkItemReviews,
 } from "@/lib/editorial-api";
 import {
@@ -26,6 +28,8 @@ import {
   briefView,
   draftListPage,
   draftSummary,
+  qaReportListPage,
+  qaReportSummary,
   reviewListPage,
   reviewSummary,
   eligibleEvidenceItem,
@@ -38,6 +42,7 @@ const detailMock = vi.mocked(fetchWorkItemDetail);
 const evidenceMock = vi.mocked(fetchEligibleEvidence);
 const draftsMock = vi.mocked(fetchWorkItemDrafts);
 const reviewsMock = vi.mocked(fetchWorkItemReviews);
+const qaMock = vi.mocked(fetchWorkItemQaReports);
 
 async function renderPage(params: Record<string, string> = {}) {
   render(
@@ -65,6 +70,11 @@ beforeEach(() => {
     data: reviewListPage([]),
     requestId: null,
   });
+  qaMock.mockResolvedValue({
+    kind: "ok",
+    data: qaReportListPage([]),
+    requestId: null,
+  });
 });
 
 describe("Editorial detail page", () => {
@@ -87,6 +97,7 @@ describe("Editorial detail page", () => {
       "Briefs & claims",
       "Writer drafts",
       "Editor reviews",
+      "QA reports",
       "AI attempts",
       "Workflow history",
     ]) {
@@ -386,6 +397,68 @@ describe("Editorial detail page", () => {
       screen.queryByRole("button", { name: "Generate editor review" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Accept review" })).toBeNull();
+  });
+
+  it("shows QA commands and truthful gate badges in QA_REVIEW", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "qa_review",
+        },
+      }),
+      requestId: null,
+    });
+    qaMock.mockResolvedValue({
+      kind: "ok",
+      data: qaReportListPage([qaReportSummary()]),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByRole("button", { name: "Run QA gates" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Waive media gate" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Request rework" })).toBeTruthy();
+    expect(screen.getByText(/media_needs: unsatisfied/)).toBeTruthy();
+    expect(screen.getByText("not_ready")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open report" })).toBeTruthy();
+  });
+
+  it("states the pending human decision in AWAITING_HUMAN_REVIEW", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "awaiting_human_review",
+        },
+      }),
+      requestId: null,
+    });
+    qaMock.mockResolvedValue({
+      kind: "ok",
+      data: qaReportListPage([
+        qaReportSummary({
+          outcome: "ready_for_human_review",
+          gate_summary: {
+            ...qaReportSummary().gate_summary,
+            media_needs: "waived_by_human",
+          },
+        }),
+      ]),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByText("Human decision pending.")).toBeTruthy();
+    expect(
+      screen.getByText(/approval surface does not exist yet/i),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run QA gates" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
   });
 
   it("never renders the internal backend URL", async () => {

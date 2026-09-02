@@ -19,6 +19,8 @@ import {
   rejectOpportunity,
   requestWriterRework,
   resolveChangesRequested,
+  runQaGates,
+  waiveQaGate,
   resolveContradiction,
   resolveWorkItemBlock,
   selectIdea,
@@ -344,8 +346,29 @@ export async function requestReworkAction(formData: FormData): Promise<void> {
   if (!reason) {
     redirect(detailPath(workItemId, "error=invalid"));
   }
-  const result = await requestWriterRework(workItemId, reason);
+  const responsibleRaw = field(formData, "responsible_state");
+  const responsible =
+    responsibleRaw === "drafting" || responsibleRaw === "editing"
+      ? responsibleRaw
+      : undefined;
+  const result = await requestWriterRework(workItemId, reason, responsible);
   finish(workItemId, result, "rework-requested");
+}
+
+export async function runQaAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const result = await runQaGates(workItemId);
+  finish(workItemId, result, "qa-queued");
+}
+
+export async function waiveQaGateAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason || field(formData, "gate_key") !== "media_needs") {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await waiveQaGate(workItemId, "media_needs", reason);
+  finish(workItemId, result, "qa-gate-waived");
 }
 
 export async function resolveChangesRequestedAction(

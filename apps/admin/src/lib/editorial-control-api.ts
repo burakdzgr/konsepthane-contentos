@@ -41,6 +41,7 @@ const EDITORIAL_TASKS = [
   "compose_content_brief",
   "generate_writer_draft",
   "generate_editor_review",
+  "run_qa_gates",
 ] as const;
 
 const queuedResponseSchema = z.object({
@@ -119,6 +120,13 @@ const acceptReviewResponseSchema = z.object({
   review_verdict: z.enum(REVIEW_VERDICTS),
 });
 
+const waiverResponseSchema = z.object({
+  status: z.literal("waived"),
+  work_item_id: z.string().uuid(),
+  gate_key: z.literal("media_needs"),
+  note: z.string(),
+});
+
 const briefAcceptanceResponseSchema = z.object({
   status: z.enum(["accepted", "already_accepted"]),
   brief_id: z.string().uuid(),
@@ -144,6 +152,7 @@ export type DraftSubmissionResult = z.infer<
   typeof draftSubmissionResponseSchema
 >;
 export type AcceptReviewResult = z.infer<typeof acceptReviewResponseSchema>;
+export type WaiverResult = z.infer<typeof waiverResponseSchema>;
 
 type ControlFailure =
   | { kind: "not_found" }
@@ -545,12 +554,43 @@ export function acceptEditorReview(
 export function requestWriterRework(
   workItemId: string,
   reason: string,
+  responsibleState?: "drafting" | "editing",
 ): Promise<ControlResult<WorkItemStateResult>> {
+  const body: Record<string, unknown> = { reason };
+  if (responsibleState !== undefined) {
+    body.responsible_state = responsibleState;
+  }
   return guarded(workItemId, () =>
     postControl(
       `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/request-rework`,
-      { reason },
+      body,
       workItemStateResponseSchema,
+    ),
+  );
+}
+
+export function runQaGates(
+  workItemId: string,
+): Promise<ControlResult<QueuedResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/run-qa`,
+      undefined,
+      queuedResponseSchema,
+    ),
+  );
+}
+
+export function waiveQaGate(
+  workItemId: string,
+  gateKey: "media_needs",
+  reason: string,
+): Promise<ControlResult<WaiverResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/waive-qa-gate`,
+      { gate_key: gateKey, reason },
+      waiverResponseSchema,
     ),
   );
 }

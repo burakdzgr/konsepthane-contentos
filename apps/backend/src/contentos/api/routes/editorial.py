@@ -30,6 +30,12 @@ from contentos.api.read_models.editorial import (
     list_eligible_evidence,
     list_work_items,
 )
+from contentos.api.read_models.qa import (
+    QaReportDetail,
+    QaReportListPage,
+    get_qa_report_detail,
+    list_work_item_qa_reports,
+)
 from contentos.api.read_models.reviews import (
     ReviewDetail,
     ReviewListPage,
@@ -131,6 +137,32 @@ def get_editorial_review(
     detail = get_review_detail(session, review_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="editorial review not found")
+    return detail
+
+
+@router.get("/work-items/{work_item_id}/qa-reports", response_model=QaReportListPage)
+def list_editorial_work_item_qa_reports(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> QaReportListPage:
+    """Every durable QA report version of one work item, newest first,
+    plus the work item's audited waivers (always visible)."""
+    page = list_work_item_qa_reports(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
+
+
+@router.get("/qa-reports/{report_id}", response_model=QaReportDetail)
+def get_editorial_qa_report(
+    session: Annotated[Session, Depends(get_db_session)],
+    report_id: uuid.UUID,
+) -> QaReportDetail:
+    """One QA report in full: gate results exactly as persisted, the
+    versioned gate policy, waivers, and the supersession audit."""
+    detail = get_qa_report_detail(session, report_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="qa report not found")
     return detail
 
 

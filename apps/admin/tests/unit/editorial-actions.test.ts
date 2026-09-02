@@ -21,6 +21,8 @@ vi.mock("@/lib/editorial-control-api", async () => {
     generateWriterDraft: vi.fn(),
     generateEditorReview: vi.fn(),
     acceptEditorReview: vi.fn(),
+    runQaGates: vi.fn(),
+    waiveQaGate: vi.fn(),
     submitOperatorDraft: vi.fn(),
     requestWriterRework: vi.fn(),
     resolveChangesRequested: vi.fn(),
@@ -31,6 +33,8 @@ import {
   acceptBriefAction,
   acceptReviewAction,
   generateEditorReviewAction,
+  runQaAction,
+  waiveQaGateAction,
   buildEvidencePackAction,
   commissionOpportunityAction,
   generateDraftAction,
@@ -46,6 +50,8 @@ import {
   commissionOpportunity,
   generateEditorReview,
   generateWriterDraft,
+  runQaGates,
+  waiveQaGate,
   requestWriterRework,
   resolveChangesRequested,
   resolveWorkItemBlock,
@@ -66,6 +72,8 @@ const resolveBlockMock = vi.mocked(resolveWorkItemBlock);
 const generateDraftMock = vi.mocked(generateWriterDraft);
 const generateReviewMock = vi.mocked(generateEditorReview);
 const acceptReviewMock = vi.mocked(acceptEditorReview);
+const runQaMock = vi.mocked(runQaGates);
+const waiveMock = vi.mocked(waiveQaGate);
 const submitDraftMock = vi.mocked(submitOperatorDraft);
 const requestReworkMock = vi.mocked(requestWriterRework);
 const resolveChangesMock = vi.mocked(resolveChangesRequested);
@@ -412,6 +420,63 @@ describe("editor review actions", () => {
     await expectRedirect(
       acceptReviewAction(form({ work_item_id: WORK_ITEM_ID, reason: "temiz" })),
       `/editorial/${WORK_ITEM_ID}?error=conflict`,
+    );
+  });
+});
+
+describe("qa actions", () => {
+  it("runQaAction queues the run", async () => {
+    runQaMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "queued",
+        task: "run_qa_gates",
+        entity_id: WORK_ITEM_ID,
+      },
+    });
+    await expectRedirect(
+      runQaAction(form({ work_item_id: WORK_ITEM_ID })),
+      `/editorial/${WORK_ITEM_ID}?notice=qa-queued`,
+    );
+    expect(runQaMock).toHaveBeenCalledWith(WORK_ITEM_ID);
+  });
+
+  it("waiveQaGateAction requires the bounded gate key and reason", async () => {
+    await expectRedirect(
+      waiveQaGateAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          gate_key: "provenance_chain",
+          reason: "asla",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?error=invalid`,
+    );
+    expect(waiveMock).not.toHaveBeenCalled();
+
+    waiveMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "waived",
+        work_item_id: WORK_ITEM_ID,
+        gate_key: "media_needs",
+        note: "not re-run",
+      },
+    });
+    await expectRedirect(
+      waiveQaGateAction(
+        form({
+          work_item_id: WORK_ITEM_ID,
+          gate_key: "media_needs",
+          reason: "bilinçli erteleme",
+        }),
+      ),
+      `/editorial/${WORK_ITEM_ID}?notice=qa-gate-waived`,
+    );
+    expect(waiveMock).toHaveBeenCalledWith(
+      WORK_ITEM_ID,
+      "media_needs",
+      "bilinçli erteleme",
     );
   });
 });

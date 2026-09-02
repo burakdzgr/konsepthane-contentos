@@ -557,3 +557,88 @@ class TestReviewReads:
             harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/reviews").status_code == 404
         )
         assert harness.get(f"/internal/editorial/reviews/{uuid.uuid4()}").status_code == 404
+
+
+class TestQaReportReads:
+    """Phase 4 Task 19: QA report versions, gates, waivers, audit."""
+
+    def with_report(self, harness: Harness) -> tuple[object, str]:
+        from test_qa import qa_review_context
+
+        from contentos.qa.gates import QaGateEngine
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            result = QaGateEngine(session).run_gates(accepted.context.work_item_id)
+            session.commit()
+            return accepted, str(result.report.id)
+
+    def test_report_list_and_detail_render_truthful_gates(self, harness: Harness) -> None:
+        accepted, report_id = self.with_report(harness)
+        listing = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/qa-reports"
+        )
+        assert listing.status_code == 200
+        page = listing.json()
+        assert page["total"] == 1
+        [row] = page["reports"]
+        assert row["id"] == report_id
+        assert row["outcome"] == "not_ready"
+        assert row["status"] == "active"
+        # The truthful media gate is never softened into a pass.
+        assert row["gate_summary"]["media_needs"] == "unsatisfied"
+        assert row["gate_summary"]["provenance_chain"] == "pass"
+        assert row["gate_summary"]["internal_link_needs"] == "pending"
+        assert page["waivers"] == []
+        assert_no_leak(page)
+
+        detail = harness.get(f"/internal/editorial/qa-reports/{report_id}").json()
+        assert detail["report"]["id"] == report_id
+        assert detail["gate_results"]["media_needs"]["needs"] >= 1
+        assert detail["gate_policy_snapshot"]["version"] == "qa-gates/1"
+        assert detail["gate_policy_snapshot"]["waivable_gates"] == ["media_needs"]
+        assert detail["status_events"] == []
+        assert_no_leak(detail)
+
+    def test_waiver_and_supersession_stay_visible(self, harness: Harness) -> None:
+        from contentos.qa.enums import WaivableGateKey
+        from contentos.qa.gates import QaGateEngine
+        from contentos.qa.service import QaService
+
+        accepted, first_report_id = self.with_report(harness)
+        with harness.session() as session:
+            QaService(session).add_waiver(
+                accepted.context.work_item_id,  # type: ignore[attr-defined]
+                WaivableGateKey.MEDIA_NEEDS,
+                reason="görsel gereksinimi bilinçli olarak ertelendi",
+            )
+            session.commit()
+            second = QaGateEngine(session).run_gates(
+                accepted.context.work_item_id  # type: ignore[attr-defined]
+            )
+            session.commit()
+            second_id = str(second.report.id)
+
+        page = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/qa-reports"  # type: ignore[attr-defined]
+        ).json()
+        assert page["total"] == 2
+        by_id = {row["id"]: row for row in page["reports"]}
+        assert by_id[second_id]["outcome"] == "ready_for_human_review"
+        assert by_id[second_id]["gate_summary"]["media_needs"] == "waived_by_human"
+        assert by_id[first_report_id]["status"] == "superseded"
+        [waiver] = page["waivers"]
+        assert waiver["gate_key"] == "media_needs"
+        assert waiver["reason"] == "görsel gereksinimi bilinçli olarak ertelendi"
+
+        detail = harness.get(f"/internal/editorial/qa-reports/{first_report_id}").json()
+        [event] = detail["status_events"]
+        assert event["actor_origin"] == "system"
+        assert event["replacement_report_id"] == second_id
+
+    def test_unknown_ids_404(self, harness: Harness) -> None:
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/qa-reports").status_code
+            == 404
+        )
+        assert harness.get(f"/internal/editorial/qa-reports/{uuid.uuid4()}").status_code == 404

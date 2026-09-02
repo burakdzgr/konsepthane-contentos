@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchDraftDetail,
+  fetchQaReportDetail,
   fetchReviewDetail,
   fetchEligibleEvidence,
   fetchWorkItemDetail,
   fetchWorkItemDrafts,
+  fetchWorkItemQaReports,
   fetchWorkItemReviews,
   fetchWorkQueue,
 } from "@/lib/editorial-api";
@@ -14,10 +16,14 @@ import {
   WORK_ITEM_ID,
   OPPORTUNITY_ID,
   DRAFT_ID,
+  QA_REPORT_ID,
   REVIEW_ID,
   draftDetail,
   draftListPage,
   draftSummary,
+  qaReportDetail,
+  qaReportListPage,
+  qaReportSummary,
   reviewDetail,
   reviewListPage,
   reviewSummary,
@@ -243,6 +249,48 @@ describe("review reads", () => {
       ),
     );
     const result = await fetchWorkItemReviews(WORK_ITEM_ID);
+    expect(result.kind).toBe("malformed");
+  });
+});
+
+describe("qa report reads", () => {
+  it("parses the report list with truthful gate summaries", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, qaReportListPage([qaReportSummary()])),
+    );
+    const result = await fetchWorkItemQaReports(WORK_ITEM_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.reports[0]?.gate_summary["media_needs"]).toBe(
+        "unsatisfied",
+      );
+    }
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/qa-reports`,
+    );
+  });
+
+  it("parses the report detail with policy and gates", async () => {
+    stubFetch(async () => jsonResponse(200, qaReportDetail()));
+    const result = await fetchQaReportDetail(QA_REPORT_ID);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.gate_policy_snapshot["version"]).toBe("qa-gates/1");
+      expect(result.data.gate_results["media_needs"]).toEqual({
+        result: "unsatisfied",
+        needs: 2,
+      });
+    }
+  });
+
+  it("rejects an unknown outcome as malformed", async () => {
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        qaReportListPage([qaReportSummary({ outcome: "approved" as never })]),
+      ),
+    );
+    const result = await fetchWorkItemQaReports(WORK_ITEM_ID);
     expect(result.kind).toBe("malformed");
   });
 });

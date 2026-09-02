@@ -158,6 +158,9 @@ export const FINDING_DIMENSIONS = [
 ] as const;
 export const FINDING_SEVERITIES = ["blocking", "major", "minor"] as const;
 export const FINDING_ORIGINS = ["model_signal", "deterministic"] as const;
+export const QA_OUTCOMES = ["ready_for_human_review", "not_ready"] as const;
+export const QA_REPORT_STATUSES = ["active", "superseded"] as const;
+export const QA_WAIVABLE_GATES = ["media_needs"] as const;
 export const DRAFT_ORIGINS = ["writer_engine", "operator"] as const;
 export const DRAFT_STATUSES = ["active", "superseded"] as const;
 export const DRAFT_ACTOR_ORIGINS = ["operator", "system"] as const;
@@ -693,6 +696,58 @@ const reviewDetailSchema = z.object({
   generation_attempts_truncated: z.boolean(),
 });
 
+const qaReportSummarySchema = z.object({
+  id: z.string().uuid(),
+  work_item_id: z.string().uuid(),
+  content_draft_id: z.string().uuid(),
+  editorial_review_id: z.string().uuid(),
+  content_brief_id: z.string().uuid(),
+  version: z.number().int(),
+  outcome: z.enum(QA_OUTCOMES),
+  status: z.enum(QA_REPORT_STATUSES),
+  gate_summary: z.record(z.string(), z.string()),
+  engine_name: z.string(),
+  engine_version: z.string(),
+  superseded_by_report_id: z.string().uuid().nullable(),
+  content_hash: z.string(),
+  created_at: timestampSchema,
+});
+
+const qaWaiverSchema = z.object({
+  id: z.string().uuid(),
+  gate_key: z.enum(QA_WAIVABLE_GATES),
+  reason: z.string(),
+  request_id: z.string().nullable(),
+  created_at: timestampSchema,
+});
+
+const qaReportListPageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  reports: z.array(qaReportSummarySchema),
+  waivers: z.array(qaWaiverSchema),
+  total: countSchema,
+  truncated: z.boolean(),
+});
+
+const qaReportStatusEventSchema = z.object({
+  id: z.number().int(),
+  from_status: z.enum(QA_REPORT_STATUSES),
+  to_status: z.enum(QA_REPORT_STATUSES),
+  actor_origin: z.enum(DRAFT_ACTOR_ORIGINS),
+  reason: z.string(),
+  request_id: z.string().nullable(),
+  replacement_report_id: z.string().uuid().nullable(),
+  occurred_at: timestampSchema,
+});
+
+const qaReportDetailSchema = z.object({
+  report: qaReportSummarySchema,
+  gate_results: jsonRecordSchema,
+  gate_policy_snapshot: jsonRecordSchema,
+  waivers: z.array(qaWaiverSchema),
+  status_events: z.array(qaReportStatusEventSchema),
+});
+
 const eligibleEvidenceSchema = z.object({
   items: z.array(
     z.object({
@@ -737,6 +792,10 @@ export type ReviewSummaryView = z.infer<typeof reviewSummarySchema>;
 export type ReviewListPage = z.infer<typeof reviewListPageSchema>;
 export type ReviewDetail = z.infer<typeof reviewDetailSchema>;
 export type ReviewFindingView = z.infer<typeof reviewFindingSchema>;
+export type QaReportSummaryView = z.infer<typeof qaReportSummarySchema>;
+export type QaReportListPage = z.infer<typeof qaReportListPageSchema>;
+export type QaReportDetail = z.infer<typeof qaReportDetailSchema>;
+export type QaWaiverView = z.infer<typeof qaWaiverSchema>;
 
 export type WorkQueueFilters = {
   workflowState?: (typeof WORKFLOW_STATES)[number];
@@ -879,6 +938,48 @@ export async function fetchReviewDetail(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, reviewDetailSchema, [200]);
+}
+
+export type QaReportListResult =
+  BackendResult<QaReportListPage> | { kind: "not_found" };
+
+export async function fetchWorkItemQaReports(
+  workItemId: string,
+): Promise<QaReportListResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/qa-reports`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, qaReportListPageSchema, [200]);
+}
+
+export type QaReportDetailResult =
+  BackendResult<QaReportDetail> | { kind: "not_found" };
+
+export async function fetchQaReportDetail(
+  reportId: string,
+): Promise<QaReportDetailResult> {
+  if (!isUuid(reportId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/qa-reports/${encodeURIComponent(reportId)}`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, qaReportDetailSchema, [200]);
 }
 
 export type EligibleEvidenceResult =
