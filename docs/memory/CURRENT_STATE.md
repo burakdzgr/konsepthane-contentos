@@ -3273,6 +3273,34 @@ listings, provider spend controls, secrets-management documentation.
 The blocked feature phases resume the moment the operator supplies
 the inputs listed below.
 
+- PRODUCTION-READINESS: real-infrastructure CI lane complete:
+  `apps/backend/scripts/verify_full_loop.py` — the consolidated
+  end-to-end verification COMMITTED into the repo (no longer only in
+  session scratchpads): on real PostgreSQL (pgvector) + real Redis it
+  proves the complete migration chain 0001→head from empty, the Phase
+  2/3 seed via real domain services, writer→editor→QA→AWAITING, the
+  named reviewer approval → APPROVED, assemble → schedule → publish
+  over the REAL broker with the fake transport → PUBLISHED (durable
+  attempt, idempotency round-trip, redelivery reuse), and the ADR 0007
+  provenance walk from the PUBLISHED package; the new
+  `real-infrastructure` CI job (services pgvector/pg16 + redis:7,
+  needs backend-quality, separate from the fast unit gate) runs it on
+  every push/PR. Verified locally TWICE against fresh ephemeral
+  containers (including after ruff formatting) before commit.
+
+## Next production-readiness task
+
+SESSION HYGIENE — an audited `prune-sessions` management command
+(delete expired+revoked auth_sessions rows older than a retention
+window; expired rows currently accumulate forever), CLI-invoked like
+the user commands; document the login rate-limiting acceptance
+(single-tenant internal tool — required before any exposure). Then:
+capped listings in draft/review/report/decision/media/publication
+read models; provider spend controls; secrets-management
+documentation. Feature phases (Distribution/Analytics/Refresh + the
+publishing live integration) remain blocked on the operator inputs
+listed below and resume the moment they arrive.
+
 Before implementing the affected integrations, resolve:
 
 - Publishing API contract, service authentication method, and production owner

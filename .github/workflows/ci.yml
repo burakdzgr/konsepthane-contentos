@@ -222,3 +222,60 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose down -v
+
+  real-infrastructure:
+    name: Real-infrastructure full loop
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend-quality]
+    defaults:
+      run:
+        working-directory: apps/backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: contentos
+          POSTGRES_PASSWORD: contentos
+          POSTGRES_DB: contentos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contentos -d contentos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CONTENTOS_DATABASE_URL: postgresql+psycopg://contentos:contentos@localhost:5432/contentos
+      CONTENTOS_REDIS_BROKER_URL: redis://localhost:6379/0
+      CONTENTOS_REDIS_RESULT_URL: redis://localhost:6379/1
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Python 3.12
+        # actions/setup-python v5.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: "3.12"
+      - name: Cache uv downloads
+        # actions/cache v4.2.0
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('apps/backend/uv.lock') }}
+      - name: Install uv
+        run: python -m pip install "uv==${UV_VERSION}"
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-groups --frozen
+      - name: Full-loop verification on real PostgreSQL + Redis
+        run: uv run python scripts/verify_full_loop.py
