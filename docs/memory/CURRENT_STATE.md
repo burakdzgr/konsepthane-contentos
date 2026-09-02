@@ -14,7 +14,8 @@ Task 4 Writer Input Projection + Output Schema + Engine COMPLETE;
 Task 5 Writer Orchestration + DRAFTING->EDITING Wiring COMPLETE;
 Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE;
 Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
-COMPLETE)
+COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
+CLOSED)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2311,20 +2312,39 @@ access protection belongs to future deployment infrastructure.
   vocabulary in the admin gained `writer_draft`; suite is 1147 backend +
   156 admin (21 files), gate green
 
+- PHASE 4 Task 8 (Writer-stage closure audit, docs-only) complete:
+  `docs/PHASE4_WRITER_AUDIT.md` audits Tasks 2-7 against the
+  PHASE4_WRITER_ARCHITECTURE.md §21 exit criteria with a
+  criterion-by-criterion evidence matrix — **15/15 MET, Writer stage
+  CLOSED**. Honest limitations recorded and classified: deferred by
+  design (semantic claim-faithfulness delegated to Editor/QA; rework
+  loop has no Editor consumer yet; no downstream dispatch until the
+  Editor exists; exclusions surfaced not mechanically enforced) vs
+  production-readiness backlog (single-operator boundary without
+  auth/RBAC until governance; real-PG/Redis verification is a scripted
+  per-task ritual not a CI lane; admin manual-draft JSON input; no
+  provider spend controls; capped unpaged draft listings). No runtime
+  changes.
+
 ## Next immediate task
 
-PHASE 4 TASK 8 (authorized under the autonomous continuation mandate) —
-WRITER-STAGE CLOSURE AUDIT (docs-only), per accepted
-PHASE4_WRITER_ARCHITECTURE.md §22 Task 8: audit the implemented Writer
-stage (Tasks 2-7) against the §21 exit criteria with an explicit
-criterion-by-criterion matrix backed by actual code/tests/verification
-evidence; classify remaining limitations honestly (feature-completion
-vs production-readiness backlog, per the mandate's separation); record
-the disposition in docs (a PHASE4_WRITER_AUDIT.md or equivalent) and
-update CURRENT_STATE. No runtime changes expected. After the audit:
-Task 9 Editor architecture (design only), then Editor implementation,
-QA architecture + implementation, and the Phase 4 closure audit ending
-at AWAITING_HUMAN_REVIEW.
+PHASE 4 TASK 9 (authorized under the autonomous continuation mandate) —
+EDITOR ARCHITECTURE (design only), per PHASE4_WRITER_ARCHITECTURE.md
+§22 and the mandate's stage order: an accepted design document
+(PHASE4_EDITOR_ARCHITECTURE.md) for the Editor stage that consumes the
+durable EDITING entry (pinned ContentDraft) and produces durable,
+versioned editorial review artifacts. Binding constraints: reuse the
+contentos.ai boundary (model judgment = policy signal, NEVER
+ResearchEvidence, never new facts); deterministic gates before/around
+any model-assisted signal; execution failure never an editorial
+verdict; workflow authority stays WorkflowService-only (EDITING ->
+QA_REVIEW forward, EDITING -> CHANGES_REQUESTED(responsible=DRAFTING)
+rework via the Task 6 foundation, EDITING -> REJECTED reserved to
+humans); artifact-gate pattern for every transition; append-only
+persistence with provenance to the exact draft version reviewed;
+truthful UNKNOWN semantics; no publication boundary. The design must
+end with atomic dependency-correct implementation tasks and exit
+criteria mirroring the Writer-stage discipline (§21/§22 style).
 
 Before implementing the affected integrations, resolve:
 
