@@ -1,4 +1,5 @@
-"""The qa-gates/1 deterministic gate engine (PHASE4_QA_ARCHITECTURE.md §3).
+"""The qa-gates/2 deterministic gate engine (PHASE4_QA_ARCHITECTURE.md §3;
+media gate v2 per PHASE6_MEDIA_ARCHITECTURE.md §4).
 
 Seven hard gates computed from DURABLE rows over the exact entry-pinned
 package. Every gate yields an explicit result — the absence of a result
@@ -12,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from contentos.briefs.repository import BriefRepository
@@ -19,6 +21,8 @@ from contentos.drafts.errors import DraftInputError
 from contentos.drafts.repository import DraftRepository
 from contentos.drafts.values import MAX_TITLE_PROPOSAL_LENGTH, require_safe_text
 from contentos.evidence_packs.repository import EvidencePackRepository
+from contentos.media.enums import SatisfactionStatus
+from contentos.media.models import MediaNeedSatisfaction
 from contentos.qa.enums import QaGateKey, QaOutcome, WaivableGateKey
 from contentos.qa.models import QaReport
 from contentos.qa.repository import QaRepository
@@ -37,7 +41,7 @@ BLOCKING_GATES: tuple[QaGateKey, ...] = (
     QaGateKey.MEDIA_NEEDS,
 )
 
-_PASSING_RESULTS = frozenset({"pass", "not_applicable", "waived_by_human"})
+_PASSING_RESULTS = frozenset({"pass", "not_applicable", "waived_by_human", "satisfied"})
 
 
 def gate_policy_snapshot() -> dict[str, Any]:
@@ -186,19 +190,39 @@ class QaGateEngine:
         needs = list(package.brief.media_needs)
         if not needs:
             return {"result": "not_applicable", "needs": 0}
+        satisfied_indexes = {
+            row.need_index
+            for row in self._session.execute(
+                select(MediaNeedSatisfaction).where(
+                    MediaNeedSatisfaction.work_item_id == package.work_item_id,
+                    MediaNeedSatisfaction.content_brief_id == package.brief.id,
+                    MediaNeedSatisfaction.status == SatisfactionStatus.ACTIVE,
+                )
+            ).scalars()
+        }
+        unmet = sorted(index for index in range(len(needs)) if index not in satisfied_indexes)
+        if not unmet:
+            # Every need carries an explicit audited human binding.
+            return {
+                "result": "satisfied",
+                "needs": len(needs),
+                "satisfied": len(needs),
+            }
         waivers = [
             waiver
             for waiver in self._repository.list_waivers(package.work_item_id)
             if waiver.gate_key is WaivableGateKey.MEDIA_NEEDS
         ]
         if waivers:
-            # The waiver limits scope honestly; the needs stay visible.
+            # The waiver limits scope honestly; the unmet needs stay visible.
             return {
                 "result": "waived_by_human",
                 "needs": len(needs),
+                "unmet_indexes": unmet,
                 "waiver_ids": [str(waiver.id) for waiver in waivers],
             }
-        return {"result": "unsatisfied", "needs": len(needs)}
+        # EXACT unmet indexes — never a count that hides which.
+        return {"result": "unsatisfied", "needs": len(needs), "unmet_indexes": unmet}
 
     def _internal_link_needs(self, package: QaPackage) -> dict[str, Any]:
         needs = list(package.brief.internal_link_needs)

@@ -3,7 +3,7 @@
 import uuid
 
 import pytest
-from editorial_harness import Harness
+from editorial_harness import TEST_OPERATOR_USERNAME, Harness
 from sqlalchemy import func, select
 from test_reviews import editing_context
 
@@ -227,7 +227,7 @@ class TestRepositorySurface:
 
 
 class TestGateEngine:
-    """Task 17: the qa-gates/1 deterministic gate engine."""
+    """Task 17: the deterministic gate engine (media gate v2 in M3)."""
 
     def run(self, harness: Harness, work_item_id: uuid.UUID):
         from contentos.qa.gates import QaGateEngine
@@ -247,6 +247,8 @@ class TestGateEngine:
         # the gate blocks truthfully instead of silently passing.
         assert gates["media_needs"]["result"] == "unsatisfied"
         assert gates["media_needs"]["needs"] >= 1
+        # v2: the EXACT unmet indexes, never a count that hides which.
+        assert gates["media_needs"]["unmet_indexes"] == [0]
         # Everything provable passes and is recorded explicitly.
         assert gates["package_integrity"]["result"] == "pass"
         assert gates["provenance_chain"]["result"] == "pass"
@@ -257,7 +259,7 @@ class TestGateEngine:
         # Link needs are reported, non-blocking.
         assert gates["internal_link_needs"]["result"] == "pending"
         assert gates["internal_link_needs"]["blocking"] is False
-        assert result.report.gate_policy_snapshot["version"] == "qa-gates/1"
+        assert result.report.gate_policy_snapshot["version"] == "qa-gates/2"
         assert result.report.content_draft_id == draft_id
         assert result.report.editorial_review_id == review_id
 
@@ -281,10 +283,85 @@ class TestGateEngine:
         assert media["result"] == "waived_by_human"
         assert media["waiver_ids"] == [waiver_id]
         assert media["needs"] >= 1  # the needs stay visible
+        assert media["unmet_indexes"] == [0]  # the waiver hides nothing
         assert second.report.version == 2
         with harness.session() as session:
             old = QaRepository(session).get_report(first.report.id)
             assert old is not None and old.status is QaReportStatus.SUPERSEDED
+
+    def test_satisfied_needs_yield_ready_without_a_waiver(self, harness: Harness) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from sqlalchemy import select as _select
+
+        from contentos.auth.models import User
+        from contentos.media.service import MediaService
+        from contentos.media.store import MediaStore
+
+        accepted, _, _ = qa_review_context(harness)
+        first = self.run(harness, accepted.context.work_item_id)
+        assert first.outcome is QaOutcome.NOT_READY
+        assert first.report.gate_policy_snapshot["version"] == "qa-gates/2"
+
+        with harness.session() as session:
+            user = session.execute(
+                _select(User).where(User.username == TEST_OPERATOR_USERNAME)
+            ).scalar_one()
+            service = MediaService(
+                session, MediaStore(Path(tempfile.mkdtemp(prefix="contentos-qa-media-")))
+            )
+            asset, _ = service.register_upload(
+                b"\x89PNG\r\n\x1a\n" + b"qa-gate-test-image",
+                media_type="image/png",
+                alt_text="Kapak görseli",
+                license_note="Konsepthane arşivi",
+                created_by=user,
+            )
+            session.commit()
+            service.satisfy_need(
+                accepted.context.work_item_id,
+                0,
+                asset.id,
+                user=user,
+                reason="kapak ihtiyacı gerçek görselle karşılandı",
+            )
+            session.commit()
+
+        second = self.run(harness, accepted.context.work_item_id)
+        assert second.outcome is QaOutcome.READY_FOR_HUMAN_REVIEW
+        media = second.report.gate_results["media_needs"]
+        assert media["result"] == "satisfied"
+        assert media["satisfied"] == media["needs"] == 1
+        # The superseded first report keeps its own recorded truth.
+        with harness.session() as session:
+            old = QaRepository(session).get_report(first.report.id)
+            assert old is not None
+            assert old.gate_results["media_needs"]["result"] == "unsatisfied"
+            assert old.gate_policy_snapshot["version"] == "qa-gates/2"
+
+    def test_old_reports_stay_under_their_recorded_policy_version(self, harness: Harness) -> None:
+        accepted, draft_id, review_id = qa_review_context(harness)
+        with harness.session() as session:
+            service = QaService(session)
+            package = service.resolve_package(accepted.context.work_item_id)
+            # A historical report recorded under qa-gates/1 (pre-M3).
+            service.persist_report(
+                package,
+                outcome=QaOutcome.NOT_READY,
+                gate_results={"media_needs": {"result": "unsatisfied", "needs": 1}},
+                gate_policy_snapshot={"version": "qa-gates/1"},
+            )
+            session.commit()
+
+        result = self.run(harness, accepted.context.work_item_id)
+        assert result.report.gate_policy_snapshot["version"] == "qa-gates/2"
+        with harness.session() as session:
+            reports = QaRepository(session).list_by_work_item(accepted.context.work_item_id)
+            versions = {report.gate_policy_snapshot["version"]: report.status for report in reports}
+            # The v1 report survives untouched under its own version.
+            assert versions["qa-gates/1"] is QaReportStatus.SUPERSEDED
+            assert versions["qa-gates/2"] is QaReportStatus.ACTIVE
 
     def test_identical_rerun_reuses_the_report(self, harness: Harness) -> None:
         accepted, _, _ = qa_review_context(harness)

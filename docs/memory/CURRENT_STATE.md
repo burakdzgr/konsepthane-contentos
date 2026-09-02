@@ -2995,18 +2995,40 @@ access protection belongs to future deployment infrastructure.
   suite 1269 backend + 216 admin, gate green; no migration (head
   stays `0023`)
 
+- PHASE 6 Task M3 (QA gate v2) complete: `_media_needs` learns
+  `satisfied` (every need of the ACTIVE brief carries an ACTIVE human
+  satisfaction — counted honestly) and every non-satisfied shape now
+  lists the EXACT `unmet_indexes` (unsatisfied AND waived_by_human —
+  the waiver hides nothing); `satisfied` joins the passing-result set
+  so a fully-covered package reaches READY without a waiver;
+  `QA_GATE_POLICY_VERSION` bumped to `qa-gates/2` — reports persist
+  the snapshot at run time, so historical reports remain truthful
+  under their recorded `qa-gates/1` (proven by test: a v1 report
+  superseded by a v2 run keeps its own version and results)
+- Task M3 verified: 2 new + 3 extended gate-engine tests (satisfied →
+  READY without waiver + the superseded report keeps its truth;
+  historical v1 report survives a v2 supersession under its own
+  version; unmet_indexes asserted on the unsatisfied AND waived
+  paths; snapshot version assertions updated) — suite 1271 backend +
+  216 admin, gate green; no migration (head stays `0023`)
+
 ## Next immediate task
 
-PHASE 6 TASK M3 (authorized under the autonomous continuation mandate)
-— QA GATE V2, per PHASE6_MEDIA_ARCHITECTURE.md §4/§7: `_media_needs`
-learns `satisfied` — every (ACTIVE brief, need_index) has an ACTIVE
-satisfaction — and `unsatisfied` now lists the EXACT unmet need
-indexes (never a count that hides which); the gate policy snapshot
-version bumps to `qa-gates/2` while old reports remain truthful under
-their recorded `qa-gates/1`; the waived path stays; deterministic
-tests incl. an old-report-stays-under-v1 proof. Then M4 AI image
-generation (MEDIA_IMAGE purpose through contentos.ai), M5 the admin
-media surface, M6 the media closure audit.
+PHASE 6 TASK M4 (authorized under the autonomous continuation mandate)
+— AI IMAGE GENERATION, per PHASE6_MEDIA_ARCHITECTURE.md §1/§4/§7:
+`GenerationPurpose.MEDIA_IMAGE` (+ the 0024 purpose-CHECK widening
+migration with the audit-protecting downgrade guard, per the 0018
+pattern); image support in the contentos.ai boundary (attempt rows
+with safe metadata only, prompts/raw payloads never persisted, a
+deterministic fake image provider for tests); the
+`generate_media_image` queue task (10th editorial task) + its
+dispatch command carrying (work_item_id, need_index): prompt composed
+from the durable brief need + bounded draft context, the returned
+image stored content-addressed with attempt provenance and the fixed
+`generated_in_house` licensing posture — durable result → commit, NO
+workflow transition, NO satisfaction (a human must bind it);
+real-PG verification for 0024. Then M5 admin media surface, M6 the
+media closure audit.
 
 Before implementing the affected integrations, resolve:
 

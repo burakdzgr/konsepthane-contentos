@@ -595,7 +595,7 @@ class TestQaReportReads:
         detail = harness.get(f"/internal/editorial/qa-reports/{report_id}").json()
         assert detail["report"]["id"] == report_id
         assert detail["gate_results"]["media_needs"]["needs"] >= 1
-        assert detail["gate_policy_snapshot"]["version"] == "qa-gates/1"
+        assert detail["gate_policy_snapshot"]["version"] == "qa-gates/2"
         assert detail["gate_policy_snapshot"]["waivable_gates"] == ["media_needs"]
         assert detail["status_events"] == []
         assert_no_leak(detail)
