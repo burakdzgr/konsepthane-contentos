@@ -6,6 +6,7 @@ import {
   acceptBriefForDrafting,
   acceptEditorReview,
   approvePackage,
+  assemblePublicationPackage,
   analyzeSearchIntent,
   buildEvidencePack,
   commissionOpportunity,
@@ -22,9 +23,12 @@ import {
   rejectPackage,
   requestChangesDecision,
   revokeApproval,
+  publishWorkItem,
   requestWriterRework,
+  resolveApprovalExpired,
   resolveChangesRequested,
   runQaGates,
+  schedulePublication,
   satisfyMediaNeed,
   unsatisfyMediaNeed,
   uploadMediaAsset,
@@ -565,4 +569,43 @@ export async function generateMediaImageAction(
   }
   const result = await generateMediaImage(workItemId, needIndex);
   finish(workItemId, result, "media-image-queued");
+}
+
+export async function assemblePublicationPackageAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const result = await assemblePublicationPackage(workItemId);
+  finish(workItemId, result, "publication-package-assembled");
+}
+
+export async function schedulePublicationAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const packageId = field(formData, "publication_package_id");
+  const reason = field(formData, "reason");
+  if (!packageId || !reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await schedulePublication(workItemId, packageId, reason);
+  finish(workItemId, result, "publication-scheduled");
+}
+
+export async function publishWorkItemAction(formData: FormData): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const result = await publishWorkItem(workItemId);
+  finish(workItemId, result, "publish-queued");
+}
+
+export async function resolveApprovalExpiredAction(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = requireWorkItemId(formData);
+  const reason = field(formData, "reason");
+  if (!reason) {
+    redirect(detailPath(workItemId, "error=invalid"));
+  }
+  const result = await resolveApprovalExpired(workItemId, reason);
+  finish(workItemId, result, "approval-expiry-resolved");
 }

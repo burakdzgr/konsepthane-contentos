@@ -3209,21 +3209,48 @@ access protection belongs to future deployment infrastructure.
   PUBLISHED with pins, redelivery reused with one dispatch); no
   migration (head stays `0025`)
 
+- PHASE 7 Task P4 (publication read models + admin surface) complete:
+  backend — `api/read_models/publishing.py` (PublicationPage: packages
+  newest-first as SUMMARIES — title/locale/market/section count/media
+  manifest counts + waived unmet indexes, full pin set and hashes,
+  assembler display name — the approved BODY never ships to the admin;
+  attempts exactly as recorded with sanitized error classes, remote
+  refs and transport names; `latest_package_approval_current` tri-state
+  with honest null when no package exists) behind GET
+  `work-items/{id}/publication`; admin — the Publication section on
+  the detail page (package table with hashes/manifest summary/
+  assembler, per-attempt status badges with honest failure classes or
+  remote refs, the stale-package warning), state-gated commands
+  (APPROVED: assemble + schedule pinned to the latest package;
+  SCHEDULED|PUBLISHING: the governed publish dispatch;
+  APPROVAL_EXPIRED: the derived resolution form), publication zod
+  schemas + `fetchWorkItemPublication`, control functions
+  (assemble/schedule/publish/resolveApprovalExpired) and four actions
+- Task P4 verified: 3 new backend read tests (summary without the
+  body leaked + no transport material; failed attempts visible with
+  sanitized classes; honest empty/missing pages) and 5 new admin
+  tests (approved commands with the pinned package + waived indexes;
+  scheduled dispatch + honest attempt rendering; the expiry
+  resolution + stale warning; the exact governed control paths +
+  stale-409 mapping) — suite 1291 backend + 232 admin, gate green; no
+  migration (head stays `0025`)
+
 ## Next immediate task
 
-PHASE 7 TASK P4 (authorized under the autonomous continuation mandate)
-— PUBLICATION READ MODELS + ADMIN SURFACE, per
-PHASE7_PUBLISHING_ARCHITECTURE.md §5/§7: GET
-`work-items/{id}/publication` read model (packages with payload
-summary — never the full body dump — hashes, pins, assembler name;
-attempts exactly as recorded with sanitized error classes and remote
-refs; the approval currency of the latest package); admin detail page
-Publication section — state-gated assemble/schedule/publish commands,
-package + attempt history with honest failure classes, the
-APPROVAL_EXPIRED state rendering its resolution command and the exact
-hash mismatch, BLOCKED publication reasons visible; leak tests (no
-publishing URL/key material anywhere); no migration. Then P5 the
-publishing closure audit.
+PHASE 7 TASK P5 (authorized under the autonomous continuation mandate)
+— PUBLISHING CLOSURE AUDIT, docs-only, against
+PHASE7_PUBLISHING_ARCHITECTURE.md §6 exit criteria (9), re-verifying
+that the no-publication invariant is retired the intended way
+(publication exists ONLY as this governed, approval-guarded path) and
+that the LIVE integration remains explicitly blocked on the three
+open inputs. After P5: per the roadmap the next phases are
+Scheduling/Distribution (Pinterest) → Analytics → Refresh — each
+blocked on their own open integration inputs (Pinterest account/API
+access, analytics data sources); with publishing feature-complete on
+the ContentOS side, evaluate with the operator whether to proceed
+there or to burn down the production-readiness backlog (real-infra CI
+lane, session hygiene, spend controls, capped listings, secrets
+management) which requires no external inputs.
 
 Before implementing the affected integrations, resolve:
 

@@ -14,6 +14,7 @@ vi.mock("@/lib/editorial-api", async () => {
     fetchWorkItemQaReports: vi.fn(),
     fetchWorkItemDecisions: vi.fn(),
     fetchWorkItemMedia: vi.fn(),
+    fetchWorkItemPublication: vi.fn(),
   };
 });
 
@@ -29,6 +30,7 @@ import {
   fetchWorkItemDecisions,
   fetchWorkItemDrafts,
   fetchWorkItemMedia,
+  fetchWorkItemPublication,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
 } from "@/lib/editorial-api";
@@ -42,6 +44,9 @@ import {
   decisionView,
   mediaCoveragePage,
   mediaSatisfaction,
+  publicationAttempt,
+  publicationPackage,
+  publicationPage,
   draftListPage,
   draftSummary,
   qaReportListPage,
@@ -61,6 +66,7 @@ const reviewsMock = vi.mocked(fetchWorkItemReviews);
 const qaMock = vi.mocked(fetchWorkItemQaReports);
 const decisionsMock = vi.mocked(fetchWorkItemDecisions);
 const mediaMock = vi.mocked(fetchWorkItemMedia);
+const publicationMock = vi.mocked(fetchWorkItemPublication);
 const currentUserMock = vi.mocked(fetchCurrentUser);
 
 async function renderPage(params: Record<string, string> = {}) {
@@ -104,6 +110,11 @@ beforeEach(() => {
     data: mediaCoveragePage(),
     requestId: null,
   });
+  publicationMock.mockResolvedValue({
+    kind: "ok",
+    data: publicationPage(),
+    requestId: null,
+  });
   currentUserMock.mockResolvedValue({
     kind: "ok",
     data: {
@@ -139,6 +150,7 @@ describe("Editorial detail page", () => {
       "QA reports",
       "Media",
       "Human decisions",
+      "Publication",
       "AI attempts",
       "Workflow history",
     ]) {
@@ -767,6 +779,106 @@ describe("Editorial detail page", () => {
     expect(screen.getByText(/Media commands are closed/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Upload & bind" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate image" })).toBeNull();
+  });
+
+  it("offers assembly and scheduling on APPROVED with the package pinned", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "approved",
+        },
+      }),
+      requestId: null,
+    });
+    publicationMock.mockResolvedValue({
+      kind: "ok",
+      data: publicationPage({
+        packages: [publicationPackage()],
+        latest_package_approval_current: true,
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(
+      screen.getByRole("button", { name: "Assemble publication package" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Schedule publication" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/waived unmet needs: 0/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Publish now" })).toBeNull();
+  });
+
+  it("offers the governed dispatch on SCHEDULED and shows honest attempts", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "scheduled",
+        },
+      }),
+      requestId: null,
+    });
+    publicationMock.mockResolvedValue({
+      kind: "ok",
+      data: publicationPage({
+        packages: [
+          publicationPackage({
+            attempts: [
+              publicationAttempt({
+                status: "rejected_by_api",
+                error_class: "publishing_api_rejected_422",
+                remote_publication_ref: null,
+              }),
+            ],
+          }),
+        ],
+        latest_package_approval_current: true,
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeTruthy();
+    expect(screen.getByText("rejected_by_api")).toBeTruthy();
+    expect(screen.getByText(/publishing_api_rejected_422/)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Assemble publication package" }),
+    ).toBeNull();
+  });
+
+  it("renders the derived expiry resolution on APPROVAL_EXPIRED", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: {
+          ...workItemDetail().work_item,
+          current_state: "approval_expired",
+        },
+      }),
+      requestId: null,
+    });
+    publicationMock.mockResolvedValue({
+      kind: "ok",
+      data: publicationPage({
+        packages: [publicationPackage()],
+        latest_package_approval_current: false,
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+    expect(
+      screen.getByRole("button", { name: "Resolve expired approval" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/no longer matches a current approval/),
+    ).toBeTruthy();
+    expect(screen.getByText(/target is DERIVED/)).toBeTruthy();
   });
 
   it("never renders the internal backend URL", async () => {

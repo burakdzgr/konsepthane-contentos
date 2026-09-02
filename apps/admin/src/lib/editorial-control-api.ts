@@ -44,6 +44,7 @@ const EDITORIAL_TASKS = [
   "generate_editor_review",
   "run_qa_gates",
   "generate_media_image",
+  "publish_package",
 ] as const;
 
 const queuedResponseSchema = z.object({
@@ -129,6 +130,15 @@ const waiverResponseSchema = z.object({
   note: z.string(),
 });
 
+const publicationPackageResponseSchema = z.object({
+  status: z.enum(["assembled", "already_exists"]),
+  publication_package_id: z.string().uuid(),
+  work_item_id: z.string().uuid(),
+  version: z.number().int(),
+  package_hash: z.string(),
+  content_hash: z.string(),
+});
+
 const mediaUploadResponseSchema = z.object({
   status: z.enum(["registered", "already_exists"]),
   media_asset_id: z.string().uuid(),
@@ -182,6 +192,9 @@ export type AcceptReviewResult = z.infer<typeof acceptReviewResponseSchema>;
 export type WaiverResult = z.infer<typeof waiverResponseSchema>;
 export type DecisionResult = z.infer<typeof decisionResponseSchema>;
 export type MediaUploadResult = z.infer<typeof mediaUploadResponseSchema>;
+export type PublicationPackageResult = z.infer<
+  typeof publicationPackageResponseSchema
+>;
 export type MediaSatisfactionResult = z.infer<
   typeof mediaSatisfactionResponseSchema
 >;
@@ -754,6 +767,57 @@ export function generateMediaImage(
       `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/media-needs/${needIndex}/generate-image`,
       undefined,
       queuedResponseSchema,
+    ),
+  );
+}
+
+export function assemblePublicationPackage(
+  workItemId: string,
+): Promise<ControlResult<PublicationPackageResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/assemble-publication-package`,
+      undefined,
+      publicationPackageResponseSchema,
+    ),
+  );
+}
+
+export function schedulePublication(
+  workItemId: string,
+  publicationPackageId: string,
+  reason: string,
+): Promise<ControlResult<WorkItemStateResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/schedule-publication`,
+      { publication_package_id: publicationPackageId, reason },
+      workItemStateResponseSchema,
+    ),
+  );
+}
+
+export function publishWorkItem(
+  workItemId: string,
+): Promise<ControlResult<QueuedResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/publish`,
+      undefined,
+      queuedResponseSchema,
+    ),
+  );
+}
+
+export function resolveApprovalExpired(
+  workItemId: string,
+  reason: string,
+): Promise<ControlResult<WorkItemStateResult>> {
+  return guarded(workItemId, () =>
+    postControl(
+      `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/resolve-approval-expired`,
+      { reason },
+      workItemStateResponseSchema,
     ),
   );
 }

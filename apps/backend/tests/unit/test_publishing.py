@@ -518,3 +518,75 @@ class TestPublishTask:
             f"/internal/editorial/work-items/{accepted.context.work_item_id}/publish"
         )
         assert early.status_code == 409
+
+
+class TestPublicationReads:
+    """P4: the publication read model — summaries and honest attempts."""
+
+    def test_publication_page_summarizes_without_leaking_the_body(self, harness: Harness) -> None:
+        from contentos.publishing.transport import FakePublishingTransport, TransportOutcome
+
+        publisher = TestPublishTask()
+        work_item_id, package_id = publisher.scheduled(harness)
+        transport = FakePublishingTransport(
+            outcome=TransportOutcome(status="succeeded", remote_publication_ref="kh-pub-7")
+        )
+        app = publisher.worker_app(harness, transport)
+        assert publisher.run(app, work_item_id)["status"] == "completed"
+
+        response = harness.get(f"/internal/editorial/work-items/{work_item_id}/publication")
+        assert response.status_code == 200, response.text
+        page = response.json()
+        [package] = page["packages"]
+        assert package["id"] == package_id
+        assert package["version"] == 1
+        assert package["section_count"] >= 1
+        assert package["waived_unmet_indexes"] == [0]
+        assert package["assembled_by"]["username"] == TEST_OPERATOR_USERNAME
+        [attempt] = package["attempts"]
+        assert attempt["status"] == "succeeded"
+        assert attempt["remote_publication_ref"] == "kh-pub-7"
+        assert attempt["transport_name"] == "fake-publishing-transport"
+        assert page["latest_package_approval_current"] is True
+
+        # The approved BODY never ships to the admin: summaries only.
+        with harness.session() as session:
+            draft = session.execute(select(ContentDraft)).scalars().first()
+            assert draft is not None
+            first_block_text = draft.body["sections"][0]["blocks"][0]["text"]
+        assert first_block_text not in response.text
+        # No transport secrets or URLs either.
+        lowered = response.text.lower()
+        assert "api_key" not in lowered and "publishing_api" not in lowered
+
+    def test_failed_attempts_stay_visible_with_sanitized_classes(self, harness: Harness) -> None:
+        from contentos.publishing.transport import FakePublishingTransport, TransportOutcome
+
+        publisher = TestPublishTask()
+        work_item_id, _ = publisher.scheduled(harness)
+        transport = FakePublishingTransport(
+            outcome=TransportOutcome(
+                status="rejected_by_api", error_class="publishing_api_rejected_422"
+            )
+        )
+        app = publisher.worker_app(harness, transport)
+        assert publisher.run(app, work_item_id)["status"] == "publish_failed"
+
+        page = harness.get(f"/internal/editorial/work-items/{work_item_id}/publication").json()
+        [attempt] = page["packages"][0]["attempts"]
+        assert attempt["status"] == "rejected_by_api"
+        assert attempt["error_class"] == "publishing_api_rejected_422"
+        assert attempt["remote_publication_ref"] is None
+        assert page["latest_package_approval_current"] is True  # approval unchanged
+
+    def test_empty_and_missing_pages_are_honest(self, harness: Harness) -> None:
+        accepted, _ = approved_context(harness)
+        page = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/publication"
+        ).json()
+        assert page["packages"] == []
+        assert page["latest_package_approval_current"] is None
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/publication").status_code
+            == 404
+        )

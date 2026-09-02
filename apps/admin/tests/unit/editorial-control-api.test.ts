@@ -698,3 +698,84 @@ describe("media commands", () => {
     expect(result).toEqual({ kind: "conflict" });
   });
 });
+
+describe("publication commands", () => {
+  it("assemble/schedule/publish/resolve hit the exact governed paths", async () => {
+    const {
+      assemblePublicationPackage,
+      publishWorkItem,
+      resolveApprovalExpired,
+      schedulePublication,
+    } = await import("@/lib/editorial-control-api");
+    const PACKAGE_ID = "c4000000-0000-4000-8000-00000000000c";
+
+    let fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "assembled",
+        publication_package_id: PACKAGE_ID,
+        work_item_id: WORK_ITEM_ID,
+        version: 1,
+        package_hash: "f".repeat(64),
+        content_hash: "c".repeat(64),
+      }),
+    );
+    const assembled = await assemblePublicationPackage(WORK_ITEM_ID);
+    expect(assembled.kind).toBe("ok");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/assemble-publication-package`,
+    );
+
+    fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "scheduled",
+      }),
+    );
+    await schedulePublication(WORK_ITEM_ID, PACKAGE_ID, "yayin planina alindi");
+    const request = requestOf(fetchMock);
+    expect(request.url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/schedule-publication`,
+    );
+    expect(request.body).toEqual({
+      publication_package_id: PACKAGE_ID,
+      reason: "yayin planina alindi",
+    });
+
+    fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        task: "publish_package",
+        entity_id: WORK_ITEM_ID,
+      }),
+    );
+    const queued = await publishWorkItem(WORK_ITEM_ID);
+    expect(queued.kind).toBe("ok");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/publish`,
+    );
+
+    fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        work_item_id: WORK_ITEM_ID,
+        current_state: "awaiting_human_review",
+      }),
+    );
+    await resolveApprovalExpired(WORK_ITEM_ID, "yeniden incelemeye don");
+    expect(requestOf(fetchMock).url).toContain(
+      `/internal/editorial/work-items/${WORK_ITEM_ID}/resolve-approval-expired`,
+    );
+  });
+
+  it("maps a stale-approval 409 to conflict", async () => {
+    const { schedulePublication } = await import("@/lib/editorial-control-api");
+    stubFetch(async () => jsonResponse(409, { detail: "stale" }));
+    const result = await schedulePublication(
+      WORK_ITEM_ID,
+      "c4000000-0000-4000-8000-00000000000c",
+      "bayat onay",
+    );
+    expect(result).toEqual({ kind: "conflict" });
+  });
+});

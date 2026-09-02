@@ -9,6 +9,7 @@ import {
   fetchWorkItemDecisions,
   fetchWorkItemDrafts,
   fetchWorkItemMedia,
+  fetchWorkItemPublication,
   fetchWorkItemQaReports,
   fetchWorkItemReviews,
   type AiAttemptView,
@@ -18,6 +19,7 @@ import {
   type DraftListPage,
   type MediaCoveragePage,
   type MediaSatisfactionView,
+  type PublicationPage,
   type QaReportListPage,
   type ReviewListPage,
   type EligibleEvidenceItem,
@@ -49,7 +51,11 @@ import {
   acceptReviewAction,
   analyzeSearchIntentAction,
   approvePackageAction,
+  assemblePublicationPackageAction,
   bindMediaAssetAction,
+  publishWorkItemAction,
+  resolveApprovalExpiredAction,
+  schedulePublicationAction,
   generateMediaImageAction,
   unbindMediaAction,
   uploadAndBindMediaAction,
@@ -129,6 +135,14 @@ const DETAIL_NOTICES: Record<string, string> = {
   "media-unbound": "Binding withdrawn; the need is honestly unsatisfied again.",
   "media-image-queued":
     "Image generation queued. Generation satisfies nothing by itself — bind the asset explicitly.",
+  "publication-package-assembled":
+    "Publication package assembled from the exact approved artifacts.",
+  "publication-scheduled":
+    "Publication scheduled. Nothing is published until the governed dispatch runs.",
+  "publish-queued":
+    "Publication dispatch queued; the worker re-checks the approval first.",
+  "approval-expiry-resolved":
+    "Routed out of the expired approval to the derived target.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -1994,6 +2008,171 @@ function MediaSection({
   );
 }
 
+function PublicationSection({
+  detail,
+  publication,
+}: {
+  detail: WorkItemDetail;
+  publication: PublicationPage | null;
+}) {
+  const workItemId = detail.work_item.id;
+  const state = detail.work_item.current_state;
+  return (
+    <section aria-labelledby="detail-publication">
+      <h2 id="detail-publication">Publication</h2>
+      <p className="muted">
+        ContentOS publishes exactly what was approved, or nothing: immutable
+        hashed packages behind the current-approval guard, dispatched only
+        through the governed Publishing API transport.
+      </p>
+      {publication === null && (
+        <p className="empty-note">The publication state cannot be loaded.</p>
+      )}
+      {publication !== null && (
+        <>
+          {publication.packages.length === 0 && (
+            <p className="empty-note">No publication package exists yet.</p>
+          )}
+          {publication.latest_package_approval_current === false && (
+            <p role="note">
+              <strong>
+                The latest package no longer matches a current approval.
+              </strong>{" "}
+              Re-assembly (and possibly re-approval) is required before
+              publication can proceed.
+            </p>
+          )}
+          {publication.packages.length > 0 && (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Version</th>
+                    <th scope="col">Package</th>
+                    <th scope="col">Assembled by</th>
+                    <th scope="col">Attempts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {publication.packages.map((row) => (
+                    <tr key={row.id}>
+                      <td>v{row.version}</td>
+                      <td>
+                        <span className="mono">{row.id}</span>
+                        <p className="muted">
+                          {row.section_count} sections · {row.manifest_needs}{" "}
+                          media bindings
+                          {row.waived_unmet_indexes.length > 0
+                            ? ` · waived unmet needs: ${row.waived_unmet_indexes.join(", ")}`
+                            : ""}
+                        </p>
+                        <p className="mono muted">
+                          hash={row.package_hash.slice(0, 12)}… content=
+                          {row.content_hash.slice(0, 12)}…
+                        </p>
+                      </td>
+                      <td>{row.assembled_by.display_name}</td>
+                      <td>
+                        {row.attempts.length === 0 && (
+                          <span className="muted">No dispatches yet.</span>
+                        )}
+                        {row.attempts.map((attempt) => (
+                          <p key={attempt.id}>
+                            #{attempt.attempt_number}{" "}
+                            <span
+                              className="badge"
+                              data-tone={
+                                attempt.status === "succeeded"
+                                  ? "positive"
+                                  : "negative"
+                              }
+                            >
+                              {attempt.status}
+                            </span>{" "}
+                            {attempt.remote_publication_ref !== null
+                              ? `ref=${attempt.remote_publication_ref}`
+                              : (attempt.error_class ?? "")}
+                          </p>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+      {state === "approved" && (
+        <div className="control-stack">
+          <form
+            action={assemblePublicationPackageAction}
+            className="control-form"
+          >
+            <input type="hidden" name="work_item_id" value={workItemId} />
+            <button type="submit">Assemble publication package</button>
+            <span className="muted">
+              Deterministic projection of the approved artifacts; identical
+              content converges on the existing package.
+            </span>
+          </form>
+          {publication !== null && publication.packages.length > 0 && (
+            <form action={schedulePublicationAction} className="control-form">
+              <input type="hidden" name="work_item_id" value={workItemId} />
+              <input
+                type="hidden"
+                name="publication_package_id"
+                value={publication.packages[0]!.id}
+              />
+              <input
+                type="text"
+                name="reason"
+                required
+                maxLength={1000}
+                placeholder="why this package goes to the publication plan"
+                aria-label="Scheduling reason"
+              />
+              <button type="submit">Schedule publication</button>
+              <span className="muted">
+                Schedules package v{publication.packages[0]!.version}; nothing
+                is published until the governed dispatch runs.
+              </span>
+            </form>
+          )}
+        </div>
+      )}
+      {(state === "scheduled" || state === "publishing") && (
+        <form action={publishWorkItemAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <button type="submit">Publish now</button>
+          <span className="muted">
+            Queues the governed dispatch; the worker re-checks the approval and
+            a stale one expires instead of publishing.
+          </span>
+        </form>
+      )}
+      {state === "approval_expired" && (
+        <form action={resolveApprovalExpiredAction} className="control-form">
+          <input type="hidden" name="work_item_id" value={workItemId} />
+          <input
+            type="text"
+            name="reason"
+            required
+            maxLength={1000}
+            placeholder="route the expired approval back for review"
+            aria-label="Expiry resolution reason"
+          />
+          <button type="submit">Resolve expired approval</button>
+          <span className="muted">
+            The target is DERIVED: back to human review while the QA report
+            still covers the draft, else back to QA.
+          </span>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function DecisionsSection({
   detail,
   decisions,
@@ -2340,6 +2519,9 @@ export default async function EditorialDetailPage({
   const decisions = decisionsResult.kind === "ok" ? decisionsResult.data : null;
   const mediaResult = await fetchWorkItemMedia(detail.work_item.id);
   const media = mediaResult.kind === "ok" ? mediaResult.data : null;
+  const publicationResult = await fetchWorkItemPublication(detail.work_item.id);
+  const publication =
+    publicationResult.kind === "ok" ? publicationResult.data : null;
   const currentUserResult = await fetchCurrentUser();
   const isReviewer =
     currentUserResult.kind === "ok" &&
@@ -2389,6 +2571,7 @@ export default async function EditorialDetailPage({
         decisions={decisions}
         isReviewer={isReviewer}
       />
+      <PublicationSection detail={detail} publication={publication} />
       <AiAttemptsSection attempts={detail.ai_attempts} />
       <WorkflowHistorySection detail={detail} />
     </section>

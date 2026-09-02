@@ -11,6 +11,9 @@ import type {
   MediaAssetView,
   MediaCoveragePage,
   MediaSatisfactionView,
+  PublicationAttemptView,
+  PublicationPackageView,
+  PublicationPage,
   DraftDetail,
   DraftListPage,
   DraftSummaryView,
@@ -803,6 +806,64 @@ export function mediaCoveragePage(
     satisfied_needs: satisfied,
     total_needs: needs.length,
     history: [],
+    ...overrides,
+  };
+}
+
+export const PUBLICATION_PACKAGE_ID = "c4000000-0000-4000-8000-00000000000c";
+
+export function publicationAttempt(
+  overrides: Partial<PublicationAttemptView> = {},
+): PublicationAttemptView {
+  return {
+    id: "c5000000-0000-4000-8000-00000000000c",
+    attempt_number: 1,
+    status: "succeeded",
+    error_class: null,
+    remote_publication_ref: "kh-pub-7",
+    transport_name: "fake-publishing-transport",
+    created_at: AT,
+    ...overrides,
+  };
+}
+
+export function publicationPackage(
+  overrides: Partial<PublicationPackageView> = {},
+): PublicationPackageView {
+  return {
+    id: PUBLICATION_PACKAGE_ID,
+    version: 1,
+    human_decision_id: "d0000000-0000-4000-8000-00000000000d",
+    content_draft_id: DRAFT_ID,
+    content_brief_id: BRIEF_ID,
+    qa_report_id: QA_REPORT_ID,
+    content_hash: "c".repeat(64),
+    package_hash: "f".repeat(64),
+    payload_schema_version: "publication-package/1",
+    title_proposal: "Evde Dogum Gunu Partisi Rehberi",
+    locale: "tr-TR",
+    market: "TR",
+    section_count: 3,
+    manifest_needs: 0,
+    waived_unmet_indexes: [0],
+    assembled_by: {
+      id: REVIEWER_USER_ID,
+      username: "smoke-reviewer",
+      display_name: "Smoke Reviewer",
+    },
+    created_at: AT,
+    attempts: [],
+    ...overrides,
+  };
+}
+
+export function publicationPage(
+  overrides: Partial<PublicationPage> = {},
+): PublicationPage {
+  return {
+    work_item_id: WORK_ITEM_ID,
+    packages: [],
+    latest_package_approval_current: null,
     ...overrides,
   };
 }

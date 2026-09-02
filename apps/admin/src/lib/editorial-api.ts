@@ -162,6 +162,12 @@ export const QA_OUTCOMES = ["ready_for_human_review", "not_ready"] as const;
 export const QA_REPORT_STATUSES = ["active", "superseded"] as const;
 export const QA_WAIVABLE_GATES = ["media_needs"] as const;
 export const MEDIA_ORIGINS = ["human_upload", "ai_generated"] as const;
+export const PUBLICATION_ATTEMPT_STATUSES = [
+  "succeeded",
+  "transport_error",
+  "rejected_by_api",
+  "timeout",
+] as const;
 export const MEDIA_SATISFACTION_STATUSES = ["active", "superseded"] as const;
 export const DECISION_KINDS = [
   "approved",
@@ -759,6 +765,47 @@ const qaReportDetailSchema = z.object({
   status_events: z.array(qaReportStatusEventSchema),
 });
 
+const publicationAttemptSchema = z.object({
+  id: z.string().uuid(),
+  attempt_number: z.number().int(),
+  status: z.enum(PUBLICATION_ATTEMPT_STATUSES),
+  error_class: z.string().nullable(),
+  remote_publication_ref: z.string().nullable(),
+  transport_name: z.string(),
+  created_at: timestampSchema,
+});
+
+const publicationPackageSchema = z.object({
+  id: z.string().uuid(),
+  version: z.number().int(),
+  human_decision_id: z.string().uuid(),
+  content_draft_id: z.string().uuid(),
+  content_brief_id: z.string().uuid(),
+  qa_report_id: z.string().uuid(),
+  content_hash: z.string(),
+  package_hash: z.string(),
+  payload_schema_version: z.string(),
+  title_proposal: z.string().nullable(),
+  locale: z.string(),
+  market: z.string(),
+  section_count: z.number().int(),
+  manifest_needs: z.number().int(),
+  waived_unmet_indexes: z.array(z.number().int()),
+  assembled_by: z.object({
+    id: z.string().uuid(),
+    username: z.string(),
+    display_name: z.string(),
+  }),
+  created_at: timestampSchema,
+  attempts: z.array(publicationAttemptSchema),
+});
+
+const publicationPageSchema = z.object({
+  work_item_id: z.string().uuid(),
+  packages: z.array(publicationPackageSchema),
+  latest_package_approval_current: z.boolean().nullable(),
+});
+
 const mediaActorSchema = z.object({
   id: z.string().uuid(),
   username: z.string(),
@@ -891,6 +938,9 @@ export type QaReportSummaryView = z.infer<typeof qaReportSummarySchema>;
 export type QaReportListPage = z.infer<typeof qaReportListPageSchema>;
 export type QaReportDetail = z.infer<typeof qaReportDetailSchema>;
 export type QaWaiverView = z.infer<typeof qaWaiverSchema>;
+export type PublicationAttemptView = z.infer<typeof publicationAttemptSchema>;
+export type PublicationPackageView = z.infer<typeof publicationPackageSchema>;
+export type PublicationPage = z.infer<typeof publicationPageSchema>;
 export type MediaAssetView = z.infer<typeof mediaAssetSchema>;
 export type MediaSatisfactionView = z.infer<typeof mediaSatisfactionSchema>;
 export type NeedCoverageView = z.infer<typeof needCoverageSchema>;
@@ -1103,6 +1153,27 @@ export async function fetchWorkItemDecisions(
     return { kind: "not_found" };
   }
   return parseBackendResponse(response, decisionListPageSchema, [200]);
+}
+
+export type PublicationResult =
+  BackendResult<PublicationPage> | { kind: "not_found" };
+
+export async function fetchWorkItemPublication(
+  workItemId: string,
+): Promise<PublicationResult> {
+  if (!isUuid(workItemId)) {
+    return { kind: "not_found" };
+  }
+  const response = await requestBackend(
+    `/internal/editorial/work-items/${encodeURIComponent(workItemId)}/publication`,
+  );
+  if (response === null) {
+    return { kind: "unreachable" };
+  }
+  if (response.status === 404) {
+    return { kind: "not_found" };
+  }
+  return parseBackendResponse(response, publicationPageSchema, [200]);
 }
 
 export type MediaCoverageResult =

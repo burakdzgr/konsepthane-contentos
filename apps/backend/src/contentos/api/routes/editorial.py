@@ -35,6 +35,7 @@ from contentos.api.read_models.editorial import (
     list_work_items,
 )
 from contentos.api.read_models.media import MediaCoveragePage, get_media_coverage
+from contentos.api.read_models.publishing import PublicationPage, get_publication
 from contentos.api.read_models.qa import (
     QaReportDetail,
     QaReportListPage,
@@ -168,6 +169,19 @@ def get_editorial_work_item_media(
     """The ACTIVE brief's media needs with per-need coverage (or honest
     UNSATISFIED) plus the audited satisfaction history."""
     page = get_media_coverage(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
+
+
+@router.get("/work-items/{work_item_id}/publication", response_model=PublicationPage)
+def get_editorial_work_item_publication(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> PublicationPage:
+    """Publication packages (summaries + pins, never the body) and every
+    dispatch attempt exactly as recorded."""
+    page = get_publication(session, work_item_id)
     if page is None:
         raise HTTPException(status_code=404, detail="editorial work item not found")
     return page
