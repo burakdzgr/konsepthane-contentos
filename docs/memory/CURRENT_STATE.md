@@ -3089,25 +3089,47 @@ access protection belongs to future deployment infrastructure.
   backlog items (production object store + retention, dimensions,
   upload streaming). Docs-only; no runtime changed.
 
+- PHASE 7 architecture written (docs-only):
+  `docs/PHASE7_PUBLISHING_ARCHITECTURE.md` — the ContentOS side of
+  publishing. Binding decisions: publish exactly what was approved or
+  nothing (packages assembled ONLY from the pinned approved artifacts
+  under `require_current_approval`, deterministically hashed,
+  immutable, versioned; unmet unwaived media needs refuse assembly);
+  rendering is NOT ContentOS's job in v1 (the package carries the
+  approved STRUCTURE + media manifest); humans schedule, machines
+  execute (APPROVED→SCHEDULED operator command; PUBLISHING/PUBLISHED
+  SYSTEM transitions behind durable dispatch results; failures =
+  durable attempts → bounded retries → BLOCKED, REJECTED unreachable);
+  stale approvals surface via the wired APPROVAL_EXPIRED path with
+  governed deterministic resolution; idempotency end to end (attempt
+  identity + API idempotency key from (work_item, package_hash) +
+  remote-ref reuse); the transport boundary: `PublishingTransport`
+  protocol + deterministic fake for ALL tests/verification + an HTTP
+  skeleton that is a TYPED ERROR without explicit
+  `publishing_api_url`/`publishing_api_key` settings — the LIVE
+  integration stays blocked on the three open inputs (contract, auth
+  method, production owner). §6 exit criteria (9) + §7 atomic tasks
+  P1–P5 (package foundation with migration `0025`; scheduling +
+  expiry resolution; transport + publish task; read models + admin;
+  closure audit)
+
 ## Next immediate task
 
-PUBLISHING PHASE — ARCHITECTURE FIRST (authorized under the autonomous
-continuation mandate), per the roadmap (Media done → Publishing →
-Scheduling/Distribution → Analytics → Refresh): write
-`docs/PHASE7_PUBLISHING_ARCHITECTURE.md` before any code. Binding
-inputs: publishing consumes `DecisionService.require_current_approval`
-(a stale approval is surfaced via the wired SCHEDULED →
-APPROVAL_EXPIRED path, never ridden); ContentOS NEVER touches the
-Konsepthane production DB/filesystem — only a versioned +
-authenticated + idempotent Publishing API; the Publishing API
-contract, service authentication method and production owner are OPEN
-integration questions (listed below) — the architecture must define
-the ContentOS SIDE (package assembly from the approved artifacts,
-APPROVED → SCHEDULED → PUBLISHING → PUBLISHED workflow wiring with
-artifact gates, idempotency keys, failure honesty) while explicitly
-BLOCKING the live integration on those unresolved inputs (design +
-in-repo contract + fake-transport verification; no real endpoint
-until the operator supplies one).
+PHASE 7 TASK P1 (authorized under the autonomous continuation mandate)
+— PUBLICATION PACKAGE FOUNDATION, per
+PHASE7_PUBLISHING_ARCHITECTURE.md §3/§7: migration `0025`
+(`publication_packages` immutable versioned append-only with the full
+pin set + payload/`publication-package/1`/package_hash/media_manifest,
+and `publication_attempts` append-only execution facts with
+per-package UNIQUE attempt_number, derived idempotency_key, bounded
+sanitized statuses {succeeded, transport_error, rejected_by_api,
+timeout} and remote ref presence tied to success);
+`contentos.publishing` assembler — deterministic canonical-JSON
+projection of the approved artifacts, refusing without a current
+approval / covering ready report / satisfied-or-waived media; unit
+tests; REAL PostgreSQL verification (0024→0025 cycle over populated
+data + trigger negatives + a real assembly over a fully approved
+chain). Then P2 scheduling + expiry resolution.
 
 Before implementing the affected integrations, resolve:
 
