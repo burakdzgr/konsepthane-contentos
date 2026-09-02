@@ -226,6 +226,134 @@ class TestRepositorySurface:
         }
 
 
+class TestGateEngine:
+    """Task 17: the qa-gates/1 deterministic gate engine."""
+
+    def run(self, harness: Harness, work_item_id: uuid.UUID):
+        from contentos.qa.gates import QaGateEngine
+
+        with harness.session() as session:
+            result = QaGateEngine(session).run_gates(work_item_id)
+            session.commit()
+            return result
+
+    def test_default_run_is_not_ready_with_truthful_media_gate(self, harness: Harness) -> None:
+        accepted, draft_id, review_id = qa_review_context(harness)
+        result = self.run(harness, accepted.context.work_item_id)
+
+        assert result.outcome is QaOutcome.NOT_READY
+        gates = result.report.gate_results
+        # The harness brief HAS media needs and nothing can evaluate them:
+        # the gate blocks truthfully instead of silently passing.
+        assert gates["media_needs"]["result"] == "unsatisfied"
+        assert gates["media_needs"]["needs"] >= 1
+        # Everything provable passes and is recorded explicitly.
+        assert gates["package_integrity"]["result"] == "pass"
+        assert gates["provenance_chain"]["result"] == "pass"
+        assert gates["provenance_chain"]["evidence_links"] >= 1
+        assert gates["writer_envelope"]["result"] == "pass"
+        assert gates["content_safety"]["result"] == "pass"
+        assert gates["editorial_review_currency"]["result"] == "pass"
+        # Link needs are reported, non-blocking.
+        assert gates["internal_link_needs"]["result"] == "pending"
+        assert gates["internal_link_needs"]["blocking"] is False
+        assert result.report.gate_policy_snapshot["version"] == "qa-gates/1"
+        assert result.report.content_draft_id == draft_id
+        assert result.report.editorial_review_id == review_id
+
+    def test_waiver_consumption_yields_ready(self, harness: Harness) -> None:
+        accepted, _, _ = qa_review_context(harness)
+        first = self.run(harness, accepted.context.work_item_id)
+        assert first.outcome is QaOutcome.NOT_READY
+
+        with harness.session() as session:
+            waiver = QaService(session).add_waiver(
+                accepted.context.work_item_id,
+                WaivableGateKey.MEDIA_NEEDS,
+                reason="görsel gereksinimi bilinçli olarak ertelendi",
+            )
+            session.commit()
+            waiver_id = str(waiver.id)
+
+        second = self.run(harness, accepted.context.work_item_id)
+        assert second.outcome is QaOutcome.READY_FOR_HUMAN_REVIEW
+        media = second.report.gate_results["media_needs"]
+        assert media["result"] == "waived_by_human"
+        assert media["waiver_ids"] == [waiver_id]
+        assert media["needs"] >= 1  # the needs stay visible
+        assert second.report.version == 2
+        with harness.session() as session:
+            old = QaRepository(session).get_report(first.report.id)
+            assert old is not None and old.status is QaReportStatus.SUPERSEDED
+
+    def test_identical_rerun_reuses_the_report(self, harness: Harness) -> None:
+        accepted, _, _ = qa_review_context(harness)
+        first = self.run(harness, accepted.context.work_item_id)
+        second = self.run(harness, accepted.context.work_item_id)
+        assert second.created is False
+        assert second.report.id == first.report.id
+
+    def test_broken_provenance_fails_closed(self, harness: Harness) -> None:
+        from contentos.briefs.models import BriefClaimEvidence
+
+        accepted, _, _ = qa_review_context(harness)
+        with harness.session() as session:
+            # SQLite harness has no append-only trigger: simulate corrupted
+            # durable provenance by removing the used claim's evidence links.
+            for link in session.execute(select(BriefClaimEvidence)).scalars().all():
+                if link.claim_id == accepted.claim_ids[0]:  # type: ignore[attr-defined]
+                    session.delete(link)
+            session.commit()
+
+        result = self.run(harness, accepted.context.work_item_id)
+        assert result.outcome is QaOutcome.NOT_READY
+        chain = result.report.gate_results["provenance_chain"]
+        assert chain["result"] == "fail"
+        assert str(accepted.claim_ids[0]) in chain["broken_claims"]  # type: ignore[attr-defined]
+
+    def test_unsafe_content_fails_closed(self, harness: Harness) -> None:
+        from contentos.drafts.models import ContentDraft
+
+        accepted, draft_id, _ = qa_review_context(harness)
+        with harness.session() as session:
+            draft = session.get(ContentDraft, draft_id)
+            assert draft is not None
+            body = {
+                "sections": [
+                    {**section, "blocks": [dict(block) for block in section["blocks"]]}
+                    for section in draft.body["sections"]
+                ]
+            }
+            body["sections"][0]["blocks"][0]["text"] = "Ayrıntı için https://ornek.com"
+            draft.body = body
+            session.commit()
+
+        result = self.run(harness, accepted.context.work_item_id)
+        assert result.outcome is QaOutcome.NOT_READY
+        safety = result.report.gate_results["content_safety"]
+        assert safety["result"] == "fail"
+        assert "giris-1" in safety["unsafe_anchors"]
+
+    def test_stale_review_scope_fails_currency(self, harness: Harness) -> None:
+        from contentos.reviews.models import EditorialReview
+
+        accepted, _, review_id = qa_review_context(harness)
+        with harness.session() as session:
+            review = session.get(EditorialReview, review_id)
+            assert review is not None
+            review.review_scope = {
+                **review.review_scope,
+                "draft_content_hash": "f" * 64,
+            }
+            session.commit()
+
+        result = self.run(harness, accepted.context.work_item_id)
+        assert result.outcome is QaOutcome.NOT_READY
+        currency = result.report.gate_results["editorial_review_currency"]
+        assert currency["result"] == "fail"
+        assert currency["checks"]["scope_draft_hash_current"] is False
+
+
 class TestPackageGates:
     def test_revise_review_pin_is_a_package_error(self, harness: Harness) -> None:
         from contentos.reviews.enums import (
