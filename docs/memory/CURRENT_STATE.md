@@ -28,7 +28,8 @@ Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
 AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
 COMPLETE; Task 20 QA-Stage Audit COMPLETE; Task 21 PHASE 4 CLOSURE
 AUDIT COMPLETE — **PHASE 4 IS CLOSED**; PHASE 5 Governance
-Architecture (design only) COMPLETE; Task G1 Auth Foundation COMPLETE)
+Architecture (design only) COMPLETE; Task G1 Auth Foundation COMPLETE; Task G2 Admin Authentication
+COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2770,26 +2771,58 @@ access protection belongs to future deployment infrastructure.
   until Task G2 lands the admin login + token forwarding (main page /
   health smoke unaffected)
 
+- PHASE 5 Task G2 (admin authentication) complete: `/login` page (the
+  ONLY unauthenticated page; carries the truthful Foundation Status so
+  outages are distinguishable from credential problems, and so the
+  compose smoke keeps its signal) with a server action calling the
+  backend login and storing the token in an HttpOnly SameSite=Lax
+  cookie (Secure in production, expiry matched to the backend
+  session); Next.js edge middleware redirects cookie-less visitors of
+  every page (except /login, /api/health, static assets) to /login —
+  cookie PRESENCE gates navigation while the backend stays the
+  authority; `requestBackend` forwards the cookie as a Bearer header
+  on every call and redirects to `/login?error=expired` on any 401
+  from a protected route (the auth routes excluded); Sign out in the
+  header (revokes the backend session best-effort + clears the
+  cookie); the raw token never reaches browser JS or logs;
+  `scripts/smoke.ps1` upgraded: login-page gate + foundation-status
+  checks moved there, an explicit 401 assertion on an internal route,
+  and a REAL end-to-end login smoke (CLI-provisioned smoke user inside
+  the api container -> POST login -> GET me)
+- Task G2 verified: 12 new admin tests (auth client login/401/
+  malformed/me/logout parsing, login page render incl. Unavailable and
+  expiry notices and URL-leak guard, login action cookie semantics
+  incl. httpOnly/sameSite and no-cookie-on-failure, logout revocation)
+  — suite 1239 backend + 199 admin (26 files), gate green incl. next
+  build with the new middleware; no migration (head stays `0021`);
+  username display in the chrome deferred to G4 (scope honesty)
+
 ## Next immediate task
 
-PHASE 5 TASK G2 (authorized under the autonomous continuation mandate;
-URGENT SEQUENCING: the admin's pipeline pages are 401-broken against
-the G1-protected backend until this lands) — ADMIN AUTHENTICATION, per
-PHASE5_GOVERNANCE_ARCHITECTURE.md §7 Task G2: a `/login` page whose
-server action calls the backend `/internal/auth/login` and stores the
-session token in an HttpOnly SameSite=Lax cookie (Secure in
-production); Next.js middleware (or layout-level guard) redirecting
-unauthenticated visitors of every app page except /login and
-/api/health; the server-side backend clients (contentos-api
-requestBackend) forwarding `Authorization: Bearer <token>` from the
-cookie on every call; /logout (revokes the backend session + clears
-the cookie); 401 responses from the backend surface as a redirect to
-/login (session expiry UX); role-aware chrome (show the username;
-reviewer-only capabilities arrive in G3/G4); admin tests updated to
-authenticate (mock the session cookie / auth fetches — the REAL flow
-is covered by backend tests and the compose smoke, which should gain
-a login step once G2 lands). No backend changes expected beyond none;
-no migration.
+PHASE 5 TASK G3 (authorized under the autonomous continuation mandate)
+— DECISION RECORDS + WORKFLOW WIRING, per
+PHASE5_GOVERNANCE_ARCHITECTURE.md §2/§3/§7 Task G3: migration 0022 —
+`human_decisions` (append-only decision events: reviewer_user_id
+RESTRICT -> users, decision CHECK {approved, changes_requested,
+rejected, approval_revoked}, required reason, qa_report_id +
+content_draft_id + editorial_review_id RESTRICT pins, content_hash at
+decision time, self-FK revokes_decision_id for revocations,
+append-only trigger) + additive nullable
+`editorial_workflow_events.actor_user_id` column (+index; historical
+NULLs render UNKNOWN); a DecisionService with the full gates (work
+item in AWAITING_HUMAN_REVIEW entered with pins; the ACTIVE ready QA
+report must cover the ACTIVE draft and hashes must match for approve;
+reviewer identity comes ONLY from the authenticated session);
+reviewer-only commands `approve` / `request-changes` (bounded
+responsible choice via new PERMITTED_RESPONSIBLE_STATES entries for
+AWAITING_HUMAN_REVIEW {DRAFTING, EDITING, QA_REVIEW} and APPROVED
+{DRAFTING, EDITING, QA_REVIEW}) / `reject` / `revoke-approval`; each
+command: durable decision record -> commit -> WorkflowService
+transition with the decision pinned (+actor_user_id) -> commit; the
+`approval_is_current` primitive (latest non-revoked approval whose
+content_hash equals the ACTIVE draft hash); real-PG verification
+(migration cycle, append-only trigger, the approve artifact gate with
+hash-mismatch refusal, revocation flow). Read models/admin are G4.
 
 Before implementing the affected integrations, resolve:
 

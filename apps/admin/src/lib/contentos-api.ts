@@ -1,10 +1,16 @@
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getServerEnv } from "@/lib/env";
+import { getSessionToken } from "@/lib/session";
 
 // Server-only module: import it exclusively from Server Components and route
 // handlers. The internal backend URL must never reach browser JavaScript, so
 // no result produced here may carry URLs or raw error details.
+//
+// Phase 5 G2: every backend call forwards the HttpOnly session cookie as a
+// Bearer header; a 401 from a protected route means the session expired or
+// was revoked, and the caller is redirected to /login.
 
 export const REQUEST_ID_HEADER = "X-Request-ID";
 
@@ -58,8 +64,13 @@ export async function requestBackend(
   if (init.jsonBody !== undefined) {
     headers["Content-Type"] = "application/json";
   }
+  const token = await getSessionToken();
+  if (token !== null) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  let response: FetchedResponse;
   try {
-    return await fetch(new URL(path, baseUrl), {
+    response = await fetch(new URL(path, baseUrl), {
       method: init.method ?? "GET",
       cache: "no-store",
       headers,
@@ -71,6 +82,11 @@ export async function requestBackend(
     // Deliberately drop all details: raw fetch errors can embed the internal URL.
     return null;
   }
+  if (response.status === 401 && !path.startsWith("/internal/auth/")) {
+    // The session expired or was revoked: back to login (server-side).
+    redirect("/login?error=expired");
+  }
+  return response;
 }
 
 export async function parseBackendResponse<T>(
