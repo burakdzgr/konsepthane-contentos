@@ -30,6 +30,7 @@ from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.hashing import sha256_hex
 from contentos.ai.models import AiGenerationAttempt
 from contentos.briefs.enums import BriefStatus
+from contentos.briefs.models import ContentBrief
 from contentos.briefs.repository import BriefRepository
 from contentos.core.context import is_valid_request_id
 from contentos.drafts.models import ContentDraft
@@ -265,6 +266,31 @@ class ReviewService:
             created=True,
             superseded_review_id=active.id if active is not None else None,
         )
+
+    def resolve_reviewable_draft(
+        self, work_item_id: uuid.UUID
+    ) -> tuple[ContentDraft, ContentBrief]:
+        """The non-locking precondition gates for review generation: the
+        work item is in EDITING, the entry pin resolves to the ACTIVE
+        draft, and the brief is still the accepted contract. Used by the
+        engine to spend ZERO provider cost on a refusable state; the
+        locked creation path re-checks everything."""
+        work_item = self._workflow.get_by_id(work_item_id)
+        if work_item is None:
+            raise ReviewPreconditionError(f"no editorial work item with id {work_item_id}")
+        if work_item.current_state is not WorkflowState.EDITING:
+            raise ReviewPreconditionError(
+                f"review creation requires EDITING (current: {work_item.current_state.value})"
+            )
+        draft = self._require_pinned_active_draft(work_item_id)
+        brief = self._briefs.get_brief(draft.content_brief_id)
+        if brief is None or brief.status is not BriefStatus.ACCEPTED_FOR_DRAFTING:
+            status = brief.status.value if brief is not None else "missing"
+            raise ReviewPreconditionError(
+                "the reviewed draft's brief is no longer the accepted writing "
+                f"contract (brief status: {status})"
+            )
+        return draft, brief
 
     # --- gates --------------------------------------------------------------
 

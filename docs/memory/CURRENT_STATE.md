@@ -17,7 +17,8 @@ Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
 COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
 CLOSED; Task 9 Editor Architecture (design only) COMPLETE;
 Task 10 Editor Review Persistence + Provenance Foundation COMPLETE;
-Task 11 Editor Writer-Envelope Drift Guard COMPLETE)
+Task 11 Editor Writer-Envelope Drift Guard COMPLETE;
+Task 12 Editor Projection + Output Schema + Engine COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2414,31 +2415,67 @@ access protection belongs to future deployment infrastructure.
   the consistent-state record updated; suite 1167 backend + 156 admin,
   gate green; no migration (head stays `0019`), no API/admin/Celery
 
+- PHASE 4 Task 12 (editor projection + output schema + engine)
+  complete: `contentos.reviews.generation_schemas` — strict
+  `EditorReviewV1` (`editor-review/1`, extra=forbid, FINDINGS ONLY: no
+  verdict field in the vocabulary, slug keys, dimension/severity
+  literals, optional block_id/claim_ref anchors, bounded text, empty
+  list valid; verdict smuggling is schema-rejected);
+  `contentos.reviews.generation` — `EditorEngine` (`editor/1`) through
+  the EXISTING contentos.ai boundary (purpose EDITOR_REVIEW, versioned
+  Turkish template: judge ONLY against the projection, no external
+  facts, produce-no-verdict, honest severities; instructions never
+  persisted/hashed): zero-cost preconditions via the new
+  `ReviewService.resolve_reviewable_draft` gate; deterministic bounded
+  leak-free projection — the draft body FLATTENED to root-level
+  `draft_sections`/`draft_blocks`/`uncertainty_discharges` (the
+  boundary's nesting-depth limit forbids the raw nested body; claim
+  bindings travel via `claim_usages`), claims restricted to those the
+  draft actually uses with evidence STATEMENTS <=500 chars via flat
+  `evidence_units`, brief contract incl. exclusions — no source
+  bodies/clean_text/raw payloads/URLs (test-pinned); domain validator
+  (duplicate/reserved-drift keys, unknown block/claim anchors) makes a
+  violating output a durable VALIDATION_FAILED attempt
+  (`domain_validation`) with ZERO review rows; materialization through
+  ReviewService.create_review (one review per SUCCEEDED attempt, the
+  drift guard + computed verdict run on the merged findings, reuse
+  without provider calls, IncompleteReviewMaterializationError with
+  explicit retry_number+1 recovery, ReviewGenerationMaterializationError
+  keeping the attempt's real SUCCEEDED status)
+- Task 12 verified: 10 new fake-provider engine tests (happy REVISE
+  from a major finding, empty-findings PASS, pinned projection leak +
+  depth test, identity reuse with one invocation, unknown-anchor and
+  forged-drift-key VALIDATION_FAILED with zero rows, verdict-smuggling
+  schema rejection, timeout truthfulness, zero-cost preconditions,
+  incomplete-materialization recovery); suite 1177 backend + 156 admin,
+  gate green; no migration (head stays `0019`), no Celery/API/admin
+
 ## Next immediate task
 
-PHASE 4 TASK 12 (authorized under the autonomous continuation mandate)
-— EDITOR PROJECTION + OUTPUT SCHEMA + ENGINE, per accepted
-PHASE4_EDITOR_ARCHITECTURE.md §4/§12: strict `editor-review/1` pydantic
-output schema (findings-only — the model NEVER outputs a verdict:
-finding_key slug, dimension/severity vocabularies, optional block_id +
-claim ref drawn ONLY from the projection, bounded safe text, empty list
-valid); bounded deterministic leak-free input projection (draft body +
-claim usages, brief contract incl. exclusions/objective/audience/
-intent, claims with evidence STATEMENTS <=500 chars via the flat
-`evidence_units` root pattern, required-handling manifest; never source
-bodies/clean_text/raw payloads/URLs/provider config; respect
-MAX_PROJECTION_DEPTH=5); `EditorEngine` through the EXISTING
-`StructuredGenerationService` (purpose EDITOR_REVIEW, versioned Turkish
-template instructing judge-only-against-projection + no external facts,
-instructions never persisted); domain validator maps unknown anchors/
-vocabulary/unsafe text to durable VALIDATION_FAILED attempts
-(error_class `domain_validation`) with ZERO review rows;
-materialization through `ReviewService.create_review` (one review per
-SUCCEEDED attempt, reuse without provider calls,
-IncompleteReviewMaterializationError with explicit retry_number+1
-recovery, ReviewGenerationMaterializationError keeping the attempt's
-real status). Fake-provider tests incl. the pinned projection leak
-test. No migration, no Celery/API/admin (Task 13).
+PHASE 4 TASK 13 (authorized under the autonomous continuation mandate)
+— EDITOR ORCHESTRATION + COMMANDS, per accepted
+PHASE4_EDITOR_ARCHITECTURE.md §8/§12: Celery task
+`contentos.editorial.generate_editor_review` (8th editorial task;
+kwargs {work_item_id, retry_number=0, supersede_reason=None}; TX A
+engine + commit; NO workflow transition on success — humans advance;
+redelivery guard: an ACTIVE review already covering the ACTIVE draft =>
+reused with no provider call; handle_ai_outcome retry separation with
+failed attempts committed first; materialization failure commits the
+SUCCEEDED attempt then fails terminally); post-commit dispatch of the
+Editor task from BOTH draft success paths (generate_writer_draft TX B
+and the operator submit-draft command — dispatch failure after commit
+is logged and non-fatal); operator commands:
+`work-items/{id}/generate-editor-review` (queued via the producer-only
+dispatcher; label added) and `work-items/{id}/accept-review` (direct:
+EDITING + ACTIVE review pinning the ACTIVE draft + verdict pass =>
+OPERATOR WorkflowService transition to QA_REVIEW with
+{editorial_review_id, content_draft_id, review_verdict, content_hash}
+pinned; required reason); `request-rework` extended to pin the ACTIVE
+review id when one exists; writer rework findings input (bounded ids +
+text from the review pinned in the CHANGES_REQUESTED entry) may land
+here or be split; real-PG + real-Redis verification (dispatch on draft
+success, failure truthfulness, redelivery reuse, accept-review artifact
+gate). No migration.
 
 Before implementing the affected integrations, resolve:
 
