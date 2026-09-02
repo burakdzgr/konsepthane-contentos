@@ -10,9 +10,11 @@ relational usages). The verdict is COMPUTED by the versioned deterministic
 policy from validated findings — never supplied by a caller and never
 model-authored.
 
-The persisted `integrity_gate_result` records exactly what was checked;
-`writer_envelope_recomputed` is honestly False until the Task 11 drift
-guard lands. The service flushes; the caller owns COMMIT.
+The persisted `integrity_gate_result` records exactly what was checked,
+including the Task 11 Writer-envelope drift recomputation
+(`writer_envelope_recomputed: True` with per-check outcomes); detected
+drift becomes BLOCKING deterministic findings rather than silent failure.
+The service flushes; the caller owns COMMIT.
 """
 
 import uuid
@@ -32,6 +34,7 @@ from contentos.briefs.repository import BriefRepository
 from contentos.core.context import is_valid_request_id
 from contentos.drafts.models import ContentDraft
 from contentos.drafts.repository import DraftRepository
+from contentos.evidence_packs.repository import EvidencePackRepository
 from contentos.reviews.enums import (
     FindingSeverity,
     ReviewActorOrigin,
@@ -44,6 +47,7 @@ from contentos.reviews.errors import (
     ReviewInputError,
     ReviewPreconditionError,
 )
+from contentos.reviews.integrity import DRIFT_FINDING_PREFIX, recompute_writer_envelope
 from contentos.reviews.models import (
     EditorialReview,
     EditorialReviewFinding,
@@ -79,6 +83,7 @@ class ReviewService:
         self._repository = ReviewRepository(session)
         self._drafts = DraftRepository(session)
         self._briefs = BriefRepository(session)
+        self._packs = EvidencePackRepository(session)
         self._workflow = WorkflowRepository(session)
 
     def create_review(
@@ -115,7 +120,31 @@ class ReviewService:
             if existing is not None:
                 return ReviewCreation(review=existing, created=False, superseded_review_id=None)
 
-        cleaned_findings = self._validate_findings(draft, findings)
+        # The drift prefix is service-reserved: caller findings can never
+        # impersonate deterministic gate results.
+        for candidate in findings:
+            key = candidate.finding_key.strip() if isinstance(candidate.finding_key, str) else ""
+            if key.startswith(DRIFT_FINDING_PREFIX):
+                raise ReviewInputError(
+                    f"finding keys with the {DRIFT_FINDING_PREFIX!r} prefix are "
+                    "reserved for deterministic gate results"
+                )
+
+        # Task 11 drift guard: recompute the Writer envelope from durable
+        # rows; drift becomes BLOCKING deterministic findings.
+        claims = self._briefs.list_claims(brief.id)
+        pack = self._packs.get_pack(brief.evidence_pack_id)
+        assert pack is not None  # RESTRICT FKs make this unreachable
+        envelope_checks, drift_findings = recompute_writer_envelope(
+            brief=brief,
+            claims=claims,
+            pack=pack,
+            contradictions=self._packs.list_contradictions(brief.evidence_pack_id),
+            draft=draft,
+            usages=self._drafts.list_claim_usages(draft.id),
+        )
+
+        cleaned_findings = self._validate_findings(draft, list(drift_findings) + list(findings))
         severities = [FindingSeverity(entry["severity"]) for entry in cleaned_findings]
         verdict: ReviewVerdict = verdict_policy.compute(severities)
 
@@ -127,8 +156,8 @@ class ReviewService:
                 "brief_is_accepted_contract": True,
                 "finding_anchors_resolve": True,
             },
-            # Honest: the Writer-envelope drift recomputation is Task 11.
-            "writer_envelope_recomputed": False,
+            "writer_envelope_recomputed": True,
+            "writer_envelope": envelope_checks,
         }
         review_scope = {
             "content_draft_id": str(draft.id),

@@ -113,8 +113,12 @@ class TestReviewCreation:
             assert review.generation_attempt_id is None
             checks = review.integrity_gate_result["checks"]
             assert all(checks.values())
-            # Honest: the Writer-envelope drift guard is Task 11.
-            assert review.integrity_gate_result["writer_envelope_recomputed"] is False
+            assert review.integrity_gate_result["writer_envelope_recomputed"] is True
+            assert review.integrity_gate_result["writer_envelope"] == {
+                "structure_contract": "ok",
+                "claim_ref_integrity": "ok",
+                "handling_coverage": "ok",
+            }
             assert review.review_scope["content_draft_id"] == str(draft_id)
             assert review.review_scope["finding_count"] == 0
             assert review.verdict_policy_snapshot["version"] == "editor-verdict/1"
@@ -246,6 +250,88 @@ class TestFindingValidation:
         with harness.session() as session:
             with pytest.raises(Exception, match="forbidden|https"):
                 ReviewService(session).create_review(accepted.context.work_item_id, [bad])
+
+
+class TestWriterEnvelopeDriftGuard:
+    """Task 11: deterministic recomputation of the Writer envelope."""
+
+    def _mutate_body(self, harness: Harness, draft_id: uuid.UUID, mutate) -> None:
+        # SQLite harness has no immutability trigger, so tests can simulate
+        # drifted durable state directly.
+        with harness.session() as session:
+            draft = session.get(ContentDraft, draft_id)
+            assert draft is not None
+            body = {
+                "sections": [
+                    {**section, "blocks": [dict(block) for block in section["blocks"]]}
+                    for section in draft.body["sections"]
+                ]
+            }
+            mutate(body)
+            draft.body = body
+            session.commit()
+
+    def test_missing_coverage_block_is_blocking_deterministic_drift(self, harness: Harness) -> None:
+        accepted, draft_id, _ = editing_context(harness)
+        self._mutate_body(
+            harness,
+            draft_id,
+            lambda body: body["sections"][0]["blocks"].__delitem__(-1),  # kapsam-notlari
+        )
+        with harness.session() as session:
+            creation = ReviewService(session).create_review(accepted.context.work_item_id, [])
+            session.commit()
+            review = creation.review
+            assert review.verdict is ReviewVerdict.REVISE
+            envelope = review.integrity_gate_result["writer_envelope"]
+            assert envelope["handling_coverage"] == "drift"
+            assert envelope["structure_contract"] == "ok"
+            rows = ReviewRepository(session).list_findings(review.id)
+            drift = [row for row in rows if row.finding_key.startswith("drift-")]
+            assert [row.finding_key for row in drift] == ["drift-handling-coverage"]
+            assert drift[0].origin is FindingOrigin.DETERMINISTIC
+            assert drift[0].severity is FindingSeverity.BLOCKING
+
+    def test_claim_ref_mismatch_is_claim_integrity_drift(self, harness: Harness) -> None:
+        accepted, draft_id, _ = editing_context(harness)
+
+        def swap_ref(body: dict) -> None:
+            body["sections"][0]["blocks"][1]["claim_refs"] = [str(uuid.uuid4())]
+
+        self._mutate_body(harness, draft_id, swap_ref)
+        with harness.session() as session:
+            creation = ReviewService(session).create_review(accepted.context.work_item_id, [])
+            session.commit()
+            envelope = creation.review.integrity_gate_result["writer_envelope"]
+            assert envelope["claim_ref_integrity"] == "drift"
+            assert creation.review.verdict is ReviewVerdict.REVISE
+
+    def test_section_outside_contract_is_structure_drift(self, harness: Harness) -> None:
+        accepted, draft_id, _ = editing_context(harness)
+
+        def rename_section(body: dict) -> None:
+            body["sections"][1]["key"] = "sozlesme-disi"
+
+        self._mutate_body(harness, draft_id, rename_section)
+        with harness.session() as session:
+            creation = ReviewService(session).create_review(accepted.context.work_item_id, [])
+            session.commit()
+            envelope = creation.review.integrity_gate_result["writer_envelope"]
+            assert envelope["structure_contract"] == "drift"
+            assert creation.review.verdict is ReviewVerdict.REVISE
+
+    def test_drift_prefix_is_reserved_for_the_service(self, harness: Harness) -> None:
+        accepted, _, _ = editing_context(harness)
+        forged = ReviewFindingInput(
+            finding_key="drift-sahte",
+            dimension=FindingDimension.CLARITY_STYLE,
+            severity=FindingSeverity.MINOR,
+            origin=FindingOrigin.MODEL_SIGNAL,
+            description="Deterministik sonuç taklidi denemesi.",
+        )
+        with harness.session() as session:
+            with pytest.raises(ReviewInputError, match="reserved"):
+                ReviewService(session).create_review(accepted.context.work_item_id, [forged])
 
 
 class TestPreconditions:

@@ -16,7 +16,8 @@ Task 6 Named CHANGES_REQUESTED Responsible-State Routing COMPLETE;
 Task 7 Writer Rework/Regeneration Commands + Read Models + Admin
 COMPLETE; Task 8 Writer-Stage Closure Audit COMPLETE — WRITER STAGE
 CLOSED; Task 9 Editor Architecture (design only) COMPLETE;
-Task 10 Editor Review Persistence + Provenance Foundation COMPLETE)
+Task 10 Editor Review Persistence + Provenance Foundation COMPLETE;
+Task 11 Editor Writer-Envelope Drift Guard COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2392,21 +2393,52 @@ access protection belongs to future deployment infrastructure.
   with head staying 0019); schema head is now `0019`; no API/admin/
   Celery changes
 
+- PHASE 4 Task 11 (editor integrity-gate recomputation / drift guard)
+  complete: `contentos.reviews.integrity.recompute_writer_envelope`
+  deterministically re-proves, from DURABLE rows only, that the
+  reviewed draft still satisfies the Writer envelope — structure
+  contract vs the accepted brief's required/optional sections,
+  claim-reference integrity (body refs birebir mirror the relational
+  DraftClaimUsage rows AND belong to the accepted brief's claims), and
+  handling coverage vs the manifest REBUILT from current brief/pack/
+  contradiction rows; each failed check becomes ONE BLOCKING
+  deterministic finding (origin `deterministic`, service-reserved
+  `drift-` key prefix that caller findings can never use) so the
+  verdict policy yields `revise` — drift is surfaced, never silent,
+  and never an execution failure; `integrity_gate_result` now records
+  `writer_envelope_recomputed: True` with per-check ok/drift outcomes;
+  no provider involvement anywhere in the guard
+- Task 11 verified: 4 new drift tests (missing coverage block, claim
+  ref mismatch, section outside contract — each REVISE with the exact
+  deterministic finding — plus reserved-prefix forgery rejection) and
+  the consistent-state record updated; suite 1167 backend + 156 admin,
+  gate green; no migration (head stays `0019`), no API/admin/Celery
+
 ## Next immediate task
 
-PHASE 4 TASK 11 (authorized under the autonomous continuation mandate)
-— EDITOR INTEGRITY-GATE RECOMPUTATION (the Task 11 remainder after the
-verdict policy shipped in Task 10), per PHASE4_EDITOR_ARCHITECTURE.md
-§3/§12: a deterministic drift guard that recomputes the Writer-stage
-envelope against durable rows before a review is created — structure
-contract vs the accepted brief, claim-ref integrity vs relational
-usages, handling-coverage presence — recording the results truthfully
-in `integrity_gate_result` (with `writer_envelope_recomputed: True`)
-and emitting DETERMINISTIC findings (origin `deterministic`) for
-detected drift instead of silent failure where the architecture calls
-for findings; hard impossibilities stay typed errors. Unit tests over
-drifted/consistent states. No provider involvement, no migration, no
-API/admin.
+PHASE 4 TASK 12 (authorized under the autonomous continuation mandate)
+— EDITOR PROJECTION + OUTPUT SCHEMA + ENGINE, per accepted
+PHASE4_EDITOR_ARCHITECTURE.md §4/§12: strict `editor-review/1` pydantic
+output schema (findings-only — the model NEVER outputs a verdict:
+finding_key slug, dimension/severity vocabularies, optional block_id +
+claim ref drawn ONLY from the projection, bounded safe text, empty list
+valid); bounded deterministic leak-free input projection (draft body +
+claim usages, brief contract incl. exclusions/objective/audience/
+intent, claims with evidence STATEMENTS <=500 chars via the flat
+`evidence_units` root pattern, required-handling manifest; never source
+bodies/clean_text/raw payloads/URLs/provider config; respect
+MAX_PROJECTION_DEPTH=5); `EditorEngine` through the EXISTING
+`StructuredGenerationService` (purpose EDITOR_REVIEW, versioned Turkish
+template instructing judge-only-against-projection + no external facts,
+instructions never persisted); domain validator maps unknown anchors/
+vocabulary/unsafe text to durable VALIDATION_FAILED attempts
+(error_class `domain_validation`) with ZERO review rows;
+materialization through `ReviewService.create_review` (one review per
+SUCCEEDED attempt, reuse without provider calls,
+IncompleteReviewMaterializationError with explicit retry_number+1
+recovery, ReviewGenerationMaterializationError keeping the attempt's
+real status). Fake-provider tests incl. the pinned projection leak
+test. No migration, no Celery/API/admin (Task 13).
 
 Before implementing the affected integrations, resolve:
 
