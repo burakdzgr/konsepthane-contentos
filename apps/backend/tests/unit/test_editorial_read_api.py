@@ -294,3 +294,150 @@ class TestEligibleEvidence:
             f"/internal/editorial/opportunities/{uuid.uuid4()}/eligible-evidence"
         )
         assert response.status_code == 404
+
+
+class TestDraftReads:
+    """Phase 4 Task 7: draft versions, body, provenance chain, attempts."""
+
+    def test_generated_draft_list_and_detail(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.drafts.generation import WriterEngine
+
+        accepted = accepted_context(harness)
+        with harness.session() as session:
+            result = WriterEngine(session).generate_draft(
+                accepted.context.brief_id,
+                provider=FakeStructuredProvider(payload=writer_payload(accepted)),
+            )
+            session.commit()
+            assert result.draft is not None
+            draft_id = result.draft.id
+
+        listing = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/drafts"
+        )
+        assert listing.status_code == 200
+        page = listing.json()
+        assert page["total"] == 1
+        [row] = page["drafts"]
+        assert row["id"] == str(draft_id)
+        assert row["origin"] == "writer_engine"
+        assert row["status"] == "active"
+        assert row["uncertainty_coverage_status"] == "evaluated"
+        assert row["originality_outcome"] == "passed"
+        assert_no_leak(page)
+
+        detail_response = harness.get(f"/internal/editorial/drafts/{draft_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["draft"]["id"] == str(draft_id)
+        assert detail["body"]["sections"]
+        section_keys = {section["key"] for section in detail["body"]["sections"]}
+        assert {"giris", "plan", "butce"} <= section_keys
+
+        # The claim -> evidence provenance chain resolves with identities.
+        usages = detail["claim_usages"]
+        assert usages
+        for usage in usages:
+            assert usage["claim_key"]
+            assert usage["claim_kind"]
+            assert usage["block_id"]
+        assert any(usage["research_evidence_ids"] for usage in usages)
+
+        # Writer attempt metadata is present, without projections/prompts.
+        attempts = detail["generation_attempts"]
+        assert len(attempts) == 1
+        assert attempts[0]["purpose"] == "writer_draft"
+        assert attempts[0]["status"] == "succeeded"
+        assert_no_leak(detail)
+
+    def test_failed_attempt_visible_without_draft_rows(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.drafts.generation import WriterEngine
+
+        accepted = accepted_context(harness)
+        bad = writer_payload(accepted)
+        bad["sections"][0]["blocks"][1]["claim_refs"] = [str(uuid.uuid4())]
+        with harness.session() as session:
+            failed = WriterEngine(session).generate_draft(
+                accepted.context.brief_id, provider=FakeStructuredProvider(payload=bad)
+            )
+            session.commit()
+            assert failed.draft is None
+            second = WriterEngine(session).generate_draft(
+                accepted.context.brief_id,
+                provider=FakeStructuredProvider(payload=writer_payload(accepted)),
+                retry_number=1,
+            )
+            session.commit()
+            assert second.draft is not None
+            draft_id = second.draft.id
+
+        detail = harness.get(f"/internal/editorial/drafts/{draft_id}").json()
+        # BOTH attempts surface truthfully: the failure is never hidden.
+        statuses = {entry["status"] for entry in detail["generation_attempts"]}
+        assert statuses == {"validation_failed", "succeeded"}
+        failed_entry = next(
+            entry
+            for entry in detail["generation_attempts"]
+            if entry["status"] == "validation_failed"
+        )
+        assert failed_entry["error_class"] == "domain_validation"
+        assert_no_leak(detail)
+
+    def test_superseded_versions_stay_visible(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+        from test_writer_generation import writer_payload
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.drafts.generation import WriterEngine
+
+        accepted = accepted_context(harness)
+        with harness.session() as session:
+            engine = WriterEngine(session)
+            first = engine.generate_draft(
+                accepted.context.brief_id,
+                provider=FakeStructuredProvider(payload=writer_payload(accepted)),
+            )
+            session.commit()
+            second = engine.generate_draft(
+                accepted.context.brief_id,
+                provider=FakeStructuredProvider(
+                    payload=writer_payload(accepted, title_proposal="Yenilenmiş balon teması planı")
+                ),
+                retry_number=1,
+                supersede_reason="operatör yeniden üretim istedi",
+            )
+            session.commit()
+            assert first.draft is not None and second.draft is not None
+            first_id, second_id = first.draft.id, second.draft.id
+
+        page = harness.get(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/drafts"
+        ).json()
+        assert page["total"] == 2
+        assert [row["version"] for row in page["drafts"]] == [2, 1]
+        by_id = {row["id"]: row for row in page["drafts"]}
+        assert by_id[str(first_id)]["status"] == "superseded"
+        assert by_id[str(first_id)]["superseded_by_draft_id"] == str(second_id)
+        assert by_id[str(second_id)]["status"] == "active"
+
+        detail = harness.get(f"/internal/editorial/drafts/{first_id}").json()
+        events = detail["status_events"]
+        assert len(events) == 1
+        assert events[0]["from_status"] == "active"
+        assert events[0]["to_status"] == "superseded"
+        assert events[0]["reason"] == "operatör yeniden üretim istedi"
+        assert events[0]["replacement_draft_id"] == str(second_id)
+
+    def test_unknown_ids_404(self, harness: Harness) -> None:
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/drafts").status_code == 404
+        )
+        assert harness.get(f"/internal/editorial/drafts/{uuid.uuid4()}").status_code == 404

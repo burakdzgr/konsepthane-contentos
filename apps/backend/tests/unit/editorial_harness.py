@@ -196,6 +196,26 @@ class FakeEditorialControlDispatcher:
             )
         )
 
+    def enqueue_generate_writer_draft(
+        self,
+        content_brief_id: str,
+        *,
+        retry_number: int,
+        supersede_reason: str | None,
+        request_id: str | None = None,
+    ) -> None:
+        self.calls.append(
+            (
+                "generate_writer_draft",
+                {
+                    "content_brief_id": content_brief_id,
+                    "retry_number": retry_number,
+                    "supersede_reason": supersede_reason,
+                },
+                request_id,
+            )
+        )
+
 
 class FailingEditorialDispatcher(FakeEditorialControlDispatcher):
     def __getattribute__(self, name: str) -> Any:

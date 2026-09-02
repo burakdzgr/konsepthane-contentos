@@ -722,6 +722,56 @@ class TestResponsibleStateRouting:
                     reason="cannot resolve the durable record",
                 )
 
+    def test_resolve_changes_requested_routes_to_recorded_state(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="rework istendi",
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            session.commit()
+            resolved = service.resolve_changes_requested(
+                item.id, reason="yazara yönlendirildi", request_id="workflow-req-7"
+            )
+            session.commit()
+            assert resolved.current_state is WorkflowState.DRAFTING
+            last = WorkflowRepository(session).list_events(item.id)[-1]
+            assert last.actor_origin is WorkflowActorOrigin.OPERATOR
+            assert last.reason == "yazara yönlendirildi"
+
+    def test_resolve_changes_requested_falls_back_to_origin(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            service = advance_to_editing(session, item.id)
+            service.transition(
+                item.id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="küçük düzeltme",
+            )
+            session.commit()
+            resolved = service.resolve_changes_requested(item.id, reason="düzeltildi")
+            session.commit()
+            assert resolved.current_state is WorkflowState.EDITING
+
+    def test_resolve_changes_requested_requires_the_state(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            item = create_item(session)
+            with pytest.raises(InvalidWorkflowTransitionError):
+                WorkflowService(session).resolve_changes_requested(
+                    item.id, reason="not in changes_requested"
+                )
+
     def test_blocked_semantics_are_untouched_by_routing(
         self, session_factory: sessionmaker[Session]
     ) -> None:

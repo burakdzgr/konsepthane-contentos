@@ -1,6 +1,7 @@
 """Editorial control API tests (SQLite, real services, fake dispatchers)."""
 
 import uuid
+from typing import Any
 
 import pytest
 from editorial_harness import (
@@ -606,3 +607,181 @@ class TestNoGenericEndpoints:
         for path in paths:
             for banned in ("publish", "schedule", "pinterest", "release", "approve"):
                 assert banned not in path.lower(), path
+
+
+class TestWriterDraftCommands:
+    """Phase 4 Task 7: explicit writer generate/submit/rework commands."""
+
+    def submit_payload(self, accepted: Any) -> dict[str, Any]:
+        from test_writer_generation import writer_payload
+
+        payload = writer_payload(accepted)
+        return {
+            "reason": "operatör taslağı gönderdi",
+            "title_proposal": payload["title_proposal"],
+            "sections": payload["sections"],
+        }
+
+    def test_generate_draft_queues_exact_task(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/generate-draft",
+            {"retry_number": 0},
+            headers={"X-Request-ID": "operator-req-71"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "queued"
+        assert body["task"] == "generate_writer_draft"
+        assert harness.dispatcher.calls == [
+            (
+                "generate_writer_draft",
+                {
+                    "content_brief_id": str(accepted.context.brief_id),
+                    "retry_number": 0,
+                    "supersede_reason": None,
+                },
+                "operator-req-71",
+            )
+        ]
+        # Queueing never advances workflow state.
+        assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.DRAFTING
+
+    def test_generate_draft_unknown_brief_404(self, harness: Harness) -> None:
+        response = harness.post(f"/internal/editorial/briefs/{uuid.uuid4()}/generate-draft", {})
+        assert response.status_code == 404
+        assert harness.dispatcher.calls == []
+
+    def test_generate_draft_queue_failure_is_503_without_leak(self) -> None:
+        from test_drafts import accepted_context
+
+        harness = Harness(dispatcher=FailingEditorialDispatcher())
+        accepted = accepted_context(harness)
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/generate-draft", {}
+        )
+        assert response.status_code == 503
+        serialized = response.text.lower()
+        assert "redis://" not in serialized
+        assert "queued" not in serialized
+
+    def test_submit_draft_creates_and_advances_to_editing(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft",
+            self.submit_payload(accepted),
+            headers={"X-Request-ID": "operator-req-72"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "created"
+        assert body["draft_origin"] == "operator"
+        assert body["draft_status"] == "active"
+        assert body["draft_version"] == 1
+        assert body["work_item_state"] == "editing"
+
+        with harness.session() as session:
+            events = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id)
+                )
+                .scalars()
+                .all()
+            )
+            last = events[-1]
+            assert last.to_state is WorkflowState.EDITING
+            assert last.actor_origin is WorkflowActorOrigin.OPERATOR
+            assert last.artifact_refs["content_draft_id"] == body["content_draft_id"]
+            assert last.artifact_refs["draft_version"] == 1
+            assert last.request_id == "operator-req-72"
+
+        # Full success then resubmission: the EDITING gate conflicts truthfully.
+        repeat = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft",
+            self.submit_payload(accepted),
+        )
+        assert repeat.status_code == 409
+
+    def test_submit_draft_policy_violation_is_422_and_stateless(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        from contentos.drafts.models import ContentDraft
+
+        accepted = accepted_context(harness)
+        payload = self.submit_payload(accepted)
+        # Remove the uncertainty-coverage callout: the manifest gate fails.
+        payload["sections"][0]["blocks"] = payload["sections"][0]["blocks"][:2]
+        response = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft", payload
+        )
+        assert response.status_code == 422
+        assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.DRAFTING
+        with harness.session() as session:
+            assert (session.scalar(select(func.count()).select_from(ContentDraft)) or 0) == 0
+
+    def test_rework_roundtrip_records_responsible_state(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)
+        submit = harness.post(
+            f"/internal/editorial/briefs/{accepted.context.brief_id}/submit-draft",
+            self.submit_payload(accepted),
+        )
+        assert submit.status_code == 200
+        draft_id = submit.json()["content_draft_id"]
+
+        rework = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/request-rework",
+            {"reason": "bütçe bölümü yeniden yazılmalı"},
+        )
+        assert rework.status_code == 200
+        assert rework.json()["current_state"] == "changes_requested"
+        with harness.session() as session:
+            last = (
+                session.execute(
+                    select(EditorialWorkflowEvent)
+                    .where(EditorialWorkflowEvent.work_item_id == accepted.context.work_item_id)
+                    .order_by(EditorialWorkflowEvent.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert last is not None
+            assert last.artifact_refs["responsible_state"] == "drafting"
+            assert last.artifact_refs["content_draft_id"] == draft_id
+
+        resolve = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+            "/resolve-changes-requested",
+            {"reason": "yazar aşamasına yönlendirildi"},
+        )
+        assert resolve.status_code == 200
+        assert resolve.json()["current_state"] == "drafting"
+
+    def test_request_rework_outside_editing_conflicts(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)  # work item is in DRAFTING
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}/request-rework",
+            {"reason": "henüz taslak yok"},
+        )
+        assert response.status_code == 409
+        assert work_item_state(harness, accepted.context.work_item_id) is WorkflowState.DRAFTING
+
+    def test_resolve_changes_requested_requires_the_state(self, harness: Harness) -> None:
+        from test_drafts import accepted_context
+
+        accepted = accepted_context(harness)
+        response = harness.post(
+            f"/internal/editorial/work-items/{accepted.context.work_item_id}"
+            "/resolve-changes-requested",
+            {"reason": "yanlış aşama"},
+        )
+        assert response.status_code == 409

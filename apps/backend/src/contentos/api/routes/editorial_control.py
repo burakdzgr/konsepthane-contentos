@@ -37,9 +37,36 @@ from contentos.briefs.errors import (
     BriefStatusConflictError,
     BriefUpstreamMismatchError,
 )
+from contentos.briefs.repository import BriefRepository
 from contentos.briefs.service import BriefService
 from contentos.core.context import get_request_id, is_valid_request_id
 from contentos.db.session import get_db_session
+from contentos.drafts.enums import DraftBlockKind, DraftOrigin, DraftStatus
+from contentos.drafts.errors import (
+    DraftConflictError,
+    DraftInputError,
+    DraftNotFoundError,
+    DraftPolicyViolationError,
+    DraftPreconditionError,
+    DraftStatusConflictError,
+)
+from contentos.drafts.repository import DraftRepository
+from contentos.drafts.service import DraftService
+from contentos.drafts.values import (
+    MAX_BLOCK_ID_LENGTH,
+    MAX_BLOCK_TEXT_LENGTH,
+    MAX_BLOCKS_PER_SECTION,
+    MAX_CLAIM_REFS_PER_BLOCK,
+    MAX_HEADING_LENGTH,
+    MAX_SECTION_KEY_LENGTH,
+    MAX_SECTIONS,
+    MAX_TITLE_PROPOSAL_LENGTH,
+    MAX_UNCERTAINTY_REF_LENGTH,
+    MAX_UNCERTAINTY_REFS_PER_BLOCK,
+    DraftBlock,
+    DraftBodyInput,
+    DraftSection,
+)
 from contentos.evidence_packs.enums import (
     ContradictionResolutionStatus,
     ContradictionSeverity,
@@ -80,7 +107,7 @@ from contentos.opportunities.service import (
     OpportunityRejectionService,
     ResearchPromotionService,
 )
-from contentos.workflow.enums import WorkflowState
+from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
 from contentos.workflow.errors import (
     InvalidWorkflowInputError,
     InvalidWorkflowTransitionError,
@@ -110,6 +137,7 @@ EDITORIAL_TASK_LABELS = Literal[
     "build_evidence_pack",
     "analyze_search_intent",
     "compose_content_brief",
+    "generate_writer_draft",
 ]
 
 # Contradiction resolution: "unresolved" is not a resolution — excluding it
@@ -205,6 +233,62 @@ class ComposeBriefRequest(BaseModel):
     search_intent_analysis_id: uuid.UUID
     retry_number: int = Field(default=0, ge=0, le=MAX_RETRY_NUMBER)
     supersede_reason: str | None = Field(default=None, max_length=MAX_REASON_LENGTH)
+
+
+class GenerateDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retry_number: int = Field(default=0, ge=0, le=MAX_RETRY_NUMBER)
+    supersede_reason: str | None = Field(default=None, max_length=MAX_REASON_LENGTH)
+
+
+class DraftBlockEntry(BaseModel):
+    """EXACTLY the bounded writer-draft-body/1 block shape; the domain
+    revalidates everything (safe text, slugs, refs) — these are 422 bounds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    block_id: str = Field(min_length=1, max_length=MAX_BLOCK_ID_LENGTH)
+    kind: DraftBlockKind
+    text: str = Field(min_length=1, max_length=MAX_BLOCK_TEXT_LENGTH)
+    claim_refs: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_CLAIM_REFS_PER_BLOCK)
+    uncertainty_refs: list[
+        Annotated[str, Field(min_length=1, max_length=MAX_UNCERTAINTY_REF_LENGTH)]
+    ] = Field(default_factory=list, max_length=MAX_UNCERTAINTY_REFS_PER_BLOCK)
+    link_need_ref: int | None = Field(default=None, ge=0)
+    media_need_ref: int | None = Field(default=None, ge=0)
+
+
+class DraftSectionEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=MAX_SECTION_KEY_LENGTH)
+    heading: str = Field(min_length=1, max_length=MAX_HEADING_LENGTH)
+    blocks: list[DraftBlockEntry] = Field(min_length=1, max_length=MAX_BLOCKS_PER_SECTION)
+
+
+class SubmitDraftRequest(BaseModel):
+    """Operator-authored draft: the SAME persistence gates as the writer
+    engine (structure, claim refs, policies, manual-input idempotency)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+    title_proposal: str | None = Field(default=None, max_length=MAX_TITLE_PROPOSAL_LENGTH)
+    supersede_reason: str | None = Field(default=None, max_length=MAX_REASON_LENGTH)
+    sections: list[DraftSectionEntry] = Field(min_length=1, max_length=MAX_SECTIONS)
+
+
+class DraftSubmissionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["created", "reused"]
+    content_draft_id: uuid.UUID
+    draft_version: int
+    draft_origin: DraftOrigin
+    draft_status: DraftStatus
+    work_item_id: uuid.UUID
+    work_item_state: WorkflowState
 
 
 class QueuedResponse(BaseModel):
@@ -841,4 +925,192 @@ def accept_brief_for_drafting(
         brief_status=acceptance.brief.status,
         work_item_id=work_item.id,
         work_item_state=work_item.current_state,
+    )
+
+
+# --- writer draft commands ---------------------------------------------------
+
+
+@router.post("/briefs/{brief_id}/generate-draft", response_model=QueuedResponse)
+def generate_writer_draft(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    brief_id: uuid.UUID,
+    body: GenerateDraftRequest,
+) -> QueuedResponse:
+    """Queue `generate_writer_draft`; no provider call ever runs in FastAPI.
+    Regeneration is the SAME explicit command with retry_number+1 — the
+    domain requires a supersede reason whenever an active draft exists and
+    reuses the durable attempt/draft for a repeated identity."""
+    if BriefRepository(session).get_brief(brief_id) is None:
+        raise HTTPException(status_code=404, detail=f"no content brief with id {brief_id}")
+    dispatcher = _dispatcher(request)
+    request_id = _current_request_id()
+    _enqueue_or_503(
+        "generate_writer_draft",
+        brief_id,
+        lambda: dispatcher.enqueue_generate_writer_draft(
+            str(brief_id),
+            retry_number=body.retry_number,
+            supersede_reason=body.supersede_reason,
+            request_id=request_id,
+        ),
+    )
+    return QueuedResponse(status="queued", task="generate_writer_draft", entity_id=brief_id)
+
+
+@router.post("/briefs/{brief_id}/submit-draft", response_model=DraftSubmissionResponse)
+def submit_operator_draft(
+    session: Annotated[Session, Depends(get_db_session)],
+    brief_id: uuid.UUID,
+    body: SubmitDraftRequest,
+) -> DraftSubmissionResponse:
+    """Operator-authored draft through the FULL persistence gates, then the
+    same artifact gate as the machine path: durable draft first, then the
+    explicit DRAFTING -> EDITING transition with the draft identity pinned.
+    Resubmitting identical content while still DRAFTING reuses the draft
+    (manual-input idempotency) and completes the transition."""
+    draft_body = DraftBodyInput(
+        sections=tuple(
+            DraftSection(
+                key=section.key,
+                heading=section.heading,
+                blocks=tuple(
+                    DraftBlock(
+                        block_id=block.block_id,
+                        kind=block.kind,
+                        text=block.text,
+                        claim_refs=tuple(block.claim_refs),
+                        uncertainty_refs=tuple(block.uncertainty_refs),
+                        link_need_ref=block.link_need_ref,
+                        media_need_ref=block.media_need_ref,
+                    )
+                    for block in section.blocks
+                ),
+            )
+            for section in body.sections
+        )
+    )
+    request_id = _current_request_id()
+    try:
+        creation = DraftService(session).create_operator_draft(
+            brief_id,
+            draft_body,
+            title_proposal=body.title_proposal,
+            supersede_reason=body.supersede_reason,
+            request_id=request_id,
+        )
+    except DraftNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    except (
+        DraftPreconditionError,
+        DraftConflictError,
+        DraftStatusConflictError,
+    ) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except (DraftInputError, DraftPolicyViolationError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+
+    draft = creation.draft
+    # WORKFLOW.md's artifact gate: the durable valid draft is committed, so
+    # the explicit transition follows — queue/HTTP completion is never state.
+    item = WorkflowRepository(session).get_by_id_for_update(draft.work_item_id)
+    assert item is not None
+    if item.current_state is WorkflowState.DRAFTING:
+        WorkflowService(session).transition(
+            draft.work_item_id,
+            WorkflowState.EDITING,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=body.reason,
+            artifact_refs={
+                "content_brief_id": str(brief_id),
+                "content_draft_id": str(draft.id),
+                "draft_version": draft.version,
+                "content_hash": draft.content_hash,
+            },
+            request_id=request_id,
+        )
+        session.commit()
+    item = WorkflowRepository(session).get_by_id(draft.work_item_id)
+    assert item is not None
+    return DraftSubmissionResponse(
+        status="created" if creation.created else "reused",
+        content_draft_id=draft.id,
+        draft_version=draft.version,
+        draft_origin=draft.origin,
+        draft_status=draft.status,
+        work_item_id=item.id,
+        work_item_state=item.current_state,
+    )
+
+
+@router.post("/work-items/{work_item_id}/request-rework", response_model=WorkItemStateResponse)
+def request_writer_rework(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: ReasonRequest,
+) -> WorkItemStateResponse:
+    """EDITING -> CHANGES_REQUESTED with responsible=DRAFTING recorded
+    durably (the Task 6 routing foundation); the current active draft is
+    pinned server-side. Never an arbitrary target."""
+    if WorkflowRepository(session).get_by_id(work_item_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"no editorial work item with id {work_item_id}"
+        )
+    active = DraftRepository(session).get_active_draft(work_item_id)
+    refs: dict[str, Any] | None = None
+    if active is not None:
+        refs = {
+            "content_draft_id": str(active.id),
+            "draft_version": active.version,
+            "content_brief_id": str(active.content_brief_id),
+        }
+    try:
+        item = WorkflowService(session).transition(
+            work_item_id,
+            WorkflowState.CHANGES_REQUESTED,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=body.reason,
+            artifact_refs=refs,
+            request_id=_current_request_id(),
+            responsible_state=WorkflowState.DRAFTING,
+        )
+    except WorkItemNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    except InvalidWorkflowTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return WorkItemStateResponse(
+        status="updated", work_item_id=item.id, current_state=item.current_state
+    )
+
+
+@router.post(
+    "/work-items/{work_item_id}/resolve-changes-requested",
+    response_model=WorkItemStateResponse,
+)
+def resolve_changes_requested(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    body: ReasonRequest,
+) -> WorkItemStateResponse:
+    """Route out of CHANGES_REQUESTED to the durable history-derived target
+    (the recorded responsible state, else the origin) — the caller can
+    never supply a target state."""
+    try:
+        item = WorkflowService(session).resolve_changes_requested(
+            work_item_id, reason=body.reason, request_id=_current_request_id()
+        )
+    except WorkItemNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    except InvalidWorkflowTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidWorkflowInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return WorkItemStateResponse(
+        status="updated", work_item_id=item.id, current_state=item.current_state
     )

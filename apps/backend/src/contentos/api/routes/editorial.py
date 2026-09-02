@@ -12,6 +12,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from contentos.api.read_models.drafts import (
+    DraftDetail,
+    DraftListPage,
+    get_draft_detail,
+    list_work_item_drafts,
+)
 from contentos.api.read_models.editorial import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
@@ -69,6 +75,31 @@ def get_editorial_work_item(
     detail = get_work_item_detail(session, work_item_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="editorial work item not found")
+    return detail
+
+
+@router.get("/work-items/{work_item_id}/drafts", response_model=DraftListPage)
+def list_editorial_work_item_drafts(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> DraftListPage:
+    """Every durable draft version of one work item, newest first."""
+    page = list_work_item_drafts(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
+
+
+@router.get("/drafts/{draft_id}", response_model=DraftDetail)
+def get_editorial_draft(
+    session: Annotated[Session, Depends(get_db_session)],
+    draft_id: uuid.UUID,
+) -> DraftDetail:
+    """One draft version in full: validated body, claim -> evidence chain,
+    policy verdicts as persisted, supersession audit, attempt metadata."""
+    detail = get_draft_detail(session, draft_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="content draft not found")
     return detail
 
 

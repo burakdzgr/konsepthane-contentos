@@ -19,6 +19,7 @@ from contentos.worker.editorial_tasks import (
     COMPOSE_CONTENT_BRIEF_TASK,
     EVALUATE_OPPORTUNITY_TASK,
     GENERATE_IDEA_CANDIDATES_TASK,
+    GENERATE_WRITER_DRAFT_TASK,
     PROMOTE_RESEARCH_TASK,
 )
 from contentos.worker.research_tasks import (
@@ -111,6 +112,15 @@ class EditorialControlDispatcher(Protocol):
         idea_id: str,
         evidence_pack_id: str,
         search_intent_analysis_id: str,
+        retry_number: int,
+        supersede_reason: str | None,
+        request_id: str | None = None,
+    ) -> None: ...
+
+    def enqueue_generate_writer_draft(
+        self,
+        content_brief_id: str,
+        *,
         retry_number: int,
         supersede_reason: str | None,
         request_id: str | None = None,
@@ -230,6 +240,24 @@ class CeleryEditorialControlDispatcher:
                 "idea_id": idea_id,
                 "evidence_pack_id": evidence_pack_id,
                 "search_intent_analysis_id": search_intent_analysis_id,
+                "retry_number": retry_number,
+                "supersede_reason": supersede_reason,
+            },
+            request_id,
+        )
+
+    def enqueue_generate_writer_draft(
+        self,
+        content_brief_id: str,
+        *,
+        retry_number: int,
+        supersede_reason: str | None,
+        request_id: str | None = None,
+    ) -> None:
+        self._send(
+            GENERATE_WRITER_DRAFT_TASK,
+            {
+                "content_brief_id": content_brief_id,
                 "retry_number": retry_number,
                 "supersede_reason": supersede_reason,
             },

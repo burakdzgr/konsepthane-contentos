@@ -307,6 +307,43 @@ class WorkflowService:
             request_id=request_id,
         )
 
+    def resolve_changes_requested(
+        self,
+        work_item_id: uuid.UUID,
+        *,
+        reason: str,
+        request_id: str | None = None,
+    ) -> EditorialWorkItem:
+        """Explicit operator routing out of CHANGES_REQUESTED.
+
+        The target is derived ONLY from durable history — the recorded
+        responsible state when one was named at entry, else return-to-origin
+        (the same derivation _allowed_targets uses). The caller can never
+        supply a target. No resolvable durable target is a typed conflict.
+        """
+        item = self._repository.get_by_id(work_item_id)
+        if item is None:
+            raise WorkItemNotFoundError(f"no editorial work item with id {work_item_id}")
+        if item.current_state is not WorkflowState.CHANGES_REQUESTED:
+            raise InvalidWorkflowTransitionError(
+                "changes-requested resolution requires CHANGES_REQUESTED "
+                f"(current: {item.current_state.value})"
+            )
+        targets = self._allowed_targets(item)
+        if not targets:
+            raise InvalidWorkflowTransitionError(
+                "durable history records no state to route to from CHANGES_REQUESTED"
+            )
+        # CHANGES_REQUESTED derivation always yields exactly one target.
+        (target,) = targets
+        return self.transition(
+            work_item_id,
+            target,
+            actor_origin=WorkflowActorOrigin.OPERATOR,
+            reason=reason,
+            request_id=request_id,
+        )
+
     def reject_blocked(
         self,
         work_item_id: uuid.UUID,
