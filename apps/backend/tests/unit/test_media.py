@@ -274,3 +274,121 @@ class TestSatisfactions:
         with harness.session() as session:
             service = media_service(session, tmp_path)
             assert service.needs_coverage(uuid.uuid4()) is None
+
+
+class TestMediaApi:
+    """Phase 6 M2: operator commands + coverage read model + streaming."""
+
+    def upload(self, harness: Harness, data: bytes, content_type: str, **form: str):
+        form_data = {
+            "alt_text": "Balon süslemeli parti masası",
+            "license_note": "Konsepthane arşivi",
+            **form,
+        }
+        return harness.request(
+            "POST",
+            "/internal/editorial/media-assets",
+            files={"file": ("kapak.png", data, content_type)},
+            form_data=form_data,
+        )
+
+    def test_upload_registers_and_dedupes(self, harness: Harness) -> None:
+        first = self.upload(harness, PNG_BYTES, "image/png")
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["status"] == "registered"
+        assert body["content_sha256"] == hashlib.sha256(PNG_BYTES).hexdigest()
+
+        again = self.upload(harness, PNG_BYTES, "image/png")
+        assert again.status_code == 200
+        assert again.json()["status"] == "already_exists"
+        assert again.json()["media_asset_id"] == body["media_asset_id"]
+
+        mismatched = self.upload(harness, JPEG_BYTES, "image/png")
+        assert mismatched.status_code == 422
+        assert "do not look like image/png" in mismatched.json()["error"]["message"]
+
+    def test_satisfy_coverage_stream_unsatisfy_flow(self, harness: Harness) -> None:
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+
+        uploaded = self.upload(harness, PNG_BYTES, "image/png")
+        asset_id = uploaded.json()["media_asset_id"]
+
+        satisfy = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/0/satisfy",
+            {"media_asset_id": asset_id, "reason": "kapak ihtiyacı karşılandı"},
+        )
+        assert satisfy.status_code == 200, satisfy.text
+        assert satisfy.json()["status"] == "satisfied"
+
+        coverage = harness.get(f"/internal/editorial/work-items/{work_item_id}/media")
+        assert coverage.status_code == 200
+        page = coverage.json()
+        assert page["total_needs"] == 1 and page["satisfied_needs"] == 1
+        need = page["needs"][0]
+        assert need["satisfaction"]["asset"]["media_type"] == "image/png"
+        assert need["satisfaction"]["asset"]["alt_text"] == "Balon süslemeli parti masası"
+        assert need["satisfaction"]["satisfied_by"]["username"] == TEST_OPERATOR_USERNAME
+        # Leak posture: no store paths, no credential material.
+        lowered = coverage.text.lower()
+        assert "media-store" not in lowered and "contentos-test-media" not in lowered
+        assert "password" not in lowered and "token" not in lowered
+
+        content = harness.get(f"/internal/editorial/media-assets/{asset_id}/content")
+        assert content.status_code == 200
+        assert content.headers["content-type"].startswith("image/png")
+        assert content.content == PNG_BYTES
+        missing = harness.get(f"/internal/editorial/media-assets/{uuid.uuid4()}/content")
+        assert missing.status_code == 404
+
+        unsatisfy = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/0/unsatisfy",
+            {"reason": "görsel lisansı şüpheli"},
+        )
+        assert unsatisfy.status_code == 200
+        after = harness.get(f"/internal/editorial/work-items/{work_item_id}/media").json()
+        assert after["satisfied_needs"] == 0
+        assert after["needs"][0]["satisfaction"] is None
+        # History keeps the audited superseded binding visible.
+        assert len(after["history"]) == 1
+        assert after["history"][0]["status"] == "superseded"
+
+    def test_satisfy_refusals_map_to_bounded_errors(self, harness: Harness) -> None:
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+        uploaded = self.upload(harness, PNG_BYTES, "image/png")
+        asset_id = uploaded.json()["media_asset_id"]
+
+        unknown_need = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/7/satisfy",
+            {"media_asset_id": asset_id, "reason": "olmayan ihtiyaç"},
+        )
+        assert unknown_need.status_code == 422
+
+        unknown_asset = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/0/satisfy",
+            {"media_asset_id": str(uuid.uuid4()), "reason": "olmayan görsel"},
+        )
+        assert unknown_asset.status_code == 409
+
+        nothing_to_withdraw = harness.post(
+            f"/internal/editorial/work-items/{work_item_id}/media-needs/0/unsatisfy",
+            {"reason": "bağ yokken geri çek"},
+        )
+        assert nothing_to_withdraw.status_code == 409
+
+    def test_frozen_terminal_state_is_a_409(self, harness: Harness) -> None:
+        frozen, _, _ = awaiting_review_context(harness)
+        uploaded = self.upload(harness, PNG_BYTES, "image/png")
+        response = harness.post(
+            f"/internal/editorial/work-items/{frozen.context.work_item_id}/media-needs/0/satisfy",
+            {"media_asset_id": uploaded.json()["media_asset_id"], "reason": "donmuş paket"},
+        )
+        assert response.status_code == 409
+        assert "terminal review" in response.json()["error"]["message"]
+
+    def test_media_coverage_404_for_unknown_items(self, harness: Harness) -> None:
+        assert (
+            harness.get(f"/internal/editorial/work-items/{uuid.uuid4()}/media").status_code == 404
+        )

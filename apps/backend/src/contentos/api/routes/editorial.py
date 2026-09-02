@@ -9,7 +9,7 @@ The explicit operator commands live in the separate editorial control router.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from contentos.api.read_models.decisions import (
@@ -34,6 +34,7 @@ from contentos.api.read_models.editorial import (
     list_eligible_evidence,
     list_work_items,
 )
+from contentos.api.read_models.media import MediaCoveragePage, get_media_coverage
 from contentos.api.read_models.qa import (
     QaReportDetail,
     QaReportListPage,
@@ -47,6 +48,8 @@ from contentos.api.read_models.reviews import (
     list_work_item_reviews,
 )
 from contentos.db.session import get_db_session
+from contentos.media.models import MediaAsset
+from contentos.media.store import MediaStoreError
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.workflow.enums import WorkflowState
 
@@ -155,6 +158,39 @@ def list_editorial_work_item_decisions(
     if page is None:
         raise HTTPException(status_code=404, detail="editorial work item not found")
     return page
+
+
+@router.get("/work-items/{work_item_id}/media", response_model=MediaCoveragePage)
+def get_editorial_work_item_media(
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+) -> MediaCoveragePage:
+    """The ACTIVE brief's media needs with per-need coverage (or honest
+    UNSATISFIED) plus the audited satisfaction history."""
+    page = get_media_coverage(session, work_item_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="editorial work item not found")
+    return page
+
+
+@router.get("/media-assets/{asset_id}/content")
+def get_media_asset_content(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    asset_id: uuid.UUID,
+) -> Response:
+    """Stream one asset's bytes with its true content type. The store
+    layout stays internal: assets are addressed by id only."""
+    asset = session.get(MediaAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="media asset not found")
+    try:
+        data = request.app.state.media_store.read(asset.content_sha256)
+    except MediaStoreError:
+        raise HTTPException(
+            status_code=503, detail="media content is not available from the store"
+        ) from None
+    return Response(content=data, media_type=asset.media_type)
 
 
 @router.get("/work-items/{work_item_id}/qa-reports", response_model=QaReportListPage)

@@ -17,6 +17,7 @@ from contentos.api.security import require_operator, require_reviewer
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.db.session import create_database_engine, create_session_factory
+from contentos.media.store import MediaStore
 from contentos.queue.redis import create_redis_client
 from contentos.worker.producer import (
     CeleryEditorialControlDispatcher,
@@ -44,6 +45,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_database_engine(resolved_settings)
     app.state.settings = resolved_settings
     app.state.db_session_factory = create_session_factory(engine)
+    # ContentOS-owned media byte store; the key layout stays internal.
+    app.state.media_store = MediaStore(resolved_settings.media_store_root)
     app.state.redis_client_factory = partial(create_redis_client, resolved_settings)
     # Phase 5 G1: health stays open; login is the only other open route.
     # Every pipeline surface requires an authenticated OPERATOR session.

@@ -18,15 +18,16 @@ Server-side request correlation: the RequestContextMiddleware request id is
 passed into audited domain commands and queue headers; a client-supplied
 body field is never trusted for it.
 
-Single-operator boundary unchanged: no authentication, no roles; deployment
-infrastructure remains the access boundary.
+Access boundary (Phase 5): every route requires an authenticated OPERATOR
+session (router-level guard in the app factory); audited commands record
+the named actor from `request.state.current_user`.
 """
 
 import uuid
 from typing import Annotated, Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -89,6 +90,12 @@ from contentos.ideas.errors import (
 )
 from contentos.ideas.generation_schemas import MAX_CANDIDATES, MIN_CANDIDATES
 from contentos.ideas.service import IdeaService
+from contentos.media.errors import (
+    MediaConflictError,
+    MediaInputError,
+    MediaPreconditionError,
+)
+from contentos.media.service import MAX_MEDIA_BYTES, MediaService
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.opportunities.errors import (
@@ -1354,4 +1361,160 @@ def resolve_changes_requested(
     session.commit()
     return WorkItemStateResponse(
         status="updated", work_item_id=item.id, current_state=item.current_state
+    )
+
+
+# --- Phase 6 M2: media commands ----------------------------------------------
+
+
+class MediaUploadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["registered", "already_exists"]
+    media_asset_id: uuid.UUID
+    content_sha256: str
+    media_type: str
+    byte_size: int
+
+
+class SatisfyMediaNeedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    media_asset_id: uuid.UUID
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+
+
+class MediaSatisfactionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["satisfied", "unsatisfied"]
+    work_item_id: uuid.UUID
+    need_index: int
+    satisfaction_id: uuid.UUID
+    media_asset_id: uuid.UUID
+
+
+def _media_service(request: Request, session: Session) -> MediaService:
+    return MediaService(session, request.app.state.media_store)
+
+
+def _current_user(request: Request) -> Any:
+    user = getattr(request.state, "current_user", None)
+    if user is None:  # the router guard always sets it; defense in depth
+        raise HTTPException(status_code=401, detail="authentication required")
+    return user
+
+
+@router.post("/media-assets", response_model=MediaUploadResponse)
+async def upload_media_asset(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    file: Annotated[UploadFile, File()],
+    alt_text: Annotated[str, Form(min_length=1, max_length=1000)],
+    license_note: Annotated[str, Form(min_length=1, max_length=1000)],
+    title: Annotated[str | None, Form(max_length=1000)] = None,
+    source_attribution: Annotated[str | None, Form(max_length=1000)] = None,
+) -> MediaUploadResponse:
+    """Operator upload into the ContentOS-owned store: server-side
+    hashing, magic-sniffed type matching, honest hash-dedupe. Uploading
+    satisfies nothing by itself — satisfaction is a separate command."""
+    data = await file.read(MAX_MEDIA_BYTES + 1)
+    try:
+        asset, created = _media_service(request, session).register_upload(
+            data,
+            media_type=file.content_type or "",
+            alt_text=alt_text,
+            license_note=license_note,
+            title=title,
+            source_attribution=source_attribution,
+            created_by=_current_user(request),
+            request_id=_current_request_id(),
+        )
+    except MediaInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    except MediaPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    session.commit()
+    return MediaUploadResponse(
+        status="registered" if created else "already_exists",
+        media_asset_id=asset.id,
+        content_sha256=asset.content_sha256,
+        media_type=asset.media_type,
+        byte_size=asset.byte_size,
+    )
+
+
+@router.post(
+    "/work-items/{work_item_id}/media-needs/{need_index}/satisfy",
+    response_model=MediaSatisfactionResponse,
+)
+def satisfy_media_need(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    need_index: int,
+    body: SatisfyMediaNeedRequest,
+) -> MediaSatisfactionResponse:
+    """Explicit audited HUMAN binding of one brief media need to one
+    asset (replacing supersedes the previous binding). Gates are NOT
+    re-run by itself: run-qa is the explicit next step."""
+    try:
+        satisfaction = _media_service(request, session).satisfy_need(
+            work_item_id,
+            need_index,
+            body.media_asset_id,
+            user=_current_user(request),
+            reason=body.reason,
+            request_id=_current_request_id(),
+        )
+    except MediaPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except MediaConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except MediaInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return MediaSatisfactionResponse(
+        status="satisfied",
+        work_item_id=work_item_id,
+        need_index=need_index,
+        satisfaction_id=satisfaction.id,
+        media_asset_id=satisfaction.media_asset_id,
+    )
+
+
+@router.post(
+    "/work-items/{work_item_id}/media-needs/{need_index}/unsatisfy",
+    response_model=MediaSatisfactionResponse,
+)
+def unsatisfy_media_need(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    work_item_id: uuid.UUID,
+    need_index: int,
+    body: ReasonRequest,
+) -> MediaSatisfactionResponse:
+    """Withdraw the ACTIVE binding: the need becomes honestly
+    unsatisfied again (audited; the history stays)."""
+    try:
+        withdrawn = _media_service(request, session).unsatisfy_need(
+            work_item_id,
+            need_index,
+            user=_current_user(request),
+            reason=body.reason,
+            request_id=_current_request_id(),
+        )
+    except MediaPreconditionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except MediaConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except MediaInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return MediaSatisfactionResponse(
+        status="unsatisfied",
+        work_item_id=work_item_id,
+        need_index=need_index,
+        satisfaction_id=withdrawn.id,
+        media_asset_id=withdrawn.media_asset_id,
     )

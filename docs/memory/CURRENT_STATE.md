@@ -2970,20 +2970,43 @@ access protection belongs to future deployment infrastructure.
   MediaService lifecycle on PG, trigger negatives for all three
   tables, partial-unique ACTIVE index negative); schema head `0023`
 
+- PHASE 6 Task M2 (media commands + read models) complete: the app
+  factory wires `app.state.media_store` from `media_store_root` (test
+  harnesses get an isolated temp store); operator commands —
+  `POST /internal/editorial/media-assets` (multipart via the new
+  python-multipart dependency; bounded read, server-side hashing,
+  magic-sniffed type from the actual bytes, honest
+  registered|already_exists dedupe; uploading satisfies nothing by
+  itself) and `work-items/{id}/media-needs/{index}/satisfy|unsatisfy`
+  (named actor from the authenticated session, required reasons,
+  bounded 409/422 error mapping, gates NOT re-run implicitly); reads —
+  `GET work-items/{id}/media` (MediaCoveragePage: per-need coverage
+  with asset metadata + actor display names, honest UNSATISFIED as
+  null, satisfied/total counts, full audited history) and
+  `GET media-assets/{id}/content` (bytes with the true content type;
+  store layout internal — 503 when the store cannot serve, never a
+  path); stale control-router docstring corrected (the Phase 5
+  operator guard IS the access boundary now)
+- Task M2 verified: 5 new API tests (upload register/dedupe/magic
+  mismatch 422; the full satisfy→coverage→stream→unsatisfy flow incl.
+  leak assertions — no store paths, no credential material — and
+  history visibility; bounded refusal mapping for unknown
+  need/asset/no-binding; frozen terminal-state 409; coverage 404) —
+  suite 1269 backend + 216 admin, gate green; no migration (head
+  stays `0023`)
+
 ## Next immediate task
 
-PHASE 6 TASK M2 (authorized under the autonomous continuation mandate)
-— MEDIA COMMANDS + READ MODELS, per PHASE6_MEDIA_ARCHITECTURE.md
-§4/§5/§7: operator routes — `POST /internal/editorial/media-assets`
-(multipart upload, bounded, server-side hashing; app wires a
-MediaStore from `media_store_root`), satisfy/unsatisfy commands on
-`work-items/{id}/media-needs/{index}`, and the authenticated
-byte-streaming route `GET /internal/editorial/media-assets/{id}/content`
-(correct content-type; no storage internals); the
-`work-items/{id}/media` read model (needs coverage with asset
-metadata + satisfaction history; storage keys and credential material
-never leave by construction); leak tests; no migration. Then M3 QA
-gate v2 (`satisfied` + exact unmet indexes under `qa-gates/2`).
+PHASE 6 TASK M3 (authorized under the autonomous continuation mandate)
+— QA GATE V2, per PHASE6_MEDIA_ARCHITECTURE.md §4/§7: `_media_needs`
+learns `satisfied` — every (ACTIVE brief, need_index) has an ACTIVE
+satisfaction — and `unsatisfied` now lists the EXACT unmet need
+indexes (never a count that hides which); the gate policy snapshot
+version bumps to `qa-gates/2` while old reports remain truthful under
+their recorded `qa-gates/1`; the waived path stays; deterministic
+tests incl. an old-report-stays-under-v1 proof. Then M4 AI image
+generation (MEDIA_IMAGE purpose through contentos.ai), M5 the admin
+media surface, M6 the media closure audit.
 
 Before implementing the affected integrations, resolve:
 

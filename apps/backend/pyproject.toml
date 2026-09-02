@@ -13,6 +13,7 @@ dependencies = [
   "pgvector",
   "psycopg[binary,pool]",
   "pydantic-settings",
+  "python-multipart>=0.0.32",
   "redis",
   "sqlalchemy",
   "structlog",

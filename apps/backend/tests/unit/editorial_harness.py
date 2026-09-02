@@ -10,8 +10,10 @@ decision rows and score eligibility control).
 
 import asyncio
 import hashlib
+import tempfile
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -43,6 +45,7 @@ from contentos.fetching.models import (
 from contentos.fetching.snapshot_service import FetchSnapshotService
 from contentos.ideas.generation import IdeaGenerationEngine
 from contentos.ideas.service import IdeaService
+from contentos.media.store import MediaStore
 from contentos.normalization.service import NormalizationService
 from contentos.opportunities.enums import (
     OpportunityActor,
@@ -314,6 +317,9 @@ class Harness:
         self.app: FastAPI = create_app(settings=api_settings())
         self.app.state.db_session_factory = self.session_factory
         self.app.state.editorial_control_dispatcher = self.dispatcher
+        # Isolated per-harness media byte store (never the repo default).
+        self.media_store_root = Path(tempfile.mkdtemp(prefix="contentos-test-media-"))
+        self.app.state.media_store = MediaStore(self.media_store_root)
         with self.session_factory() as seed_session:
             seed_test_operator(seed_session)
         self.auth_token: str | None = None
@@ -324,6 +330,8 @@ class Harness:
         path: str,
         json_body: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        files: Any = None,
+        form_data: dict[str, Any] | None = None,
     ) -> httpx.Response:
         async def run() -> httpx.Response:
             transport = httpx.ASGITransport(app=self.app)
@@ -341,7 +349,14 @@ class Harness:
                 merged = dict(headers or {})
                 if self.auth_token is not None and "Authorization" not in merged:
                     merged["Authorization"] = f"Bearer {self.auth_token}"
-                return await client.request(method, path, json=json_body, headers=merged)
+                return await client.request(
+                    method,
+                    path,
+                    json=json_body,
+                    files=files,
+                    data=form_data,
+                    headers=merged,
+                )
 
         return asyncio.run(run())
 
