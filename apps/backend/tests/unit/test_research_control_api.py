@@ -74,6 +74,16 @@ class Harness:
         self.app: FastAPI = create_app(settings=control_settings())
         self.app.state.db_session_factory = self.session_factory
         self.app.state.research_control_dispatcher = self.dispatcher
+        from editorial_harness import (
+            TEST_OPERATOR_PASSWORD,
+            TEST_OPERATOR_USERNAME,
+            seed_test_operator,
+        )
+
+        with self.session_factory() as seed_session:
+            seed_test_operator(seed_session)
+        self._credentials = (TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+        self.auth_token: str | None = None
 
     def request(
         self,
@@ -85,7 +95,18 @@ class Harness:
         async def run() -> httpx.Response:
             transport = httpx.ASGITransport(app=self.app)
             async with httpx.AsyncClient(transport=transport, base_url="http://ctl") as client:
-                return await client.request(method, path, json=json_body, headers=headers)
+                if self.auth_token is None and not path.startswith("/internal/auth/"):
+                    username, password = self._credentials
+                    login = await client.post(
+                        "/internal/auth/login",
+                        json={"username": username, "password": password},
+                    )
+                    assert login.status_code == 200, login.text
+                    self.auth_token = login.json()["token"]
+                merged = dict(headers or {})
+                if self.auth_token is not None and "Authorization" not in merged:
+                    merged["Authorization"] = f"Bearer {self.auth_token}"
+                return await client.request(method, path, json=json_body, headers=merged)
 
         return asyncio.run(run())
 
@@ -608,6 +629,14 @@ class TestTransactionBehavior:
     def test_commit_failure_is_never_reported_as_success(self) -> None:
         harness = Harness()
         source_id = seed_source(harness, "islem")
+        # Authenticate BEFORE the commit sabotage: the login itself needs a
+        # working session, and this test targets the lifecycle command only.
+        login = harness.post(
+            "/internal/auth/login",
+            {"username": harness._credentials[0], "password": harness._credentials[1]},
+        )
+        assert login.status_code == 200
+        harness.auth_token = login.json()["token"]
         base_factory = harness.session_factory
 
         def failing_commit_factory() -> Session:

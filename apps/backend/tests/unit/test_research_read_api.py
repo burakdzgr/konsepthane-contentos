@@ -90,12 +90,35 @@ class Harness:
         self.session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.app: FastAPI = create_app(settings=read_api_settings())
         self.app.state.db_session_factory = self.session_factory
+        from editorial_harness import (
+            TEST_OPERATOR_PASSWORD,
+            TEST_OPERATOR_USERNAME,
+            seed_test_operator,
+        )
+
+        with self.session_factory() as seed_session:
+            seed_test_operator(seed_session)
+        self._credentials = (TEST_OPERATOR_USERNAME, TEST_OPERATOR_PASSWORD)
+        self.auth_token: str | None = None
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         async def run() -> httpx.Response:
             transport = httpx.ASGITransport(app=self.app)
             async with httpx.AsyncClient(transport=transport, base_url="http://read") as client:
-                return await client.get(path, params=params)
+                if self.auth_token is None and not path.startswith("/internal/auth/"):
+                    username, password = self._credentials
+                    login = await client.post(
+                        "/internal/auth/login",
+                        json={"username": username, "password": password},
+                    )
+                    assert login.status_code == 200, login.text
+                    self.auth_token = login.json()["token"]
+                headers = (
+                    {"Authorization": f"Bearer {self.auth_token}"}
+                    if self.auth_token is not None
+                    else {}
+                )
+                return await client.get(path, params=params, headers=headers)
 
         return asyncio.run(run())
 

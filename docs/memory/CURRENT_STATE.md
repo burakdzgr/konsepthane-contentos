@@ -28,7 +28,7 @@ Commands + Routing Extension COMPLETE — THE PIPELINE REACHES
 AWAITING_HUMAN_REVIEW END-TO-END; Task 19 QA Read Models + Admin
 COMPLETE; Task 20 QA-Stage Audit COMPLETE; Task 21 PHASE 4 CLOSURE
 AUDIT COMPLETE — **PHASE 4 IS CLOSED**; PHASE 5 Governance
-Architecture (design only) COMPLETE)
+Architecture (design only) COMPLETE; Task G1 Auth Foundation COMPLETE)
 
 Phase 4 design: docs/PHASE4_WRITER_ARCHITECTURE.md (Accepted — Phase 4
 Task 1). Task 1 was DESIGN ONLY: zero Phase 4 runtime code exists — no
@@ -2736,29 +2736,60 @@ access protection belongs to future deployment infrastructure.
   phase). Exit criteria (§6) and implementation order Tasks G1-G6
   (§7) recorded.
 
+- PHASE 5 Task G1 (auth foundation) complete: migration `0021` —
+  `users` (unique immutable username, argon2id password_hash, roles
+  JSONB array CHECK, is_active, rotation timestamp; trigger: DELETE
+  forbidden + identity fields immutable), `user_events` (append-only
+  provisioning/rotation/roles/activation audit with required reasons)
+  and `auth_sessions` (sha256 token_hash UNIQUE — the raw token exists
+  only in the login response, fixed TTL, trigger permits ONLY the
+  one-shot revocation); `contentos.auth` module — AuthService
+  (argon2id via the new argon2-cffi dependency, indistinguishable
+  login/session failures by design, defensive UTC normalization for
+  SQLite-naive datetimes) + management CLI
+  (`python -m contentos.auth.cli` create-user/set-password/set-roles/
+  set-active; passwords via env/prompt, never argv); FastAPI:
+  `api/security.py` require_user/require_operator/require_reviewer,
+  EVERY /internal/* router now guarded by the OPERATOR role (health
+  open; /internal/auth/login is the only other open route), login/
+  logout/me endpoints, settings gained auth_session_ttl_hours, app
+  state carries settings; all three API test harnesses authenticate
+  through the REAL login flow (one precomputed hash seeds the test
+  operator; login/verify are real — no bypass fixtures)
+- Task G1 verified: 13 new auth tests (management audit + uniqueness,
+  password rules/rotation, deactivation kills sessions, raw-token
+  never stored, expiry/revocation fail closed, CLI core, API
+  enforcement: 401s with WWW-Authenticate, open health,
+  login/logout/me flow, indistinguishable bad-credential responses,
+  reviewer-only user gets 403 on the pipeline, operator passes) plus
+  one commit-sabotage test updated to pre-authenticate; suite 1239
+  backend + 185 admin, gate green; REAL PostgreSQL 16 verification
+  passed (0020->0021 cycle, full service+CLI lifecycle audited on PG,
+  trigger negatives incl. revocation un-revert); schema head is now
+  `0021`; NOTE: admin pipeline pages will 401 against the backend
+  until Task G2 lands the admin login + token forwarding (main page /
+  health smoke unaffected)
+
 ## Next immediate task
 
-PHASE 5 TASK G1 (authorized under the autonomous continuation mandate)
-— AUTH FOUNDATION, per accepted PHASE5_GOVERNANCE_ARCHITECTURE.md §7
-Task G1: migration 0021 creating `users` (unique immutable username,
-argon2id password_hash, roles JSONB from the frozen {operator,
-reviewer} vocabulary, is_active, credential-rotation timestamp;
-trigger: DELETE forbidden, UPDATE limited to credential/role/active
-fields), `user_events` (append-only provisioning/role/activation
-audit) and `auth_sessions` (token_hash sha256 — the opaque token is
-never stored, fixed TTL expires_at, one-shot revoked_at);
-`contentos.auth` module (argon2id hashing via argon2-cffi — NEW
-dependency added properly through uv, session issue/verify/revoke
-service with typed errors, user provisioning/rotation/deactivation
-commands exposed via a management CLI entrypoint that writes audited
-user_events); FastAPI `require_user(role=...)` dependency applied to
-EVERY /internal/* router except health, with typed 401/403 and
-login/logout endpoints; the API test harness gains real login seeding
-(tests authenticate through the real flow — never a bypass fixture
-that weakens the boundary); real-PG verification (migration cycle,
-triggers, session lifecycle incl. expiry/revocation, no
-credential/token material anywhere but the designed hashes). Admin
-login is Task G2.
+PHASE 5 TASK G2 (authorized under the autonomous continuation mandate;
+URGENT SEQUENCING: the admin's pipeline pages are 401-broken against
+the G1-protected backend until this lands) — ADMIN AUTHENTICATION, per
+PHASE5_GOVERNANCE_ARCHITECTURE.md §7 Task G2: a `/login` page whose
+server action calls the backend `/internal/auth/login` and stores the
+session token in an HttpOnly SameSite=Lax cookie (Secure in
+production); Next.js middleware (or layout-level guard) redirecting
+unauthenticated visitors of every app page except /login and
+/api/health; the server-side backend clients (contentos-api
+requestBackend) forwarding `Authorization: Bearer <token>` from the
+cookie on every call; /logout (revokes the backend session + clears
+the cookie); 401 responses from the backend surface as a redirect to
+/login (session expiry UX); role-aware chrome (show the username;
+reviewer-only capabilities arrive in G3/G4); admin tests updated to
+authenticate (mock the session cookie / auth fetches — the REAL flow
+is covered by backend tests and the compose smoke, which should gain
+a login step once G2 lands). No backend changes expected beyond none;
+no migration.
 
 Before implementing the affected integrations, resolve:
 

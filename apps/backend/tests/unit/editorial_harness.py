@@ -251,6 +251,38 @@ class FailingEditorialDispatcher(FakeEditorialControlDispatcher):
         return super().__getattribute__(name)
 
 
+# Phase 5 G1: tests authenticate through the REAL login flow. The seed row
+# reuses one precomputed argon2id hash (hashing is deliberately slow), but
+# every request rides a session issued by the real /internal/auth/login.
+TEST_OPERATOR_USERNAME = "test-operator"
+TEST_OPERATOR_PASSWORD = "test-operator-password"
+_TEST_PASSWORD_HASH: str | None = None
+
+
+def _test_password_hash() -> str:
+    global _TEST_PASSWORD_HASH
+    if _TEST_PASSWORD_HASH is None:
+        from argon2 import PasswordHasher
+
+        _TEST_PASSWORD_HASH = PasswordHasher().hash(TEST_OPERATOR_PASSWORD)
+    return _TEST_PASSWORD_HASH
+
+
+def seed_test_operator(session: Session) -> None:
+    from contentos.auth.models import User
+
+    session.add(
+        User(
+            username=TEST_OPERATOR_USERNAME,
+            display_name="Test Operator",
+            password_hash=_test_password_hash(),
+            roles=["operator", "reviewer"],
+            is_active=True,
+        )
+    )
+    session.commit()
+
+
 class Harness:
     """Real sessions over shared in-memory SQLite behind the real app."""
 
@@ -282,6 +314,9 @@ class Harness:
         self.app: FastAPI = create_app(settings=api_settings())
         self.app.state.db_session_factory = self.session_factory
         self.app.state.editorial_control_dispatcher = self.dispatcher
+        with self.session_factory() as seed_session:
+            seed_test_operator(seed_session)
+        self.auth_token: str | None = None
 
     def request(
         self,
@@ -293,7 +328,20 @@ class Harness:
         async def run() -> httpx.Response:
             transport = httpx.ASGITransport(app=self.app)
             async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
-                return await client.request(method, path, json=json_body, headers=headers)
+                if self.auth_token is None and not path.startswith("/internal/auth/"):
+                    login = await client.post(
+                        "/internal/auth/login",
+                        json={
+                            "username": TEST_OPERATOR_USERNAME,
+                            "password": TEST_OPERATOR_PASSWORD,
+                        },
+                    )
+                    assert login.status_code == 200, login.text
+                    self.auth_token = login.json()["token"]
+                merged = dict(headers or {})
+                if self.auth_token is not None and "Authorization" not in merged:
+                    merged["Authorization"] = f"Bearer {self.auth_token}"
+                return await client.request(method, path, json=json_body, headers=merged)
 
         return asyncio.run(run())
 

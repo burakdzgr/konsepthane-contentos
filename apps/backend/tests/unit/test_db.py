@@ -88,6 +88,7 @@ def test_no_engine_is_created_at_import_time() -> None:
 
 def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.ai.models  # noqa: F401
+    import contentos.auth.models  # noqa: F401
     import contentos.briefs.models  # noqa: F401
     import contentos.discovery.models  # noqa: F401
     import contentos.drafts.models  # noqa: F401
@@ -142,6 +143,9 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "qa_reports",
         "qa_gate_waivers",
         "qa_report_status_events",
+        "users",
+        "user_events",
+        "auth_sessions",
     }
 
 

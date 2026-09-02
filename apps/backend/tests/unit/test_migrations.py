@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0020"]
+    assert script.get_heads() == ["0021"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0021").down_revision == "0020"
     assert script.get_revision("0020").down_revision == "0019"
     assert script.get_revision("0019").down_revision == "0018"
     assert script.get_revision("0018").down_revision == "0017"
@@ -339,6 +340,24 @@ def test_qa_report_migration_contains_identity_and_protection() -> None:
     assert sql.count("ON DELETE RESTRICT") == 8
     # QA v1 is deterministic and never an approval or a model surface.
     for forbidden in ("'approved'", "'rejected'", "generation_attempt", "prompt", "raw_output"):
+        assert forbidden not in sql
+
+
+def test_auth_migration_contains_identity_and_protection() -> None:
+    sql = offline_sql("upgrade", "0020:0021")
+
+    assert "CREATE TABLE users" in sql
+    assert "CREATE TABLE user_events" in sql
+    assert "CREATE TABLE auth_sessions" in sql
+    assert "uq_users_username" in sql
+    assert "uq_auth_sessions_token_hash" in sql
+    assert "ck_auth_sessions_token_hash_format" in sql
+    assert "ck_users_roles_array" in sql
+    assert "CREATE TRIGGER trg_users_guarded" in sql
+    assert "CREATE TRIGGER trg_user_events_append_only" in sql
+    assert "CREATE TRIGGER trg_auth_sessions_guarded" in sql
+    # Only hashes are ever stored; no raw secret columns exist.
+    for forbidden in ("password VARCHAR", "raw_token", "plain_password", "secret_key"):
         assert forbidden not in sql
 
 

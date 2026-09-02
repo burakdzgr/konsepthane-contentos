@@ -2,15 +2,17 @@
 
 from functools import partial
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
+from contentos.api.routes.auth import router as auth_router
 from contentos.api.routes.editorial import router as editorial_router
 from contentos.api.routes.editorial_control import router as editorial_control_router
 from contentos.api.routes.health import router as health_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
+from contentos.api.security import require_operator
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.db.session import create_database_engine, create_session_factory
@@ -39,13 +41,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handling(app)
     # Engine creation is lazy: no database connection happens until first use.
     engine = create_database_engine(resolved_settings)
+    app.state.settings = resolved_settings
     app.state.db_session_factory = create_session_factory(engine)
     app.state.redis_client_factory = partial(create_redis_client, resolved_settings)
+    # Phase 5 G1: health stays open; login is the only other open route.
+    # Every pipeline surface requires an authenticated OPERATOR session.
+    operator_guard = [Depends(require_operator)]
     app.include_router(health_router)
-    app.include_router(research_router)
-    app.include_router(research_control_router)
-    app.include_router(editorial_router)
-    app.include_router(editorial_control_router)
+    app.include_router(auth_router)
+    app.include_router(research_router, dependencies=operator_guard)
+    app.include_router(research_control_router, dependencies=operator_guard)
+    app.include_router(editorial_router, dependencies=operator_guard)
+    app.include_router(editorial_control_router, dependencies=operator_guard)
     # Producer-only dispatchers for explicit operator job triggers; lazy, so
     # creating the app never touches Redis. Tests replace them on app.state.
     app.state.research_control_dispatcher = CeleryResearchControlDispatcher(resolved_settings)

@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=5, ge=1, le=50)
     db_pool_timeout_seconds: int = Field(default=30, ge=1, le=300)
     db_connect_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    auth_session_ttl_hours: int = Field(default=12, ge=1, le=168)
     redis_broker_url: SecretStr = SecretStr("redis://localhost:6379/0")
     redis_result_url: SecretStr = SecretStr("redis://localhost:6379/1")
     celery_default_queue: str = Field(default="contentos.default", min_length=1)
