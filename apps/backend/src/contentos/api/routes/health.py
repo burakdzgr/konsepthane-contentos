@@ -15,11 +15,15 @@ router = APIRouter(prefix="/health")
 
 @router.get("/live")
 def live(request: Request) -> dict[str, str]:
-    """Process liveness only: no database, Redis, or worker dependency."""
+    """Process liveness only: no database, Redis, or worker dependency.
+
+    The environment NAME is operational metadata (never a secret): the
+    admin renders it as the deployment badge."""
     return {
         "status": "ok",
         "service": request.app.title,
         "version": request.app.version,
+        "environment": request.app.state.settings.environment.value,
     }
 
 

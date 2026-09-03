@@ -108,6 +108,9 @@ from contentos.media.errors import (
 )
 from contentos.media.service import MAX_MEDIA_BYTES, MediaService
 from contentos.normalization.models import NormalizedDocument
+from contentos.operations.enums import PauseScope
+from contentos.operations.errors import IntakePausedError
+from contentos.operations.service import OperationsService
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.opportunities.errors import (
     CommissioningConflictError,
@@ -463,8 +466,30 @@ def _current_user_id(request: Request) -> uuid.UUID | None:
     return user.id if user is not None else None
 
 
-def _enqueue_or_503(operation: str, entity_id: uuid.UUID, publish: Any) -> None:
-    """Publish one editorial job; a transport failure is never reported as queued."""
+# Which intake pause gates each explicitly triggered job. Frozen with the
+# task names; a pause is refused dispatch (409), never a workflow change.
+_OPERATION_PAUSE_SCOPES: dict[str, PauseScope] = {
+    "promote_research": PauseScope.OPPORTUNITY,
+    "evaluate_opportunity": PauseScope.OPPORTUNITY,
+    "generate_idea_candidates": PauseScope.IDEAS,
+    "build_evidence_pack": PauseScope.EVIDENCE,
+    "analyze_search_intent": PauseScope.INTENT,
+    "compose_content_brief": PauseScope.BRIEF,
+    "generate_writer_draft": PauseScope.WRITER,
+    "generate_editor_review": PauseScope.EDITOR,
+    "run_qa_gates": PauseScope.QA,
+    "generate_media_image": PauseScope.MEDIA,
+    "publish_package": PauseScope.PUBLISHER,
+}
+
+
+def _enqueue_or_503(session: Session, operation: str, entity_id: uuid.UUID, publish: Any) -> None:
+    """Publish one editorial job; a transport failure is never reported as
+    queued, and a paused intake refuses BEFORE anything is published."""
+    try:
+        OperationsService(session).ensure_dispatch_allowed(_OPERATION_PAUSE_SCOPES[operation])
+    except IntakePausedError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
     try:
         publish()
     except Exception as error:
@@ -528,6 +553,7 @@ def promote_research_document(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "promote_research",
         normalized_document_id,
         lambda: dispatcher.enqueue_promote(str(normalized_document_id), request_id=request_id),
@@ -586,6 +612,7 @@ def evaluate_opportunity(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "evaluate_opportunity",
         opportunity_id,
         lambda: dispatcher.enqueue_evaluate(str(opportunity_id), request_id=request_id),
@@ -668,6 +695,7 @@ def generate_idea_candidates(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "generate_idea_candidates",
         opportunity_id,
         lambda: dispatcher.enqueue_generate_ideas(
@@ -699,6 +727,7 @@ def build_evidence_pack(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "build_evidence_pack",
         opportunity_id,
         lambda: dispatcher.enqueue_build_pack(
@@ -737,6 +766,7 @@ def analyze_search_intent(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "analyze_search_intent",
         opportunity_id,
         lambda: dispatcher.enqueue_analyze_intent(
@@ -955,6 +985,7 @@ def compose_content_brief(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "compose_content_brief",
         work_item_id,
         lambda: dispatcher.enqueue_compose_brief(
@@ -1024,6 +1055,7 @@ def generate_writer_draft(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "generate_writer_draft",
         brief_id,
         lambda: dispatcher.enqueue_generate_writer_draft(
@@ -1161,6 +1193,7 @@ def generate_editor_review(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "generate_editor_review",
         work_item_id,
         lambda: dispatcher.enqueue_generate_editor_review(
@@ -1316,6 +1349,7 @@ def run_qa_gates(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "run_qa_gates",
         work_item_id,
         lambda: dispatcher.enqueue_run_qa(str(work_item_id), request_id=request_id),
@@ -1486,6 +1520,7 @@ def generate_media_image(
     request_id = _current_request_id()
     requested_by = _current_user(request)
     _enqueue_or_503(
+        session,
         "generate_media_image",
         work_item_id,
         lambda: dispatcher.enqueue_generate_media_image(
@@ -1725,6 +1760,7 @@ def publish_work_item(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "publish_package",
         work_item_id,
         lambda: dispatcher.enqueue_publish(str(work_item_id), request_id=request_id),

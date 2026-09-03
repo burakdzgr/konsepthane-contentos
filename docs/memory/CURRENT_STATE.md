@@ -3490,6 +3490,47 @@ the inputs listed below.
   role withholding and truthful empty/unreachable states); suite now
   1322 backend + 248 admin, full gate green.
 
+- CONTROL CENTER + AGENT CONTROL CENTER (operator request): the admin
+  is now an operations product. NEW BACKEND: migration `0027`
+  (`operational_pauses` current-state + `operational_pause_events`
+  append-only audit, real-PG verified up/constraint/down/up),
+  `contentos/operations/` (PauseScope vocabulary: engine + 11 job
+  families; OperationsService with idempotent audited pause/resume and
+  `ensure_dispatch_allowed`), enforcement inside BOTH control routers'
+  single `_enqueue_or_503` helper (paused intake → 409 BEFORE any
+  publish; direct human commands untouched), and the operator-guarded
+  `/internal/dashboard/*` bounded read-only projections: summary
+  (work-item state counts, published-today, discovery states, AI
+  attempts/budget, publishing attempts, media counts, live broker
+  LLEN queue depth — null when unmeasurable, never 0), agents (11
+  logical agents mapped onto REAL execution units: AI generation
+  purposes / deterministic domain facts / publishing transport, with
+  today's attempts, failures, last sanitized error_class, recent
+  attempts), activity (workflow events + publication attempts + pause
+  events merged), publications, controls; POST controls/pause|resume
+  (named actor + required reason + request id). `/health/live` now
+  carries the environment name. NEW ADMIN: dark-navy sidebar shell
+  (sectioned nav incl. filtered editorial views; Dağıtım/Analitik
+  honestly marked unavailable; real readiness footer), header env
+  badge, and the `/kontrol` page — ContentOS Motoru / İçerik Üretim
+  Kontrol Merkezi: KPI strip, 11-stage pipeline strip, live work
+  table, risk/alert panel (real counts only), agent control center
+  with per-agent drawer + pause/resume, Motor Kontrolü (safe
+  emergency stop = engine intake pause, mandatory reason, no process
+  kill), publication queue, AI/worker + media panels, activity feed,
+  30s auto-refresh. QUEUE_FILTER_STATES extended so state-filtered
+  links work. VERIFIED LIVE against the running stack: anon 401,
+  all five reads 200, research+engine pauses refused a REAL discover
+  dispatch with 409 and audited the named actor, resume restored a
+  genuinely queued dispatch. Docs: `docs/OPERATIONS_CONTROLS.md`.
+  Suite 1341 backend + 263 admin, full gate green. smoke.ps1 made
+  re-runnable on a persistent dev DB (password rotation fallback).
+  Deliberately NOT built (no fake admin): worker RUNNING state and
+  per-agent concurrency (attempts are completed-only facts; Celery
+  concurrency is not safely runtime-configurable), retry buttons for
+  arbitrary tasks, model/budget runtime editing (env-owned), process
+  kill. Unavailable measurements render as unavailable.
+
 ## Current standing state (all phases 1–7 CLOSED; publishing E2E REAL)
 
 The full loop research → … → PUBLISHED runs end to end on real

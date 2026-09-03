@@ -36,6 +36,9 @@ from contentos.discovery.service import (
     DiscoveryService,
     InvalidDiscoveryTransitionError,
 )
+from contentos.operations.enums import PauseScope
+from contentos.operations.errors import IntakePausedError
+from contentos.operations.service import OperationsService
 from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
@@ -166,8 +169,13 @@ def _current_request_id() -> str | None:
     return candidate if is_valid_request_id(candidate) else None
 
 
-def _enqueue_or_503(operation: str, entity_id: uuid.UUID, publish: Any) -> None:
-    """Publish one entry-point job; a transport failure is never reported as queued."""
+def _enqueue_or_503(session: Session, operation: str, entity_id: uuid.UUID, publish: Any) -> None:
+    """Publish one entry-point job; a transport failure is never reported as
+    queued, and a paused research intake refuses BEFORE anything is published."""
+    try:
+        OperationsService(session).ensure_dispatch_allowed(PauseScope.RESEARCH)
+    except IntakePausedError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
     try:
         publish()
     except Exception as error:
@@ -268,6 +276,7 @@ def trigger_source_discovery(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "discover_source",
         source_id,
         lambda: dispatcher.enqueue_discovery(str(source_id), request_id=request_id),
@@ -377,6 +386,7 @@ def trigger_discovery_item_fetch(
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
+        session,
         "fetch_discovery_item",
         discovery_item_id,
         lambda: dispatcher.enqueue_fetch(str(discovery_item_id), request_id=request_id),

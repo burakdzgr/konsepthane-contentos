@@ -108,6 +108,7 @@ def test_liveness_returns_stable_identity() -> None:
         "status": "ok",
         "service": "ContentOS Health Test",
         "version": "3.2.1",
+        "environment": "test",
     }
     assert response.headers[REQUEST_ID_HEADER]
 

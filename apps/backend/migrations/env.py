@@ -18,6 +18,7 @@ from contentos.evidence_packs import models as _evidence_pack_models  # noqa: F4
 from contentos.fetching import snapshots as _fetch_snapshots  # noqa: F401
 from contentos.ideas import models as _idea_models  # noqa: F401
 from contentos.normalization import models as _normalization_models  # noqa: F401
+from contentos.operations import models as _operations_models  # noqa: F401
 from contentos.opportunities import models as _opportunity_models  # noqa: F401
 from contentos.payloads import postgres as _payload_models  # noqa: F401
 from contentos.research import models as _research_models  # noqa: F401

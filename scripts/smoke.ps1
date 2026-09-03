@@ -99,6 +99,13 @@ docker compose exec -T -e CONTENTOS_NEW_PASSWORD=$smokePassword api `
     python -m contentos.auth.cli create-user smoke.operator `
     --display-name "Smoke Operator" --roles operator --reason "compose smoke" | Out-Null
 if ($LASTEXITCODE -ne 0) {
+    # Re-runnable on a persistent dev database: an already-provisioned
+    # smoke user gets its known password rotated instead of failing.
+    docker compose exec -T -e CONTENTOS_NEW_PASSWORD=$smokePassword api `
+        python -m contentos.auth.cli set-password smoke.operator `
+        --reason "compose smoke re-run" | Out-Null
+}
+if ($LASTEXITCODE -ne 0) {
     Write-Host "FAIL could not provision the smoke user"
     $script:failed = $true
 } else {

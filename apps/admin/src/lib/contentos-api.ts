@@ -20,6 +20,8 @@ const livenessSchema = z.object({
   status: z.literal("ok"),
   service: z.string().min(1),
   version: z.string().min(1),
+  // Older backends omit it; absence renders honestly as unknown.
+  environment: z.string().min(1).optional(),
 });
 
 const componentStateSchema = z.enum(["ok", "failed", "unknown"]);

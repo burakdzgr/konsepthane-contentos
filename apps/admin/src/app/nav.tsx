@@ -1,40 +1,124 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-// Every target page is force-dynamic, so navigation always fetches fresh
-// operational data; this client component exists only to mark the current
-// page for assistive technology.
+// The sidebar navigation: every entry points at a REAL page or a real
+// filtered view; capabilities that do not exist yet (distribution,
+// analytics) are honestly marked unavailable instead of dead links.
 
-const NAV_LINKS = [
-  { href: "/motor", label: "Motor" },
-  { href: "/", label: "Durum" },
-  { href: "/sources", label: "Kaynaklar" },
-  { href: "/research", label: "Araştırma Hattı" },
-  { href: "/editorial", label: "Editoryal" },
-] as const;
+type NavEntry = {
+  href: string;
+  label: string;
+  disabled?: boolean;
+};
 
-function isCurrent(href: string, pathname: string): boolean {
-  if (href === "/") {
+type NavSection = {
+  title: string;
+  entries: NavEntry[];
+};
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: "Komuta",
+    entries: [
+      { href: "/kontrol", label: "Kontrol Merkezi" },
+      { href: "/motor", label: "Motor" },
+      { href: "/", label: "Sistem" },
+    ],
+  },
+  {
+    title: "İçerik Hattı",
+    entries: [
+      { href: "/sources", label: "Kaynaklar" },
+      { href: "/research", label: "Araştırma" },
+      { href: "/editorial", label: "Editoryal" },
+      { href: "/editorial?state=idea_scoring", label: "Fırsatlar" },
+      { href: "/editorial?state=briefing", label: "Briefler" },
+      { href: "/editorial?state=drafting", label: "Writer" },
+      { href: "/editorial?state=editing", label: "Editor" },
+      { href: "/editorial?state=qa_review", label: "QA" },
+      { href: "/editorial?state=awaiting_human_review", label: "İnsan Onayı" },
+    ],
+  },
+  {
+    title: "Yayın & Motor",
+    entries: [
+      { href: "/kontrol#yayin-kuyrugu", label: "Yayın Kuyruğu" },
+      { href: "/kontrol#agentlar", label: "Agentlar" },
+      { href: "/kontrol#motor-kontrolu", label: "Motor Kontrolü" },
+      { href: "", label: "Dağıtım (mevcut değil)", disabled: true },
+      { href: "", label: "Analitik (mevcut değil)", disabled: true },
+    ],
+  },
+];
+
+function isCurrent(
+  entry: NavEntry,
+  pathname: string,
+  stateParam: string | null,
+): boolean {
+  const [path, query] = entry.href.split("?");
+  const hashless = (path ?? "").split("#")[0] ?? "";
+  if (hashless === "" || entry.disabled) {
+    return false;
+  }
+  if (hashless === "/") {
     return pathname === "/";
   }
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const pathMatches =
+    pathname === hashless || pathname.startsWith(`${hashless}/`);
+  if (!pathMatches) {
+    return false;
+  }
+  // Filtered editorial entries are current only for their exact filter.
+  if (hashless === "/editorial") {
+    const wanted = query?.startsWith("state=")
+      ? query.slice("state=".length)
+      : null;
+    return wanted === stateParam;
+  }
+  return !entry.href.includes("#");
+}
+
+function SidebarLinks() {
+  const pathname = usePathname() ?? "/";
+  const searchParams = useSearchParams();
+  const stateParam = searchParams?.get("state") ?? null;
+  return (
+    <nav className="app-nav" aria-label="Birincil">
+      {NAV_SECTIONS.map((section) => (
+        <div key={section.title} className="nav-section">
+          <span className="nav-section-title">{section.title}</span>
+          {section.entries.map((entry) =>
+            entry.disabled ? (
+              <span key={entry.label} className="nav-entry-disabled">
+                {entry.label}
+              </span>
+            ) : (
+              <Link
+                key={entry.href}
+                href={entry.href}
+                aria-current={
+                  isCurrent(entry, pathname, stateParam) ? "page" : undefined
+                }
+              >
+                {entry.label}
+              </Link>
+            ),
+          )}
+        </div>
+      ))}
+    </nav>
+  );
 }
 
 export function AppNav() {
-  const pathname = usePathname() ?? "/";
+  // useSearchParams requires a Suspense boundary during prerender.
   return (
-    <nav className="app-nav" aria-label="Birincil">
-      {NAV_LINKS.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          aria-current={isCurrent(link.href, pathname) ? "page" : undefined}
-        >
-          {link.label}
-        </Link>
-      ))}
-    </nav>
+    <Suspense fallback={<nav className="app-nav" aria-label="Birincil" />}>
+      <SidebarLinks />
+    </Suspense>
   );
 }
