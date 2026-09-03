@@ -43,19 +43,21 @@ $null = Get-CheckedBody -Url "$adminBase/api/health" -ExpectedStatus 200
 $adminPage = Get-CheckedBody -Url "$adminBase/" -ExpectedStatus 200
 
 if ($null -ne $adminPage) {
-    if ($adminPage -match "Sign in") {
+    # The UI is Turkish; anchor on ASCII-safe markup (the login title id
+    # and the status badge tone) so the check is encoding-independent.
+    if ($adminPage -match 'id="login-title"') {
         Write-Host "OK   admin gate redirects to the login page"
     } else {
         Write-Host "FAIL admin did not present the login page"
         $script:failed = $true
     }
-    if ($adminPage -match "Foundation Status" -and $adminPage -match "Operational") {
+    if ($adminPage -match "Sistem Durumu" -and $adminPage -match 'data-tone="ok"') {
         Write-Host "OK   login page reflects backend readiness"
     } else {
         Write-Host "FAIL login page does not show an operational backend"
         $script:failed = $true
     }
-    if ($adminPage -match "Unavailable") {
+    if ($adminPage -match 'data-tone="bad"') {
         Write-Host "FAIL login page reports the backend as unavailable"
         $script:failed = $true
     }
