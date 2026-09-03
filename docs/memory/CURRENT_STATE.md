@@ -3569,6 +3569,28 @@ the inputs listed below.
   score is the honest relevance signal), auto-rejection of scored
   opportunities (a named human decision per Phase 5).
 
+- OPERATIONS-CONSOLE UI (operator reference image): the admin now uses
+  a dark operations-console design language end to end (dark tokens +
+  a cascade override block in globals.css; tone tokens for
+  ok/warn/bad/run). Sidebar reorganized to the reference's sections
+  (Komuta / Kaynaklar / İçerik Pipeline / Yayınlama / Ajanlar &
+  Sistem) with LIVE count badges (aktif çalışmalar, fırsat kararları,
+  onay bekleyenler, yayın kuyruğu) and a footer with the REAL AI
+  attempt budget bar, queue depth, and readiness health — all fetched
+  in the layout per request, hidden when no session. Run detail is a
+  live operation view: horizontal circular stage pipeline now SIX real
+  stages (Keşif → Ön Eleme → Fetch → Normalize → Kopya Analizi →
+  Fırsat) — the new `chain` block in the intake run detail read model
+  computes normalize/duplicate counts and the last processed document
+  (title+url) from the run's dispatched items' durable rows — plus a
+  stat grid, agent rail (dashboard agents), header controls, and the
+  Turkish event feed. Kontrol gains "Son Fırsatlar" (top scored open
+  opportunities by real score). No fake data anywhere: unmeasurable
+  values stay unavailable, no dollar costs (attempt counts only), no
+  invented RUNNING states. Ops note learned live: the backend image's
+  compose `build:` lives ONLY on the `migrate` service — rebuild with
+  `docker compose build migrate`, then force-recreate api/worker.
+
 ## Current standing state (all phases 1–7 CLOSED; publishing E2E REAL)
 
 The full loop research → … → PUBLISHED runs end to end on real

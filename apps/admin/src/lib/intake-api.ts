@@ -48,7 +48,14 @@ const runSchema = z.object({
 });
 
 const stageSchema = z.object({
-  key: z.enum(["discovery", "prefilter", "fetch", "promote"]),
+  key: z.enum([
+    "discovery",
+    "prefilter",
+    "fetch",
+    "normalize",
+    "duplicate",
+    "promote",
+  ]),
   state: z.enum(["done", "active", "pending"]),
   counts: z.record(z.string(), z.number().int()),
 });
@@ -66,9 +73,18 @@ const runsPageSchema = z.object({
   runs: z.array(runSchema),
 });
 
+const chainSchema = z.object({
+  normalized_succeeded: z.number().int(),
+  normalized_failed: z.number().int(),
+  duplicates_evaluated: z.number().int(),
+  last_processed_title: z.string().nullable(),
+  last_processed_url: z.string().nullable(),
+});
+
 const runDetailSchema = z.object({
   generated_at: timestampSchema,
   run: runSchema,
+  chain: chainSchema,
   stages: z.array(stageSchema),
   events: z.array(eventSchema),
 });
@@ -86,6 +102,7 @@ const runControlSchema = z.object({
 
 export type IntakeRunView = z.infer<typeof runSchema>;
 export type IntakeStageView = z.infer<typeof stageSchema>;
+export type IntakeChainView = z.infer<typeof chainSchema>;
 export type IntakeEventView = z.infer<typeof eventSchema>;
 export type IntakeRunsPage = z.infer<typeof runsPageSchema>;
 export type IntakeRunDetail = z.infer<typeof runDetailSchema>;

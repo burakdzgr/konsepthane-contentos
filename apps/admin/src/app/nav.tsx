@@ -7,10 +7,19 @@ import { Suspense } from "react";
 // The sidebar navigation: every entry points at a REAL page or a real
 // filtered view; capabilities that do not exist yet (distribution,
 // analytics) are honestly marked unavailable instead of dead links.
+// Count badges come from the layout's live dashboard reads.
+
+export type NavBadges = {
+  calisma?: number;
+  firsatlar?: number;
+  onay?: number;
+  yayin?: number;
+};
 
 type NavEntry = {
   href: string;
   label: string;
+  badge?: keyof NavBadges;
   disabled?: boolean;
 };
 
@@ -24,31 +33,47 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Komuta",
     entries: [
       { href: "/kontrol", label: "Kontrol Merkezi" },
-      { href: "/calisma", label: "Çalışmalar" },
-      { href: "/firsatlar", label: "Fırsat İncelemesi" },
+      { href: "/calisma", label: "Çalışmalar", badge: "calisma" },
       { href: "/motor", label: "Motor" },
     ],
   },
   {
-    title: "İçerik Hattı",
+    title: "Kaynaklar",
+    entries: [{ href: "/sources", label: "Kaynaklar" }],
+  },
+  {
+    title: "İçerik Pipeline",
     entries: [
-      { href: "/sources", label: "Kaynaklar" },
-      { href: "/editorial", label: "Editoryal" },
-      { href: "/editorial?state=drafting", label: "Writer" },
-      { href: "/editorial?state=editing", label: "Editor" },
-      { href: "/editorial?state=qa_review", label: "QA" },
-      { href: "/editorial?state=awaiting_human_review", label: "İnsan Onayı" },
+      { href: "/firsatlar", label: "Fırsatlar", badge: "firsatlar" },
+      { href: "/editorial", label: "İçerikler" },
+      { href: "/editorial?state=briefing", label: "Briefler" },
+      { href: "/editorial?state=drafting", label: "Taslaklar" },
+      {
+        href: "/editorial?state=awaiting_human_review",
+        label: "Onay Bekleyenler",
+        badge: "onay",
+      },
     ],
   },
   {
-    title: "Yayın & Sistem",
+    title: "Yayınlama",
     entries: [
-      { href: "/kontrol#yayin-kuyrugu", label: "Yayın Kuyruğu" },
+      {
+        href: "/kontrol#yayin-kuyrugu",
+        label: "Yayın Kuyruğu",
+        badge: "yayin",
+      },
+      { href: "/editorial?state=published", label: "Yayınlananlar" },
+      { href: "", label: "Dağıtım (mevcut değil)", disabled: true },
+    ],
+  },
+  {
+    title: "Ajanlar & Sistem",
+    entries: [
       { href: "/kontrol#agentlar", label: "Agentlar" },
       { href: "/kontrol#motor-kontrolu", label: "Motor Kontrolü" },
       { href: "/research", label: "Araştırma (gelişmiş)" },
-      { href: "/", label: "Sistem" },
-      { href: "", label: "Dağıtım (mevcut değil)", disabled: true },
+      { href: "/", label: "Sistem Sağlığı" },
       { href: "", label: "Analitik (mevcut değil)", disabled: true },
     ],
   },
@@ -82,7 +107,7 @@ function isCurrent(
   return !entry.href.includes("#");
 }
 
-function SidebarLinks() {
+function SidebarLinks({ badges }: { badges: NavBadges }) {
   const pathname = usePathname() ?? "/";
   const searchParams = useSearchParams();
   const stateParam = searchParams?.get("state") ?? null;
@@ -91,12 +116,17 @@ function SidebarLinks() {
       {NAV_SECTIONS.map((section) => (
         <div key={section.title} className="nav-section">
           <span className="nav-section-title">{section.title}</span>
-          {section.entries.map((entry) =>
-            entry.disabled ? (
-              <span key={entry.label} className="nav-entry-disabled">
-                {entry.label}
-              </span>
-            ) : (
+          {section.entries.map((entry) => {
+            if (entry.disabled) {
+              return (
+                <span key={entry.label} className="nav-entry-disabled">
+                  {entry.label}
+                </span>
+              );
+            }
+            const count =
+              entry.badge !== undefined ? (badges[entry.badge] ?? 0) : 0;
+            return (
               <Link
                 key={entry.href}
                 href={entry.href}
@@ -105,20 +135,21 @@ function SidebarLinks() {
                 }
               >
                 {entry.label}
+                {count > 0 && <span className="nav-badge">{count}</span>}
               </Link>
-            ),
-          )}
+            );
+          })}
         </div>
       ))}
     </nav>
   );
 }
 
-export function AppNav() {
+export function AppNav({ badges = {} }: { badges?: NavBadges }) {
   // useSearchParams requires a Suspense boundary during prerender.
   return (
     <Suspense fallback={<nav className="app-nav" aria-label="Birincil" />}>
-      <SidebarLinks />
+      <SidebarLinks badges={badges} />
     </Suspense>
   );
 }

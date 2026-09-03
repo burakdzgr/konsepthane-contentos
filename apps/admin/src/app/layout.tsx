@@ -6,15 +6,17 @@ import {
   fetchBackendReadiness,
 } from "@/lib/contentos-api";
 import { fetchCurrentUser, type AuthenticatedUser } from "@/lib/auth-api";
+import { fetchDashboardSummary } from "@/lib/dashboard-api";
+import { fetchIntakeRuns } from "@/lib/intake-api";
 import { getSessionToken } from "@/lib/session";
 
 import { logoutAction } from "./login/actions";
-import { AppNav } from "./nav";
+import { AppNav, type NavBadges } from "./nav";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ContentOS Admin",
+  title: "ContentOS",
   description: "Konsepthane ContentOS için özel dahili kontrol paneli.",
   robots: {
     index: false,
@@ -35,16 +37,23 @@ export default async function RootLayout({
 }) {
   // Best effort: on /login, an expired session, or outside a request scope
   // (build-time prerender) there is no session cookie, so no backend call
-  // is made and the header simply omits the identity.
+  // is made and the shell simply omits identity, badges and stats.
   let user: AuthenticatedUser | null = null;
   let environment: string | null = null;
   let health: "ok" | "bad" | "unknown" = "unknown";
+  let badges: NavBadges = {};
+  let aiUsed: number | null = null;
+  let aiBudget: number | null = null;
+  let queueDepth: number | null = null;
   if ((await getSessionToken()) !== null) {
-    const [userResult, liveness, readiness] = await Promise.all([
-      fetchCurrentUser(),
-      fetchBackendLiveness(),
-      fetchBackendReadiness(),
-    ]);
+    const [userResult, liveness, readiness, summaryResult, runsResult] =
+      await Promise.all([
+        fetchCurrentUser(),
+        fetchBackendLiveness(),
+        fetchBackendReadiness(),
+        fetchDashboardSummary(),
+        fetchIntakeRuns(),
+      ]);
     user = userResult.kind === "ok" ? userResult.data : null;
     environment =
       liveness.kind === "ok" ? (liveness.data.environment ?? null) : null;
@@ -54,7 +63,32 @@ export default async function RootLayout({
           ? "ok"
           : "bad"
         : "unknown";
+    if (summaryResult.kind === "ok") {
+      const summary = summaryResult.data;
+      badges = {
+        firsatlar: summary.attention.production_decisions,
+        onay: summary.attention.awaiting_human_review,
+        yayin:
+          (summary.work_item_states["scheduled"] ?? 0) +
+          (summary.work_item_states["publishing"] ?? 0),
+      };
+      aiUsed = summary.ai.attempts_today;
+      aiBudget = summary.ai.daily_budget;
+      queueDepth = summary.queue.depth;
+    }
+    if (runsResult.kind === "ok") {
+      badges = {
+        ...badges,
+        calisma: runsResult.data.runs.filter(
+          (run) => run.status === "running" || run.status === "paused",
+        ).length,
+      };
+    }
   }
+  const budgetPercent =
+    aiBudget !== null && aiBudget > 0 && aiUsed !== null
+      ? Math.min(100, Math.round((aiUsed / aiBudget) * 100))
+      : null;
   return (
     <html lang="tr">
       <body>
@@ -62,9 +96,30 @@ export default async function RootLayout({
           <aside className="app-sidebar">
             <div className="app-identity">
               <span className="app-name">ContentOS</span>
-              <span className="app-role">Motoru</span>
+              <span className="app-role">Content Operations Engine</span>
             </div>
-            <AppNav />
+            <AppNav badges={badges} />
+            <div className="sidebar-stats">
+              {budgetPercent !== null && (
+                <div>
+                  <span className="sidebar-stat-label">
+                    <span>AI Bütçe (günlük deneme)</span>
+                    <span>
+                      {aiUsed}/{aiBudget}
+                    </span>
+                  </span>
+                  <span className="sidebar-stat-bar">
+                    <span style={{ width: `${budgetPercent}%` }} />
+                  </span>
+                </div>
+              )}
+              {queueDepth !== null && (
+                <span className="sidebar-stat-label">
+                  <span>Kuyruk derinliği</span>
+                  <span>{queueDepth}</span>
+                </span>
+              )}
+            </div>
             <div className="sidebar-health" data-tone={health}>
               <span className="sidebar-health-title">Sistem Sağlığı</span>
               <span className="sidebar-health-state">

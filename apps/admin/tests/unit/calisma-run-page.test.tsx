@@ -16,6 +16,13 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@/lib/dashboard-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/dashboard-api")>(
+    "@/lib/dashboard-api",
+  );
+  return { ...actual, fetchDashboardAgents: vi.fn() };
+});
+
 import RunDetailPage from "@/app/calisma/[id]/page";
 import {
   fetchIntakeRunDetail,
@@ -23,7 +30,10 @@ import {
   type IntakeRunView,
 } from "@/lib/intake-api";
 
+import { fetchDashboardAgents } from "@/lib/dashboard-api";
+
 const detailMock = vi.mocked(fetchIntakeRunDetail);
+const agentsMock = vi.mocked(fetchDashboardAgents);
 
 const RUN_ID = "1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
 const AT = "2026-09-03T10:00:00+00:00";
@@ -62,6 +72,13 @@ function detail(overrides: Partial<IntakeRunDetail> = {}): IntakeRunDetail {
   return {
     generated_at: AT,
     run: run(),
+    chain: {
+      normalized_succeeded: 4,
+      normalized_failed: 1,
+      duplicates_evaluated: 4,
+      last_processed_title: "Frozen Birthday Party",
+      last_processed_url: "https://karaspartyideas.com/frozen-birthday-party",
+    },
     stages: [
       {
         key: "discovery",
@@ -82,6 +99,16 @@ function detail(overrides: Partial<IntakeRunDetail> = {}): IntakeRunDetail {
           failed: 1,
           waiting_candidates: 4192,
         },
+      },
+      {
+        key: "normalize",
+        state: "active",
+        counts: { succeeded: 4, failed: 1 },
+      },
+      {
+        key: "duplicate",
+        state: "active",
+        counts: { evaluated: 4 },
       },
       {
         key: "promote",
@@ -120,6 +147,16 @@ async function renderPage() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  agentsMock.mockResolvedValue({
+    kind: "ok",
+    data: {
+      generated_at: AT,
+      engine_paused: false,
+      engine_pause_reason: null,
+      agents: [],
+    },
+    requestId: null,
+  });
 });
 
 describe("Run detail page", () => {
@@ -133,12 +170,16 @@ describe("Run detail page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("heading", { name: "Kara's Party Ideas" }),
+      screen.getByRole("heading", {
+        name: "Kara's Party Ideas — Araştırma Çalışması",
+      }),
     ).toBeTruthy();
     expect(screen.getByText("ÇALIŞIYOR")).toBeTruthy();
     expect(screen.getAllByText("Keşif").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/4993 yeni/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/4200 uygun/)).toBeTruthy();
+    expect(screen.getByText("Son İşlenen İçerik")).toBeTruthy();
+    expect(screen.getByText("Frozen Birthday Party")).toBeTruthy();
+    expect(screen.getAllByText(/4200 uygun/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Kopya Analizi")).toBeTruthy();
     // The event feed renders Turkish descriptions of durable events.
     expect(
       screen.getByText(/Keşif tamamlandı: 5005 kayıt görüldü, 4993 yeni URL/),

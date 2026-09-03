@@ -61,9 +61,21 @@ class IntakeRunView(_FrozenModel):
     last_event_at: datetime | None
 
 
+class IntakeChainView(_FrozenModel):
+    """Durable downstream facts for the run's dispatched items: what the
+    worker-owned fetch→normalize→duplicate chain actually produced."""
+
+    normalized_succeeded: int
+    normalized_failed: int
+    duplicates_evaluated: int
+    last_processed_title: str | None
+    last_processed_url: str | None
+
+
 class IntakeRunDetail(_FrozenModel):
     generated_at: datetime
     run: IntakeRunView
+    chain: IntakeChainView
     stages: list[IntakeStageView]
     events: list[IntakeEventView]
 
@@ -125,7 +137,79 @@ def _run_view(session: Session, run: IntakeRun, source: Source) -> IntakeRunView
     )
 
 
-def _stages(run: IntakeRunView) -> list[IntakeStageView]:
+def _dispatched_item_ids(session: Session, run_id: uuid.UUID) -> list[uuid.UUID]:
+    ids: list[uuid.UUID] = []
+    for event in session.scalars(
+        select(IntakeRunEvent).where(
+            IntakeRunEvent.run_id == run_id,
+            IntakeRunEvent.kind == IntakeEventKind.FETCH_ITEM_DISPATCHED,
+        )
+    ).all():
+        raw = event.detail.get("discovery_item_id")
+        try:
+            ids.append(uuid.UUID(str(raw)))
+        except (ValueError, TypeError):
+            continue
+    return ids
+
+
+def _chain_view(session: Session, run_id: uuid.UUID) -> IntakeChainView:
+    from contentos.duplicates.models import DuplicateDecision
+    from contentos.fetching.snapshots import FetchSnapshot
+    from contentos.normalization.enums import NormalizationStatus
+    from contentos.normalization.models import NormalizedDocument
+
+    item_ids = _dispatched_item_ids(session, run_id)
+    if not item_ids:
+        return IntakeChainView(
+            normalized_succeeded=0,
+            normalized_failed=0,
+            duplicates_evaluated=0,
+            last_processed_title=None,
+            last_processed_url=None,
+        )
+    status_counts = {
+        status: int(count)
+        for status, count in session.execute(
+            select(NormalizedDocument.normalization_status, func.count())
+            .join(FetchSnapshot, FetchSnapshot.id == NormalizedDocument.fetch_snapshot_id)
+            .where(FetchSnapshot.discovery_item_id.in_(item_ids))
+            .group_by(NormalizedDocument.normalization_status)
+        ).all()
+    }
+    document_ids = (
+        select(NormalizedDocument.id)
+        .join(FetchSnapshot, FetchSnapshot.id == NormalizedDocument.fetch_snapshot_id)
+        .where(FetchSnapshot.discovery_item_id.in_(item_ids))
+    )
+    duplicates = int(
+        session.scalar(
+            select(func.count(func.distinct(DuplicateDecision.normalized_document_id))).where(
+                DuplicateDecision.normalized_document_id.in_(document_ids)
+            )
+        )
+        or 0
+    )
+    last = session.execute(
+        select(NormalizedDocument.title, FetchSnapshot.final_url, FetchSnapshot.requested_url)
+        .join(FetchSnapshot, FetchSnapshot.id == NormalizedDocument.fetch_snapshot_id)
+        .where(
+            FetchSnapshot.discovery_item_id.in_(item_ids),
+            NormalizedDocument.normalization_status == NormalizationStatus.SUCCEEDED,
+        )
+        .order_by(NormalizedDocument.normalized_at.desc())
+        .limit(1)
+    ).first()
+    return IntakeChainView(
+        normalized_succeeded=status_counts.get(NormalizationStatus.SUCCEEDED, 0),
+        normalized_failed=status_counts.get(NormalizationStatus.FAILED, 0),
+        duplicates_evaluated=duplicates,
+        last_processed_title=last[0] if last is not None else None,
+        last_processed_url=(last[1] or last[2]) if last is not None else None,
+    )
+
+
+def _stages(run: IntakeRunView, chain: IntakeChainView) -> list[IntakeStageView]:
     finished = run.finished_at is not None
     discovery_done = run.discovery_completed_at is not None
     prefilter_done = run.prefilter_completed_at is not None
@@ -168,6 +252,34 @@ def _stages(run: IntakeRunView) -> list[IntakeStageView]:
                 "failed": run.fetch_failed,
                 "waiting_candidates": run.remaining_accepted,
             },
+        ),
+        IntakeStageView(
+            key="normalize",
+            state=state(
+                finished
+                or (
+                    fetch_done
+                    and chain.normalized_succeeded + chain.normalized_failed >= run.fetched
+                ),
+                run.fetch_dispatched > 0
+                and not finished
+                and chain.normalized_succeeded + chain.normalized_failed < run.fetched,
+            ),
+            counts={
+                "succeeded": chain.normalized_succeeded,
+                "failed": chain.normalized_failed,
+            },
+        ),
+        IntakeStageView(
+            key="duplicate",
+            state=state(
+                finished
+                or (fetch_done and chain.duplicates_evaluated >= chain.normalized_succeeded),
+                chain.normalized_succeeded > 0
+                and not finished
+                and chain.duplicates_evaluated < chain.normalized_succeeded,
+            ),
+            counts={"evaluated": chain.duplicates_evaluated},
         ),
         IntakeStageView(
             key="promote",
@@ -214,6 +326,7 @@ def load_run_detail(session: Session, run_id: uuid.UUID) -> IntakeRunDetail | No
         return None
     run, source = row
     view = _run_view(session, run, source)
+    chain = _chain_view(session, run.id)
     events = [
         _event_view(event)
         for event in IntakeRunService(session).events_for(run_id, limit=DEFAULT_EVENT_ROWS)
@@ -221,7 +334,8 @@ def load_run_detail(session: Session, run_id: uuid.UUID) -> IntakeRunDetail | No
     return IntakeRunDetail(
         generated_at=datetime.now(UTC),
         run=view,
-        stages=_stages(view),
+        chain=chain,
+        stages=_stages(view, chain),
         events=events,
     )
 

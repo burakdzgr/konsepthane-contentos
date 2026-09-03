@@ -718,6 +718,46 @@ function AgentCard({
   );
 }
 
+function TopOpportunities({ rows }: { rows: WorkQueueRow[] | null }) {
+  return (
+    <section className="panel-block" aria-label="Son fırsatlar">
+      <h2>Son Fırsatlar</h2>
+      {rows === null && (
+        <p className="empty-note" role="status">
+          Fırsatlar okunamıyor.
+        </p>
+      )}
+      {rows !== null && rows.length === 0 && (
+        <p className="empty-note">Skorlanmış açık fırsat yok.</p>
+      )}
+      {rows !== null && rows.length > 0 && (
+        <ul className="alert-list">
+          {rows.map((row) => (
+            <li key={row.work_item_id}>
+              <Link
+                href={`/editorial/${row.work_item_id}`}
+                className="alert-row"
+              >
+                <span className="motor-item-title">
+                  {row.title_working_label}
+                </span>
+                <span className="alert-count">
+                  {row.score_overall_value !== null
+                    ? row.score_overall_value.toFixed(2)
+                    : "—"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted">
+        <Link href="/firsatlar">Tüm fırsatları gör →</Link>
+      </p>
+    </section>
+  );
+}
+
 // --- engine control ----------------------------------------------------------
 
 function EngineControl({
@@ -1014,6 +1054,21 @@ export default async function KontrolPage({
     fetchWorkQueue({ limit: 12 }),
     fetchIntakeRuns(),
   ]);
+  const opportunitiesResult = await fetchWorkQueue({
+    workflowState: "idea_scoring",
+    opportunityDisposition: "open",
+    limit: 20,
+  });
+  const topOpportunities =
+    opportunitiesResult.kind === "ok"
+      ? opportunitiesResult.data.items
+          .filter((row) => row.score_overall_value !== null)
+          .sort(
+            (a, b) =>
+              (b.score_overall_value ?? 0) - (a.score_overall_value ?? 0),
+          )
+          .slice(0, 5)
+      : null;
   const intakeRuns = runsResult.kind === "ok" ? runsResult.data.runs : null;
 
   const summary = summaryResult.kind === "ok" ? summaryResult.data : null;
@@ -1090,6 +1145,7 @@ export default async function KontrolPage({
           <div className="kontrol-columns">
             <PublicationQueue rows={publications?.rows ?? null} />
             <div>
+              <TopOpportunities rows={topOpportunities} />
               <AiWorkerPanel summary={summary} />
               <MediaPanel summary={summary} />
             </div>

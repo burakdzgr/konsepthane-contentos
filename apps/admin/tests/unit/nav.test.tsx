@@ -45,7 +45,9 @@ describe("AppNav", () => {
       screen.getByRole("link", { name: "Kaynaklar" }).getAttribute("href"),
     ).toBe("/sources");
     expect(
-      screen.getByRole("link", { name: "İnsan Onayı" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: /Onay Bekleyenler/ })
+        .getAttribute("href"),
     ).toBe("/editorial?state=awaiting_human_review");
   });
 
@@ -80,14 +82,18 @@ describe("AppNav", () => {
     render(<AppNav />);
 
     expect(
-      screen.getByRole("link", { name: "Writer" }).getAttribute("aria-current"),
+      screen
+        .getByRole("link", { name: "Taslaklar" })
+        .getAttribute("aria-current"),
     ).toBe("page");
     expect(
-      screen.getByRole("link", { name: "QA" }).getAttribute("aria-current"),
+      screen
+        .getByRole("link", { name: "Briefler" })
+        .getAttribute("aria-current"),
     ).toBeNull();
     expect(
       screen
-        .getByRole("link", { name: "Editoryal" })
+        .getByRole("link", { name: "İçerikler" })
         .getAttribute("aria-current"),
     ).toBeNull();
   });

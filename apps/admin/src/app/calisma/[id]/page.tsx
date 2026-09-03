@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 
 import {
   fetchIntakeRunDetail,
+  type IntakeChainView,
   type IntakeEventView,
   type IntakeRunView,
   type IntakeStageView,
 } from "@/lib/intake-api";
+import { fetchDashboardAgents, type AgentView } from "@/lib/dashboard-api";
 import { formatUtcTimestamp } from "@/lib/format";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
@@ -19,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const RUN_NOTICES: Record<string, string> = {
   baslatildi:
-    "Çalışma başlatıldı. Motor keşif, ön filtre, sınırlı getirme ve yükseltmeyi otonom yürütür; insan kararı fırsat incelemesinde sorulur.",
+    "Çalışma başlatıldı. Motor keşif, ön eleme, sınırlı getirme ve yükseltmeyi otonom yürütür; insan kararı fırsat incelemesinde sorulur.",
   duraklatildi: "Çalışma duraklatıldı ve denetim kaydına geçti.",
   devam: "Çalışma devam ediyor.",
   durduruldu:
@@ -44,9 +46,25 @@ const RUN_STATUS_TONES: Record<IntakeRunView["status"], string> = {
 
 const STAGE_LABELS: Record<IntakeStageView["key"], string> = {
   discovery: "Keşif",
-  prefilter: "Ön Filtre",
-  fetch: "Getir & Normalleştir",
-  promote: "Fırsat Yükseltme",
+  prefilter: "Ön Eleme",
+  fetch: "Fetch",
+  normalize: "Normalize",
+  duplicate: "Kopya Analizi",
+  promote: "Fırsat",
+};
+
+const AGENT_NAMES: Record<string, string> = {
+  research: "Research Agent",
+  opportunity: "Opportunity Agent",
+  ideas: "Fikir Agent",
+  evidence: "Evidence Agent",
+  intent: "SEO / Niyet Agent",
+  brief: "Brief Agent",
+  writer: "Writer Agent",
+  editor: "Editor Agent",
+  qa: "QA Agent",
+  media: "Medya Agent",
+  publisher: "Publisher Agent",
 };
 
 function elapsed(run: IntakeRunView): string {
@@ -94,11 +112,11 @@ function describeEvent(event: IntakeEventView): string {
     case "discovery_retrying":
       return "Keşif yeniden denenecek";
     case "prefilter_progress":
-      return `Ön filtre ilerliyor: toplam ${n("total_accepted")} uygun, ${n(
+      return `Ön eleme ilerliyor: toplam ${n("total_accepted")} uygun, ${n(
         "total_rejected",
       )} makine reddi`;
     case "prefilter_completed":
-      return `Ön filtre tamamlandı: ${n("total_accepted")} uygun aday, ${n(
+      return `Ön eleme tamamlandı: ${n("total_accepted")} uygun aday, ${n(
         "total_rejected",
       )} reddedildi (gerekçeleri kayıtlı)`;
     case "fetch_batch_dispatched":
@@ -132,44 +150,41 @@ function describeEvent(event: IntakeEventView): string {
   }
 }
 
-function StageTimeline({ stages }: { stages: IntakeStageView[] }) {
+function stagePrimaryCount(stage: IntakeStageView): string {
+  switch (stage.key) {
+    case "discovery":
+      return String(
+        (stage.counts["new"] ?? 0) + (stage.counts["rediscovered"] ?? 0),
+      );
+    case "prefilter":
+      return `${stage.counts["accepted"] ?? 0} uygun`;
+    case "fetch":
+      return `${stage.counts["fetched"] ?? 0} / ${stage.counts["dispatched"] ?? 0}`;
+    case "normalize":
+      return String(stage.counts["succeeded"] ?? 0);
+    case "duplicate":
+      return String(stage.counts["evaluated"] ?? 0);
+    case "promote":
+      return String(stage.counts["opportunities"] ?? 0);
+    default:
+      return "";
+  }
+}
+
+function RunPipeline({ stages }: { stages: IntakeStageView[] }) {
   return (
-    <ol className="run-stages" aria-label="Aşama ilerlemesi">
-      {stages.map((stage) => (
-        <li key={stage.key} className="run-stage" data-state={stage.state}>
-          <span className="run-stage-mark">
-            {stage.state === "done"
-              ? "✓"
-              : stage.state === "active"
-                ? "●"
-                : "○"}
+    <ol className="run-pipeline" aria-label="Aşama ilerlemesi">
+      {stages.map((stage, index) => (
+        <li key={stage.key} data-state={stage.state}>
+          <span className="run-node">
+            {stage.state === "done" ? "✓" : index + 1}
           </span>
-          <span className="run-stage-label">{STAGE_LABELS[stage.key]}</span>
-          <span className="run-stage-counts">
-            {Object.entries(stage.counts)
-              .map(([key, value]) => `${value} ${countLabel(key)}`)
-              .join(" · ")}
-          </span>
+          <span className="run-node-label">{STAGE_LABELS[stage.key]}</span>
+          <span className="run-node-count">{stagePrimaryCount(stage)}</span>
         </li>
       ))}
     </ol>
   );
-}
-
-function countLabel(key: string): string {
-  const labels: Record<string, string> = {
-    new: "yeni",
-    rediscovered: "bilinen",
-    accepted: "uygun",
-    rejected: "reddedildi",
-    remaining: "sırada",
-    dispatched: "dağıtıldı",
-    fetched: "getirildi",
-    failed: "hata",
-    waiting_candidates: "bekleyen aday",
-    opportunities: "fırsat",
-  };
-  return labels[key] ?? key;
 }
 
 function ControlForm({
@@ -177,11 +192,13 @@ function ControlForm({
   action,
   label,
   placeholder,
+  danger = false,
 }: {
   run: IntakeRunView;
   action: "pause" | "resume" | "stop";
   label: string;
   placeholder: string;
+  danger?: boolean;
 }) {
   return (
     <form action={controlIntakeRunAction} className="control-form">
@@ -194,8 +211,72 @@ function ControlForm({
         placeholder={placeholder}
         aria-label={`${label} gerekçesi`}
       />
-      <button type="submit">{label}</button>
+      <button type="submit" className={danger ? "danger" : undefined}>
+        {label}
+      </button>
     </form>
+  );
+}
+
+function AgentRail({ agents }: { agents: AgentView[] | null }) {
+  if (agents === null) {
+    return <p className="empty-note">Agent durumu okunamıyor.</p>;
+  }
+  return (
+    <ul className="agent-mini-list">
+      {agents.map((agent) => {
+        const status = agent.is_paused
+          ? { label: "DURAKLATILDI", tone: "warn" }
+          : agent.last_attempt !== null &&
+              agent.last_attempt.status !== "succeeded"
+            ? { label: "HATA", tone: "bad" }
+            : agent.attempts_today > 0
+              ? { label: "AKTİF", tone: "ok" }
+              : { label: "BOŞTA", tone: "idle" };
+        return (
+          <li key={agent.key}>
+            <span>{AGENT_NAMES[agent.key] ?? agent.key}</span>
+            <span className="badge" data-tone={status.tone}>
+              {status.label}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function RunStats({
+  run,
+  chain,
+}: {
+  run: IntakeRunView;
+  chain: IntakeChainView;
+}) {
+  const stats: { label: string; value: string }[] = [
+    {
+      label: "Keşfedilen URL",
+      value: String(run.discovered_new + run.rediscovered),
+    },
+    { label: "Ön elemeden geçen", value: String(run.prefilter_accepted) },
+    { label: "Makine reddi", value: String(run.prefilter_rejected) },
+    { label: "Fetch edilen", value: `${run.fetched}/${run.fetch_dispatched}` },
+    { label: "Fetch hatası", value: String(run.fetch_failed) },
+    { label: "Normalize edilen", value: String(chain.normalized_succeeded) },
+    { label: "Normalize hatası", value: String(chain.normalized_failed) },
+    { label: "Kopya analizi", value: String(chain.duplicates_evaluated) },
+    { label: "Fırsat oluşturulan", value: String(run.opportunities_created) },
+    { label: "Sıradaki aday", value: String(run.remaining_accepted) },
+  ];
+  return (
+    <div className="stat-grid">
+      {stats.map((stat) => (
+        <div key={stat.label} className="stat-card">
+          <span className="stat-value">{stat.value}</span>
+          <span className="stat-label">{stat.label}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -208,7 +289,10 @@ export default async function RunDetailPage({
 }) {
   const { id } = await params;
   const query = searchParams === undefined ? {} : await searchParams;
-  const result = await fetchIntakeRunDetail(id);
+  const [result, agentsResult] = await Promise.all([
+    fetchIntakeRunDetail(id),
+    fetchDashboardAgents(),
+  ]);
   if (result.kind === "not_found") {
     notFound();
   }
@@ -220,7 +304,8 @@ export default async function RunDetailPage({
       </section>
     );
   }
-  const { run, stages, events } = result.data;
+  const { run, chain, stages, events } = result.data;
+  const agents = agentsResult.kind === "ok" ? agentsResult.data.agents : null;
   const live = run.status === "running" || run.status === "paused";
   const errorEvents = events.filter(
     (event) =>
@@ -235,9 +320,8 @@ export default async function RunDetailPage({
           <p className="muted run-breadcrumb">
             <Link href="/calisma">← Çalışmalar</Link>
           </p>
-          <h1 id="run-title">{run.source_name}</h1>
+          <h1 id="run-title">{run.source_name} — Araştırma Çalışması</h1>
           <p className="muted">
-            Araştırma Çalışması ·{" "}
             <span className="badge" data-tone={RUN_STATUS_TONES[run.status]}>
               {RUN_STATUS_LABELS[run.status]}
             </span>{" "}
@@ -245,12 +329,48 @@ export default async function RunDetailPage({
             {elapsed(run)}
           </p>
         </div>
-        {live && (
-          <AutoRefresh
-            generatedAt={result.data.generated_at}
-            intervalMs={5000}
-          />
-        )}
+        <div className="run-header-controls">
+          {run.status === "running" && (
+            <>
+              <ControlForm
+                run={run}
+                action="pause"
+                label="Duraklat"
+                placeholder="duraklatma gerekçesi"
+              />
+              <ControlForm
+                run={run}
+                action="stop"
+                label="Güvenli durdur"
+                placeholder="durdurma gerekçesi"
+                danger
+              />
+            </>
+          )}
+          {run.status === "paused" && (
+            <>
+              <ControlForm
+                run={run}
+                action="resume"
+                label="Devam ettir"
+                placeholder="devam gerekçesi"
+              />
+              <ControlForm
+                run={run}
+                action="stop"
+                label="Güvenli durdur"
+                placeholder="durdurma gerekçesi"
+                danger
+              />
+            </>
+          )}
+          {live && (
+            <AutoRefresh
+              generatedAt={result.data.generated_at}
+              intervalMs={5000}
+            />
+          )}
+        </div>
       </div>
       <ControlNotice
         notice={firstParam(query.notice)}
@@ -258,121 +378,60 @@ export default async function RunDetailPage({
         noticeMessages={RUN_NOTICES}
       />
 
+      <RunPipeline stages={stages} />
+
       <div className="kontrol-columns">
-        <div>
-          <section className="panel-block" aria-label="Aşama ilerlemesi">
-            <h2>Aşamalar</h2>
-            <StageTimeline stages={stages} />
-          </section>
-
-          <section className="panel-block" aria-label="Canlı olaylar">
-            <h2>Canlı Olaylar</h2>
-            {events.length === 0 ? (
-              <p className="empty-note">Henüz olay yok.</p>
-            ) : (
-              <ul className="activity-feed run-feed">
-                {events.map((event) => (
-                  <li key={event.id} data-kind={event.kind}>
-                    <span className="mono">
-                      {formatUtcTimestamp(event.occurred_at)}
-                    </span>{" "}
-                    <span className="badge run-stage-badge">
-                      {STAGE_LABELS[event.stage as IntakeStageView["key"]] ??
-                        "Çalışma"}
-                    </span>{" "}
-                    {describeEvent(event)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
+        <section className="panel-block" aria-label="Canlı aktivite akışı">
+          <h2>Canlı Aktivite Akışı</h2>
+          {events.length === 0 ? (
+            <p className="empty-note">Henüz olay yok.</p>
+          ) : (
+            <ul className="activity-feed run-feed">
+              {events.map((event) => (
+                <li key={event.id} data-kind={event.kind}>
+                  <span className="mono">
+                    {formatUtcTimestamp(event.occurred_at)}
+                  </span>{" "}
+                  <span className="badge run-stage-badge">
+                    {STAGE_LABELS[event.stage as IntakeStageView["key"]] ??
+                      "Çalışma"}
+                  </span>{" "}
+                  {describeEvent(event)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <div>
-          <section className="panel-block" aria-label="Sonuçlar">
-            <h2>Sonuçlar</h2>
-            <dl className="status-list">
-              <div className="status-row">
-                <dt>Keşfedilen (yeni)</dt>
-                <dd>{run.discovered_new}</dd>
-              </div>
-              <div className="status-row">
-                <dt>Ön filtre: uygun</dt>
-                <dd>{run.prefilter_accepted}</dd>
-              </div>
-              <div className="status-row">
-                <dt>Ön filtre: makine reddi</dt>
-                <dd>{run.prefilter_rejected}</dd>
-              </div>
-              <div className="status-row">
-                <dt>Getirilen</dt>
-                <dd>
-                  {run.fetched}/{run.fetch_dispatched}
-                  {run.fetch_failed > 0 && ` (${run.fetch_failed} hata)`}
-                </dd>
-              </div>
-              <div className="status-row">
-                <dt>Fırsata yükseltilen</dt>
-                <dd>
-                  {run.opportunities_created}/{run.promotions_dispatched}
-                </dd>
-              </div>
-              <div className="status-row">
-                <dt>Sıradaki aday</dt>
-                <dd>{run.remaining_accepted}</dd>
-              </div>
-            </dl>
+          <section className="panel-block" aria-label="Çalışma istatistikleri">
+            <h2>Çalışma İstatistikleri</h2>
+            <RunStats run={run} chain={chain} />
             {run.opportunities_created > 0 && (
               <p>
                 <Link href="/firsatlar">İncelenecek fırsatlara git →</Link>
               </p>
             )}
-            <p className="muted">
-              Reddedilenler gerekçeleriyle{" "}
-              <Link href="/research">Araştırma (gelişmiş)</Link> altında.
-            </p>
           </section>
 
-          <section className="panel-block" aria-label="Çalışma kontrolleri">
-            <h2>Kontroller</h2>
-            {run.status === "running" && (
-              <>
-                <ControlForm
-                  run={run}
-                  action="pause"
-                  label="Duraklat"
-                  placeholder="duraklatma gerekçesi"
-                />
-                <ControlForm
-                  run={run}
-                  action="stop"
-                  label="Güvenli durdur"
-                  placeholder="durdurma gerekçesi"
-                />
-              </>
-            )}
-            {run.status === "paused" && (
-              <>
-                <ControlForm
-                  run={run}
-                  action="resume"
-                  label="Devam ettir"
-                  placeholder="devam gerekçesi"
-                />
-                <ControlForm
-                  run={run}
-                  action="stop"
-                  label="Güvenli durdur"
-                  placeholder="durdurma gerekçesi"
-                />
-              </>
-            )}
-            {!live && (
-              <p className="muted">
-                Çalışma kapandı. Kalan adaylar için kaynaktan yeni bir çalışma
-                başlatın.
-              </p>
-            )}
+          {chain.last_processed_title !== null && (
+            <section className="panel-block" aria-label="Son işlenen içerik">
+              <h2>Son İşlenen İçerik</h2>
+              <div className="last-processed">
+                <p className="cell-primary">{chain.last_processed_title}</p>
+                {chain.last_processed_url !== null && (
+                  <p className="muted mono">{chain.last_processed_url}</p>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section className="panel-block" aria-label="Agentlar">
+            <h2>Agentlar</h2>
+            <AgentRail agents={agents} />
+            <p className="muted">
+              <Link href="/kontrol#agentlar">Detaylı görünüm →</Link>
+            </p>
           </section>
 
           {(errorEvents.length > 0 || run.failure_note !== null) && (
@@ -393,6 +452,16 @@ export default async function RunDetailPage({
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {!live && (
+            <section className="panel-block" aria-label="Çalışma kapandı">
+              <p className="muted">
+                Çalışma kapandı. Kalan adaylar için kaynaktan yeni bir çalışma
+                başlatın. Reddedilenler gerekçeleriyle{" "}
+                <Link href="/research">Araştırma (gelişmiş)</Link> altında.
+              </p>
             </section>
           )}
         </div>

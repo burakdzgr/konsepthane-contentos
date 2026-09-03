@@ -261,7 +261,9 @@ describe("Kontrol Merkezi page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("Evde doğum günü partisi rehberi")).toBeTruthy();
+    expect(
+      screen.getAllByText("Evde doğum günü partisi rehberi").length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText("Brief hazırlama").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "İncele" })).toBeTruthy();
   });
