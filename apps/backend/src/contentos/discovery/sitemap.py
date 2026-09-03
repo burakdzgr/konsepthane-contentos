@@ -18,7 +18,9 @@ from contentos.discovery.service import (
 from contentos.fetching.models import FetchOutcome, FetchResult, RetryClassification
 from contentos.sources.service import SourceNotFoundError
 
-MAX_SITEMAP_DOCUMENT_BYTES = 1_000_000
+# Aligned with the fetch layer's body cap (fetch_max_body_bytes, 5 MiB
+# default): real split sitemaps from large sites routinely exceed 1 MB.
+MAX_SITEMAP_DOCUMENT_BYTES = 5_242_880
 MAX_SITEMAP_ELEMENTS = 20_000
 MAX_SITEMAP_DEPTH = 3
 MAX_SITEMAP_DOCUMENTS = 50
@@ -147,8 +149,9 @@ class SitemapDiscoveryStrategy:
         skipped_cross_origin_sitemap = 0
         warnings: list[str] = []
         fetch_outcomes: list[FetchOutcome] = []
+        url_limit_reached = False
 
-        while pending:
+        while pending and not url_limit_reached:
             if documents_fetched >= MAX_SITEMAP_DOCUMENTS:
                 raise SitemapTraversalLimitExceededError("document count")
 
@@ -206,9 +209,15 @@ class SitemapDiscoveryStrategy:
                 continue
 
             for entry in parsed.entries:
+                if entries_seen >= MAX_SITEMAP_URLS:
+                    # A CAPACITY bound, not a safety bound (depth and
+                    # document count stay hard failures): keep everything
+                    # admitted so far, record the truncation honestly, and
+                    # stop instead of failing the whole run on large sites.
+                    _add_warning(warnings, "url_limit_truncated")
+                    url_limit_reached = True
+                    break
                 entries_seen += 1
-                if entries_seen > MAX_SITEMAP_URLS:
-                    raise SitemapTraversalLimitExceededError("URL count")
                 if entry.url is None or not entry.url.strip():
                     skipped_missing_url += 1
                     continue

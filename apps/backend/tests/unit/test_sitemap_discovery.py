@@ -509,10 +509,14 @@ class TestLimitsAndParserSecurity:
             }
         )
 
-        with pytest.raises(SitemapTraversalLimitExceededError) as captured:
-            SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
 
-        assert captured.value.limit_name == "URL count"
+        # The URL cap TRUNCATES honestly instead of failing the run:
+        # everything admitted before the cap stays, the truncation is a
+        # recorded warning, and traversal stops.
+        assert result.admitted_new == 2
+        assert result.entries_seen == 2
+        assert "url_limit_truncated" in result.parse_warnings
         assert session.scalar(select(func.count()).select_from(DiscoveryItem)) == 2
 
     @pytest.mark.parametrize(

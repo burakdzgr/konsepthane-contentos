@@ -20,7 +20,9 @@ from contentos.discovery.service import (
 from contentos.fetching.models import FetchOutcome, FetchResult, RetryClassification
 from contentos.sources.service import SourceNotFoundError
 
-MAX_FEED_DOCUMENT_BYTES = 1_000_000
+# Aligned with the fetch layer's body cap (fetch_max_body_bytes, 5 MiB
+# default), matching the sitemap parser bound.
+MAX_FEED_DOCUMENT_BYTES = 5_242_880
 MAX_FEED_ELEMENTS = 10_000
 MAX_FEED_ENTRIES = 100
 MAX_FEED_TITLE_LENGTH = 500
