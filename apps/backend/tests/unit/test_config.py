@@ -65,3 +65,25 @@ def test_valid_production_settings() -> None:
 def test_invalid_environment_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(environment="staging")  # type: ignore[arg-type]
+
+
+def test_empty_environment_values_mean_unset_for_optional_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compose interpolates absent host vars as ""; that is "not configured"."""
+    for variable in (
+        "CONTENTOS_OPENAI_API_KEY",
+        "CONTENTOS_OPENAI_MODEL",
+        "CONTENTOS_OPENAI_IMAGE_MODEL",
+        "CONTENTOS_PUBLISHING_API_URL",
+        "CONTENTOS_PUBLISHING_API_KEY",
+    ):
+        monkeypatch.setenv(variable, "")
+
+    settings = Settings()
+
+    assert settings.openai_api_key is None
+    assert settings.openai_model is None
+    assert settings.openai_image_model is None
+    assert settings.publishing_api_url is None
+    assert settings.publishing_api_key is None

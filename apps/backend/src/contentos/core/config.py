@@ -85,6 +85,23 @@ class Settings(BaseSettings):
     publishing_api_key: SecretStr | None = None
     publishing_timeout_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
 
+    @field_validator(
+        "openai_api_key",
+        "openai_model",
+        "openai_image_model",
+        "publishing_api_url",
+        "publishing_api_key",
+        mode="before",
+    )
+    @classmethod
+    def _empty_env_means_unset(cls, value: object) -> object:
+        # Compose passes optional vars through as "" when the host env
+        # does not set them; an empty string is "not configured", never
+        # a value (min_length=1 would otherwise reject construction).
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
     @field_validator("database_url")
     @classmethod
     def _require_psycopg_postgresql_url(cls, value: SecretStr) -> SecretStr:
