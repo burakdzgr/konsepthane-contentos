@@ -3275,6 +3275,17 @@ access protection belongs to future deployment infrastructure.
   OPERATIONAL on the local/staging deployment; production internet
   deployment only needs the same env values on the deployed hosts.
 
+- FOLLOW-UP FIX (CI): the credential-wiring commit broke the
+  compose-smoke lane — CI has no `.env`, so the new
+  backend-environment pass-throughs interpolated as EMPTY STRINGS and
+  `Settings` rejected `""` for `publishing_api_url` (min_length=1);
+  the migrate container failed before Alembic ran. Fixed with a
+  before-validator mapping empty/whitespace env values to None for
+  ALL optional openai + publishing settings ("empty env = not
+  configured", keeping the transport's refuse-to-construct guard
+  intact) plus a regression test over the five variables; full gate
+  green, CI green on the fix commit.
+
 ## Next immediate task
 
 PRODUCTION-READINESS BACKLOG BURNDOWN (authorized under the autonomous
