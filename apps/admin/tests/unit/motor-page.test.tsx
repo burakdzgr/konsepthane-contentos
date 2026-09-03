@@ -17,16 +17,12 @@ vi.mock("@/lib/editorial-api", async () => {
   };
 });
 
-vi.mock("@/lib/research-api", async () => {
+vi.mock("@/lib/intake-api", async () => {
   const actual =
-    await vi.importActual<typeof import("@/lib/research-api")>(
-      "@/lib/research-api",
+    await vi.importActual<typeof import("@/lib/intake-api")>(
+      "@/lib/intake-api",
     );
-  return {
-    ...actual,
-    fetchResearchSources: vi.fn(),
-    fetchPipelineItems: vi.fn(),
-  };
+  return { ...actual, fetchIntakeRuns: vi.fn() };
 });
 
 vi.mock("@/lib/auth-api", () => ({
@@ -44,7 +40,7 @@ import {
   fetchWorkItemReviews,
   fetchWorkQueue,
 } from "@/lib/editorial-api";
-import { fetchPipelineItems, fetchResearchSources } from "@/lib/research-api";
+import { fetchIntakeRuns } from "@/lib/intake-api";
 import {
   REVIEWER_USER_ID,
   WORK_ITEM_ID,
@@ -57,12 +53,6 @@ import {
   reviewListPage,
   workItemDetail,
 } from "./editorial-fixtures";
-import {
-  pipelineItem,
-  pipelinePage,
-  sourceItem,
-  sourcePage,
-} from "./research-fixtures";
 
 const queueMock = vi.mocked(fetchWorkQueue);
 const detailMock = vi.mocked(fetchWorkItemDetail);
@@ -71,8 +61,7 @@ const reviewsMock = vi.mocked(fetchWorkItemReviews);
 const qaMock = vi.mocked(fetchWorkItemQaReports);
 const mediaMock = vi.mocked(fetchWorkItemMedia);
 const publicationMock = vi.mocked(fetchWorkItemPublication);
-const sourcesMock = vi.mocked(fetchResearchSources);
-const pipelineMock = vi.mocked(fetchPipelineItems);
+const runsMock = vi.mocked(fetchIntakeRuns);
 const currentUserMock = vi.mocked(fetchCurrentUser);
 
 async function renderPage(params: Record<string, string> = {}) {
@@ -81,14 +70,9 @@ async function renderPage(params: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  sourcesMock.mockResolvedValue({
+  runsMock.mockResolvedValue({
     kind: "ok",
-    data: sourcePage([]),
-    requestId: null,
-  });
-  pipelineMock.mockResolvedValue({
-    kind: "ok",
-    data: pipelinePage([]),
+    data: { generated_at: "2026-09-03T10:00:00+00:00", runs: [] },
     requestId: null,
   });
   queueMock.mockResolvedValue({
@@ -240,41 +224,59 @@ describe("Motor page", () => {
     ).toBeTruthy();
   });
 
-  it("surfaces intake work: discover, accept and promote", async () => {
-    sourcesMock.mockResolvedValue({
+  it("shows the autonomous intake monitor instead of raw URL controls", async () => {
+    runsMock.mockResolvedValue({
       kind: "ok",
-      data: sourcePage([
-        sourceItem({ kind: "rss_feed", discovery_strategy: "feed" }),
-      ]),
-      requestId: null,
-    });
-    pipelineMock.mockResolvedValue({
-      kind: "ok",
-      data: pipelinePage([
-        pipelineItem({
-          lifecycle_state: "discovered",
-          fetch_outcome: null,
-          normalization_status: null,
-          normalized_document_id: null,
-        }),
-        pipelineItem({
-          id: "1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
-          canonical_url: "https://ornek.example.test/hazir",
-        }),
-      ]),
+      data: {
+        generated_at: "2026-09-03T10:00:00+00:00",
+        runs: [
+          {
+            id: "1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+            source_id: "11111111-2222-4333-8444-555555555555",
+            source_slug: "kara",
+            source_name: "Kara's Party Ideas",
+            status: "running",
+            discovered_new: 4993,
+            rediscovered: 0,
+            prefilter_accepted: 120,
+            prefilter_rejected: 30,
+            fetch_dispatched: 8,
+            fetched: 5,
+            fetch_failed: 0,
+            promotions_dispatched: 2,
+            opportunities_created: 2,
+            remaining_accepted: 100,
+            remaining_discovered: 0,
+            policy: {},
+            failure_note: null,
+            created_at: "2026-09-03T10:00:00+00:00",
+            discovery_completed_at: "2026-09-03T10:01:00+00:00",
+            prefilter_completed_at: null,
+            finished_at: null,
+            updated_at: "2026-09-03T10:02:00+00:00",
+            last_event_at: "2026-09-03T10:02:00+00:00",
+          },
+        ],
+      },
       requestId: null,
     });
 
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Keşfi başlat" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Kabul et" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Yükselt" })).toBeTruthy();
+    expect(screen.getByText("1 aktif çalışma")).toBeTruthy();
+    const runLink = screen.getByRole("link", {
+      name: /Kara's Party Ideas: 5\/8 getirildi/,
+    });
+    expect(runLink.getAttribute("href")).toBe(
+      "/calisma/1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+    );
+    // The raw URL approval workflow is gone from the Motor.
+    expect(screen.queryByRole("button", { name: "Kabul et" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Yükselt" })).toBeNull();
   });
 
   it("reports an unreachable backend truthfully", async () => {
-    sourcesMock.mockResolvedValue({ kind: "unreachable" });
-    pipelineMock.mockResolvedValue({ kind: "unreachable" });
+    runsMock.mockResolvedValue({ kind: "unreachable" });
     queueMock.mockResolvedValue({ kind: "unreachable" });
     currentUserMock.mockResolvedValue({ kind: "unreachable" });
 

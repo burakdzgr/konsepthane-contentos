@@ -21,10 +21,9 @@ import {
   type RawSearchParams,
 } from "@/lib/search-params";
 import { ControlNotice } from "../notices";
-import {
-  runSourceDiscoveryAction,
-  transitionSourceLifecycleAction,
-} from "./actions";
+import { startIntakeRunAction } from "../calisma/actions";
+import { fetchIntakeRuns } from "@/lib/intake-api";
+import { transitionSourceLifecycleAction } from "./actions";
 
 const SOURCE_NOTICES: Record<string, string> = {
   "source-registered":
@@ -133,7 +132,13 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
   );
 }
 
-function SourceControls({ source }: { source: SourceListItem }) {
+function SourceControls({
+  source,
+  liveRunId,
+}: {
+  source: SourceListItem;
+  liveRunId: string | null;
+}) {
   return (
     <div className="control-stack">
       <form action={transitionSourceLifecycleAction} className="control-form">
@@ -163,11 +168,18 @@ function SourceControls({ source }: { source: SourceListItem }) {
         />
         <button type="submit">Durumu uygula</button>
       </form>
-      {isDiscoveryEligible(source) && (
-        <form action={runSourceDiscoveryAction} className="control-form">
-          <input type="hidden" name="source_id" value={source.id} />
-          <button type="submit">Keşfi başlat</button>
-        </form>
+      {liveRunId !== null ? (
+        <p className="run-live-link">
+          <Link href={`/calisma/${liveRunId}`}>● Aktif çalışmayı aç</Link>
+        </p>
+      ) : (
+        isDiscoveryEligible(source) && (
+          <form action={startIntakeRunAction} className="control-form">
+            <input type="hidden" name="source_id" value={source.id} />
+            <input type="hidden" name="back_to" value="/sources" />
+            <button type="submit">Keşfi başlat</button>
+          </form>
+        )
       )}
     </div>
   );
@@ -188,6 +200,15 @@ export default async function SourcesPage({
     limit: PAGE_SIZE,
     offset: filters.offset,
   });
+  const runsResult = await fetchIntakeRuns();
+  const liveRuns = new Map<string, string>();
+  if (runsResult.kind === "ok") {
+    for (const run of runsResult.data.runs) {
+      if (run.status === "running" || run.status === "paused") {
+        liveRuns.set(run.source_id, run.id);
+      }
+    }
+  }
 
   return (
     <section className="panel" aria-labelledby="sources-title">
@@ -275,7 +296,10 @@ export default async function SourcesPage({
                     </td>
                     <td>{formatUtcTimestamp(source.updated_at)}</td>
                     <td>
-                      <SourceControls source={source} />
+                      <SourceControls
+                        source={source}
+                        liveRunId={liveRuns.get(source.id) ?? null}
+                      />
                     </td>
                   </tr>
                 ))}

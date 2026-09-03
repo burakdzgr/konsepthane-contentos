@@ -23,11 +23,13 @@ from contentos.api.read_models.editorial import _FrozenModel
 from contentos.auth.models import User
 from contentos.discovery.enums import DiscoveryLifecycleState
 from contentos.discovery.models import DiscoveryItem
+from contentos.intake.enums import IntakeRunStatus
+from contentos.intake.models import IntakeRun
 from contentos.media.models import MediaAsset, MediaNeedSatisfaction
 from contentos.operations.enums import PauseScope
 from contentos.operations.service import OperationsService
 from contentos.opportunities.enums import OpportunityDisposition
-from contentos.opportunities.models import EditorialOpportunity
+from contentos.opportunities.models import EditorialOpportunity, OpportunityScore
 from contentos.publishing.models import PublicationAttempt, PublicationPackage
 from contentos.qa.models import QaReport
 from contentos.sources.enums import SourceLifecycleState
@@ -98,10 +100,20 @@ class QueueSummaryView(_FrozenModel):
     depth: int | None
 
 
+class AttentionSummaryView(_FrozenModel):
+    # REAL human decisions only, never mechanical pipeline steps.
+    production_decisions: int  # scored open opportunities awaiting yes/no
+    awaiting_human_review: int
+    approval_expired: int
+    changes_requested: int
+
+
 class DashboardSummary(_FrozenModel):
     generated_at: datetime
     work_item_states: dict[str, int]
     published_today: int
+    active_intake_runs: int
+    attention: AttentionSummaryView
     research: ResearchSummaryView
     ai: AiSummaryView
     publishing: PublishingSummaryView
@@ -395,16 +407,48 @@ def _pause_views(session: Session) -> list[PauseStateView]:
     ]
 
 
+def _attention_summary(session: Session, states: dict[str, int]) -> AttentionSummaryView:
+    production_decisions = int(
+        session.scalar(
+            select(func.count(func.distinct(EditorialOpportunity.id)))
+            .select_from(EditorialOpportunity)
+            .join(OpportunityScore, OpportunityScore.opportunity_id == EditorialOpportunity.id)
+            .where(EditorialOpportunity.disposition == OpportunityDisposition.OPEN)
+        )
+        or 0
+    )
+    return AttentionSummaryView(
+        production_decisions=production_decisions,
+        awaiting_human_review=states.get("awaiting_human_review", 0),
+        approval_expired=states.get("approval_expired", 0),
+        changes_requested=states.get("changes_requested", 0),
+    )
+
+
+def _active_intake_runs(session: Session) -> int:
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(IntakeRun)
+            .where(IntakeRun.status.in_((IntakeRunStatus.RUNNING, IntakeRunStatus.PAUSED)))
+        )
+        or 0
+    )
+
+
 def load_summary(
     session: Session,
     *,
     daily_budget: int | None,
     queue_depth: int | None,
 ) -> DashboardSummary:
+    states = _work_item_state_counts(session)
     return DashboardSummary(
         generated_at=datetime.now(UTC),
-        work_item_states=_work_item_state_counts(session),
+        work_item_states=states,
         published_today=_published_today(session),
+        active_intake_runs=_active_intake_runs(session),
+        attention=_attention_summary(session, states),
         research=_research_summary(session),
         ai=_ai_summary(session, daily_budget),
         publishing=_publishing_summary(session),

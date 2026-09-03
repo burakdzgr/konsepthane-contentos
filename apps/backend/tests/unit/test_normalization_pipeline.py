@@ -382,8 +382,8 @@ class TestPipelineExecution:
 
         assert document.normalization_status is NormalizationStatus.SUCCEEDED
         assert document.extractor_name == "html-basic"
-        assert document.extractor_version == "1"
-        assert document.parser_version == "stdlib-html-parser-v1"
+        assert document.extractor_version == "2"
+        assert document.parser_version == "stdlib-html-parser-v2"
         assert (
             document.content_fingerprint
             == hashlib.sha256(
@@ -588,3 +588,42 @@ class TestFailureAndIntegrityBoundaries:
                 max_payload_bytes=MAX_TEST_PAYLOAD_BYTES,
                 extractors=(first, second),
             )
+
+
+class TestVoidTagSuppression:
+    def test_unclosed_void_tags_inside_suppressed_regions_do_not_eat_the_document(
+        self,
+    ) -> None:
+        """The real-site failure mode: a <form> (or <nav>) containing bare
+        void elements (<input>, <img>, <br>) must not leave the parser
+        suppressed forever - the article after it stays visible."""
+        payload = (
+            b"<html><body>"
+            b"<nav><a href='/'>Ana sayfa</a><img src='logo.png'><br></nav>"
+            b"<form action='/ara'><input name='q'><input type='submit'></form>"
+            b"<h1>Parti Rehberi</h1>"
+            b"<p>Dogum gunu partisi icin ozgun arastirma metni.</p>"
+            b"</body></html>"
+        )
+        document = HtmlExtractor().extract(
+            payload,
+            ExtractionContext("text/html", "text/html", "https://example.test/"),
+        )
+        assert "ozgun arastirma metni" in document.clean_text
+        assert [heading.text for heading in document.headings] == ["Parti Rehberi"]
+        # The suppressed chrome stays out.
+        assert "Ana sayfa" not in document.clean_text
+
+    def test_stray_void_end_tags_inside_suppressed_regions_are_ignored(self) -> None:
+        payload = (
+            b"<html><body>"
+            b"<form><input></br></input><button>Ara</button></form>"
+            b"<p>Gorunur metin.</p>"
+            b"</body></html>"
+        )
+        document = HtmlExtractor().extract(
+            payload,
+            ExtractionContext("text/html", "text/html", "https://example.test/"),
+        )
+        assert "Gorunur metin." in document.clean_text
+        assert "Ara" not in document.clean_text

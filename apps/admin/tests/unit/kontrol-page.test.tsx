@@ -25,6 +25,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
+vi.mock("@/lib/intake-api", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/intake-api")>(
+      "@/lib/intake-api",
+    );
+  return { ...actual, fetchIntakeRuns: vi.fn() };
+});
+
 import KontrolPage from "@/app/kontrol/page";
 import {
   fetchDashboardActivity,
@@ -36,6 +44,7 @@ import {
   type DashboardSummary,
 } from "@/lib/dashboard-api";
 import { fetchWorkQueue, WORKFLOW_STATES } from "@/lib/editorial-api";
+import { fetchIntakeRuns } from "@/lib/intake-api";
 import { queuePage, queueRow } from "./editorial-fixtures";
 
 const summaryMock = vi.mocked(fetchDashboardSummary);
@@ -43,6 +52,7 @@ const agentsMock = vi.mocked(fetchDashboardAgents);
 const activityMock = vi.mocked(fetchDashboardActivity);
 const publicationsMock = vi.mocked(fetchDashboardPublications);
 const queueMock = vi.mocked(fetchWorkQueue);
+const runsMock = vi.mocked(fetchIntakeRuns);
 
 const AT = "2026-09-03T10:00:00+00:00";
 
@@ -54,6 +64,13 @@ function summary(overrides: Partial<DashboardSummary> = {}): DashboardSummary {
     generated_at: AT,
     work_item_states: { ...states, drafting: 3, awaiting_human_review: 2 },
     published_today: 1,
+    active_intake_runs: 0,
+    attention: {
+      production_decisions: 0,
+      awaiting_human_review: 2,
+      approval_expired: 0,
+      changes_requested: 0,
+    },
     research: {
       active_sources: 2,
       discovery_states: {
@@ -148,6 +165,11 @@ beforeEach(() => {
   queueMock.mockResolvedValue({
     kind: "ok",
     data: queuePage([]),
+    requestId: null,
+  });
+  runsMock.mockResolvedValue({
+    kind: "ok",
+    data: { generated_at: AT, runs: [] },
     requestId: null,
   });
 });

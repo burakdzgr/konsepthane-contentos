@@ -100,7 +100,7 @@ describe("AppNav", () => {
 
     expect(
       screen
-        .getByRole("link", { name: "Araştırma" })
+        .getByRole("link", { name: "Araştırma (gelişmiş)" })
         .getAttribute("aria-current"),
     ).toBe("page");
   });

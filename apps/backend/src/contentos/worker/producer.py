@@ -70,6 +70,33 @@ class CeleryResearchControlDispatcher:
         self._send(FETCH_DISCOVERY_ITEM_TASK, discovery_item_id, request_id)
 
 
+INTAKE_STEP_TASK = "contentos.intake.step"
+
+
+class IntakeControlDispatcher(Protocol):
+    """Seam for explicit operator-triggered intake-run stepping."""
+
+    def enqueue_intake_step(self, run_id: str, *, request_id: str | None = None) -> None: ...
+
+
+class CeleryIntakeControlDispatcher:
+    """Producer-only publisher of the intake step job; same laziness
+    contract as the other dispatchers."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._app: Celery | None = None
+
+    def _celery(self) -> Celery:
+        if self._app is None:
+            self._app = create_celery_app(self._settings)
+        return self._app
+
+    def enqueue_intake_step(self, run_id: str, *, request_id: str | None = None) -> None:
+        headers = {"request_id": request_id} if request_id else None
+        self._celery().send_task(INTAKE_STEP_TASK, args=[run_id], headers=headers)
+
+
 class EditorialControlDispatcher(Protocol):
     """Seam for explicit operator-triggered editorial job publishing."""
 

@@ -11,6 +11,7 @@ import {
   type PublicationQueueRow,
 } from "@/lib/dashboard-api";
 import { fetchWorkQueue, type WorkQueueRow } from "@/lib/editorial-api";
+import { fetchIntakeRuns, type IntakeRunView } from "@/lib/intake-api";
 import { STATE_LABELS_TR } from "@/lib/motor-plan";
 import { formatUtcTimestamp } from "@/lib/format";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
@@ -97,6 +98,99 @@ function Unavailable({ children }: { children: React.ReactNode }) {
     <p className="empty-note" role="status">
       {children}
     </p>
+  );
+}
+
+function AttentionPanel({ summary }: { summary: DashboardSummary }) {
+  const attention = summary.attention;
+  const items: { label: string; count: number; href: string }[] = [
+    {
+      label: "içerik üretim kararı bekliyor",
+      count: attention.production_decisions,
+      href: "/firsatlar",
+    },
+    {
+      label: "nihai yayın onayı bekliyor",
+      count: attention.awaiting_human_review,
+      href: "/editorial?state=awaiting_human_review",
+    },
+    {
+      label: "süresi dolan onay kararı bekliyor",
+      count: attention.approval_expired,
+      href: "/editorial?state=approval_expired",
+    },
+    {
+      label: "değişiklik talebi yönlendirme bekliyor",
+      count: attention.changes_requested,
+      href: "/editorial?state=changes_requested",
+    },
+  ].filter((item) => item.count > 0);
+  return (
+    <section
+      className="panel-block attention-panel"
+      aria-label="Benden bekleyenler"
+    >
+      <h2>Benden Bekleyenler</h2>
+      {items.length === 0 ? (
+        <p className="empty-note">
+          Sizi bekleyen karar yok — motor otonom işleri yürütüyor.
+        </p>
+      ) : (
+        <ul className="alert-list">
+          {items.map((item) => (
+            <li key={item.label}>
+              <Link href={item.href} className="alert-row" data-tone="warn">
+                <span>{item.label}</span>
+                <span className="alert-count">{item.count}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ActiveRunsPanel({ runs }: { runs: IntakeRunView[] | null }) {
+  const live = (runs ?? []).filter(
+    (run) => run.status === "running" || run.status === "paused",
+  );
+  return (
+    <section className="panel-block" aria-label="Aktif çalışmalar">
+      <h2>Aktif Çalışmalar</h2>
+      {runs === null && (
+        <p className="empty-note" role="status">
+          Çalışma durumu okunamıyor.
+        </p>
+      )}
+      {runs !== null && live.length === 0 && (
+        <p className="empty-note">
+          Aktif çalışma yok. <Link href="/sources">Kaynaklar</Link> sayfasından
+          keşif başlatın; geçmiş <Link href="/calisma">Çalışmalar</Link>da.
+        </p>
+      )}
+      {live.length > 0 && (
+        <div className="run-card-grid">
+          {live.map((run) => (
+            <Link key={run.id} href={`/calisma/${run.id}`} className="run-card">
+              <span className="run-card-title">{run.source_name}</span>
+              <span
+                className="badge"
+                data-tone={run.status === "running" ? "run" : "warn"}
+              >
+                {run.status === "running" ? "ÇALIŞIYOR" : "DURAKLATILDI"}
+              </span>
+              <span className="run-card-facts">
+                {run.discovered_new + run.rediscovered} keşif ·{" "}
+                {run.prefilter_accepted} uygun · {run.fetched}/
+                {run.fetch_dispatched} getirildi · {run.opportunities_created}{" "}
+                fırsat
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -911,13 +1005,16 @@ export default async function KontrolPage({
     activityResult,
     publicationsResult,
     queueResult,
+    runsResult,
   ] = await Promise.all([
     fetchDashboardSummary(),
     fetchDashboardAgents(),
     fetchDashboardActivity(30),
     fetchDashboardPublications(),
     fetchWorkQueue({ limit: 12 }),
+    fetchIntakeRuns(),
   ]);
+  const intakeRuns = runsResult.kind === "ok" ? runsResult.data.runs : null;
 
   const summary = summaryResult.kind === "ok" ? summaryResult.data : null;
   const agents = agentsResult.kind === "ok" ? agentsResult.data : null;
@@ -951,6 +1048,8 @@ export default async function KontrolPage({
         </Unavailable>
       ) : (
         <>
+          <AttentionPanel summary={summary} />
+          <ActiveRunsPanel runs={intakeRuns} />
           <KpiStrip summary={summary} />
           <PipelineStrip summary={summary} />
           <div className="kontrol-columns">

@@ -40,6 +40,28 @@ from contentos.normalization.extractors.base import (
 _SUPPRESSED_TAGS = frozenset(
     {"script", "style", "noscript", "template", "svg", "canvas", "nav", "footer", "form"}
 )
+# HTML void elements never receive an end tag, so they must not change
+# the suppression depth: one bare <input> inside a <form> would otherwise
+# suppress the rest of the document forever (the real-site empty_content
+# failure mode).
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
 _BLOCK_TAGS = frozenset(
     {"address", "article", "blockquote", "div", "figcaption", "li", "main", "p", "pre", "section"}
 )
@@ -63,8 +85,10 @@ class HtmlExtractor:
     """Extract bounded metadata and visible research text without resource loading."""
 
     name = "html-basic"
-    version = "1"
-    parser_version = "stdlib-html-parser-v1"
+    # v2: void elements no longer corrupt the suppression depth; bumping
+    # the version lets existing snapshots re-normalize into new rows.
+    version = "2"
+    parser_version = "stdlib-html-parser-v2"
     supported_media_types = frozenset({"text/html", "application/xhtml+xml"})
 
     def extract(self, payload: bytes, context: ExtractionContext) -> ExtractedDocument:
@@ -150,7 +174,8 @@ class _BoundedHtmlParser(HTMLParser):
         attributes = {name.casefold(): value or "" for name, value in attrs}
 
         if self.suppressed_depth:
-            self.suppressed_depth += 1
+            if tag not in _VOID_TAGS:
+                self.suppressed_depth += 1
             return
         if tag == "script":
             if (
@@ -203,6 +228,8 @@ class _BoundedHtmlParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         tag = tag.casefold()
         if self.suppressed_depth:
+            if tag in _VOID_TAGS:
+                return
             self.suppressed_depth -= 1
             if tag == "script" and self.suppressed_depth == 0 and self.json_ld_parts is not None:
                 self._finish_json_ld()

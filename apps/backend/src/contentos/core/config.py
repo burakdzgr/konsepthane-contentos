@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
     openai_image_model: str | None = Field(default=None, min_length=1)
     openai_image_timeout_seconds: float = Field(default=120.0, ge=1.0, le=600.0)
+    # Autonomous intake orchestration bounds (per-run and per-source).
+    # Every limit is a hard cap the orchestrator can only stay under;
+    # remaining candidates persist durably for a later run.
+    intake_prefilter_batch_size: int = Field(default=1000, ge=10, le=10_000)
+    intake_fetch_batch_size: int = Field(default=8, ge=1, le=50)
+    intake_max_fetches_per_run: int = Field(default=40, ge=1, le=1000)
+    intake_daily_fetch_budget_per_source: int = Field(default=150, ge=1, le=5000)
+    intake_max_promotions_per_run: int = Field(default=20, ge=1, le=200)
+    intake_step_interval_seconds: int = Field(default=15, ge=5, le=600)
     # The Publishing API is the ONLY path toward Konsepthane production.
     # Deliberately default-None: there is no default endpoint, and the
     # HTTP transport refuses to construct without both values.

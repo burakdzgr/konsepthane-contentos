@@ -9,6 +9,7 @@ from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
 from contentos.queue.celery import create_celery_app
 from contentos.worker.editorial_tasks import register_editorial_pipeline_tasks
+from contentos.worker.intake_tasks import register_intake_tasks
 from contentos.worker.research_tasks import register_research_pipeline_tasks
 from contentos.worker.runtime import WorkerRuntime
 from contentos.worker.signals import install_worker_signal_handlers
@@ -27,6 +28,7 @@ def create_worker_app(settings: Settings | None = None) -> Celery:
     runtime = WorkerRuntime(resolved_settings)
     register_research_pipeline_tasks(app, runtime)
     register_editorial_pipeline_tasks(app, runtime)
+    register_intake_tasks(app, runtime)
     return app
 
 

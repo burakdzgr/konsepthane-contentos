@@ -57,6 +57,13 @@ const summarySchema = z.object({
   generated_at: timestampSchema,
   work_item_states: z.record(z.string(), z.number().int()),
   published_today: z.number().int(),
+  active_intake_runs: z.number().int(),
+  attention: z.object({
+    production_decisions: z.number().int(),
+    awaiting_human_review: z.number().int(),
+    approval_expired: z.number().int(),
+    changes_requested: z.number().int(),
+  }),
   research: z.object({
     active_sources: z.number().int(),
     discovery_states: z.record(z.string(), z.number().int()),

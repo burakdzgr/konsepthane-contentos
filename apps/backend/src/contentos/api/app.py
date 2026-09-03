@@ -12,6 +12,7 @@ from contentos.api.routes.decisions import router as decisions_router
 from contentos.api.routes.editorial import router as editorial_router
 from contentos.api.routes.editorial_control import router as editorial_control_router
 from contentos.api.routes.health import router as health_router
+from contentos.api.routes.intake import router as intake_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
 from contentos.api.security import require_operator, require_reviewer
@@ -22,6 +23,7 @@ from contentos.media.store import MediaStore
 from contentos.queue.redis import create_redis_client
 from contentos.worker.producer import (
     CeleryEditorialControlDispatcher,
+    CeleryIntakeControlDispatcher,
     CeleryResearchControlDispatcher,
 )
 
@@ -59,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(editorial_router, dependencies=operator_guard)
     app.include_router(editorial_control_router, dependencies=operator_guard)
     app.include_router(dashboard_router, dependencies=operator_guard)
+    app.include_router(intake_router, dependencies=operator_guard)
     # Human decisions require the REVIEWER role (ADR 0004): a pure reviewer
     # may decide without being able to drive the pipeline, and vice versa.
     app.include_router(decisions_router, dependencies=[Depends(require_reviewer)])
@@ -66,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # creating the app never touches Redis. Tests replace them on app.state.
     app.state.research_control_dispatcher = CeleryResearchControlDispatcher(resolved_settings)
     app.state.editorial_control_dispatcher = CeleryEditorialControlDispatcher(resolved_settings)
+    app.state.intake_control_dispatcher = CeleryIntakeControlDispatcher(resolved_settings)
     # RequestContextMiddleware must stay outermost so the request ID context and
     # X-Request-ID header also cover envelope responses for unhandled errors.
     app.add_middleware(RequestContextMiddleware)

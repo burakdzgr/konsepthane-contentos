@@ -24,18 +24,16 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Komuta",
     entries: [
       { href: "/kontrol", label: "Kontrol Merkezi" },
+      { href: "/calisma", label: "Çalışmalar" },
+      { href: "/firsatlar", label: "Fırsat İncelemesi" },
       { href: "/motor", label: "Motor" },
-      { href: "/", label: "Sistem" },
     ],
   },
   {
     title: "İçerik Hattı",
     entries: [
       { href: "/sources", label: "Kaynaklar" },
-      { href: "/research", label: "Araştırma" },
       { href: "/editorial", label: "Editoryal" },
-      { href: "/editorial?state=idea_scoring", label: "Fırsatlar" },
-      { href: "/editorial?state=briefing", label: "Briefler" },
       { href: "/editorial?state=drafting", label: "Writer" },
       { href: "/editorial?state=editing", label: "Editor" },
       { href: "/editorial?state=qa_review", label: "QA" },
@@ -43,11 +41,13 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "Yayın & Motor",
+    title: "Yayın & Sistem",
     entries: [
       { href: "/kontrol#yayin-kuyrugu", label: "Yayın Kuyruğu" },
       { href: "/kontrol#agentlar", label: "Agentlar" },
       { href: "/kontrol#motor-kontrolu", label: "Motor Kontrolü" },
+      { href: "/research", label: "Araştırma (gelişmiş)" },
+      { href: "/", label: "Sistem" },
       { href: "", label: "Dağıtım (mevcut değil)", disabled: true },
       { href: "", label: "Analitik (mevcut değil)", disabled: true },
     ],

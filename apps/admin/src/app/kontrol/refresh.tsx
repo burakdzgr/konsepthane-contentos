@@ -7,7 +7,13 @@ const REFRESH_INTERVAL_MS = 30_000;
 
 // Live feel without a socket: the server components re-render with fresh
 // durable state on every refresh; this client shell only schedules them.
-export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
+export function AutoRefresh({
+  generatedAt,
+  intervalMs = REFRESH_INTERVAL_MS,
+}: {
+  generatedAt: string;
+  intervalMs?: number;
+}) {
   const router = useRouter();
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
@@ -18,9 +24,9 @@ export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
       if (!pausedRef.current) {
         router.refresh();
       }
-    }, REFRESH_INTERVAL_MS);
+    }, intervalMs);
     return () => clearInterval(timer);
-  }, [router]);
+  }, [router, intervalMs]);
 
   const stamp = new Date(generatedAt);
   const label = Number.isNaN(stamp.getTime())
@@ -37,7 +43,9 @@ export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
         {paused ? "Otomatik yenilemeyi aç" : "Otomatik yenilemeyi durdur"}
       </button>
       <span className="muted">
-        {paused ? "otomatik yenileme kapalı" : "30 sn'de bir yenilenir"}
+        {paused
+          ? "otomatik yenileme kapalı"
+          : `${Math.round(intervalMs / 1000)} sn'de bir yenilenir`}
       </span>
     </div>
   );

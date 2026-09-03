@@ -12,14 +12,8 @@ import {
   type WorkItemDetail,
   type WorkQueueRow,
 } from "@/lib/editorial-api";
-import {
-  fetchPipelineItems,
-  fetchResearchSources,
-  isUuid,
-  type PipelineListItem,
-  type SourceListItem,
-} from "@/lib/research-api";
-import { isDiscoveryEligible } from "@/lib/source-controls";
+import { isUuid } from "@/lib/research-api";
+import { fetchIntakeRuns, type IntakeRunView } from "@/lib/intake-api";
 import {
   MOTOR_STAGES,
   STATE_LABELS_TR,
@@ -34,24 +28,20 @@ import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../notices";
 import {
   motorAcceptBriefAction,
-  motorAcceptDiscoveryAction,
   motorAcceptReviewAction,
   motorAnalyzeIntentAction,
   motorApproveAction,
   motorAssemblePackageAction,
   motorComposeBriefAction,
   motorEvaluateAction,
-  motorFetchDiscoveryAction,
   motorGenerateDraftAction,
   motorGenerateIdeasAction,
   motorGenerateReviewAction,
-  motorPromoteAction,
   motorPublishNowAction,
   motorRequestChangesAction,
   motorResolveApprovalExpiredAction,
   motorResolveBlockAction,
   motorResolveChangesRequestedAction,
-  motorRunDiscoveryAction,
   motorRunQaAction,
   motorSchedulePublicationAction,
   motorSelectIdeaAction,
@@ -636,122 +626,35 @@ function StepForms({
   return <div className="motor-actions">{rendered}</div>;
 }
 
-function IntakeSection({
-  sources,
-  pipeline,
-}: {
-  sources: SourceListItem[] | null;
-  pipeline: PipelineListItem[] | null;
-}) {
-  const discoverable = (sources ?? []).filter((source) =>
-    isDiscoveryEligible(source),
-  );
-  const toAccept = (pipeline ?? []).filter(
-    (item) => item.lifecycle_state === "discovered",
-  );
-  const toFetch = (pipeline ?? []).filter(
-    (item) =>
-      item.lifecycle_state === "accepted" ||
-      item.lifecycle_state === "fetch_failed",
-  );
-  const toPromote = (pipeline ?? []).filter(
-    (item) =>
-      item.normalization_status === "succeeded" &&
-      item.normalized_document_id !== null,
+function IntakeMonitor({ runs }: { runs: IntakeRunView[] | null }) {
+  const live = (runs ?? []).filter(
+    (run) => run.status === "running" || run.status === "paused",
   );
   return (
-    <details className="motor-intake">
-      <summary>
-        Giriş hattı — keşfet ({toAccept.length}), getir ({toFetch.length}),
-        yükselt ({toPromote.length})
-      </summary>
-      <div className="motor-columns">
-        <div className="motor-column">
-          <h3>1 · Kaynaktan keşfet</h3>
-          {discoverable.length === 0 && (
-            <p className="empty-note">
-              Keşfedilebilir aktif kaynak yok. Feed veya sitemap türünde bir{" "}
-              <Link href="/sources/new">kaynak kaydedin</Link>.
-            </p>
-          )}
-          <ul className="plain-list">
-            {discoverable.map((source) => (
-              <li key={source.id}>
-                <form action={motorRunDiscoveryAction} className="control-form">
-                  <input type="hidden" name="source_id" value={source.id} />
-                  <span>{source.name}</span>
-                  <button type="submit">Keşfi başlat</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="motor-column">
-          <h3>2 · Kabul et &amp; getir</h3>
-          {toAccept.length === 0 && toFetch.length === 0 && (
-            <p className="empty-note">Bekleyen keşif öğesi yok.</p>
-          )}
-          <ul className="plain-list">
-            {toAccept.slice(0, 10).map((item) => (
-              <li key={item.id}>
-                <form
-                  action={motorAcceptDiscoveryAction}
-                  className="control-form"
-                >
-                  <input
-                    type="hidden"
-                    name="discovery_item_id"
-                    value={item.id}
-                  />
-                  <span className="cell-url">{item.canonical_url}</span>
-                  <button type="submit">Kabul et</button>
-                </form>
-              </li>
-            ))}
-            {toFetch.slice(0, 10).map((item) => (
-              <li key={item.id}>
-                <form
-                  action={motorFetchDiscoveryAction}
-                  className="control-form"
-                >
-                  <input
-                    type="hidden"
-                    name="discovery_item_id"
-                    value={item.id}
-                  />
-                  <span className="cell-url">{item.canonical_url}</span>
-                  <button type="submit">Getir</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="motor-column">
-          <h3>3 · İşe yükselt</h3>
-          {toPromote.length === 0 && (
-            <p className="empty-note">Yükseltmeye hazır doküman yok.</p>
-          )}
-          <ul className="plain-list">
-            {toPromote.slice(0, 10).map((item) => (
-              <li key={item.id}>
-                <form action={motorPromoteAction} className="control-form">
-                  <input
-                    type="hidden"
-                    name="normalized_document_id"
-                    value={item.normalized_document_id ?? ""}
-                  />
-                  <span className="cell-url">{item.canonical_url}</span>
-                  {item.duplicate_outcome !== null && (
-                    <span className="badge">{item.duplicate_outcome}</span>
-                  )}
-                  <button type="submit">Yükselt</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </div>
+    <section className="motor-intake" aria-label="Otonom alım">
+      <div className="motor-intake-row">
+        <span>
+          <strong>Otonom alım:</strong>{" "}
+          {runs === null
+            ? "durum okunamıyor"
+            : live.length === 0
+              ? "aktif çalışma yok — kaynaktan başlatılır"
+              : `${live.length} aktif çalışma`}
+        </span>
+        {live.map((run) => (
+          <Link key={run.id} href={`/calisma/${run.id}`} className="badge">
+            {run.source_name}: {run.fetched}/{run.fetch_dispatched} getirildi ·{" "}
+            {run.opportunities_created} fırsat
+          </Link>
+        ))}
+        <span className="muted">
+          Keşif, ön filtre, getirme ve yükseltme motor tarafından yürütülür;
+          insan kararı <Link href="/firsatlar">Fırsat İncelemesi</Link>nde
+          sorulur. <Link href="/sources">Kaynaklar</Link> ·{" "}
+          <Link href="/calisma">Çalışmalar</Link>
+        </span>
       </div>
-    </details>
+    </section>
   );
 }
 
@@ -829,26 +732,20 @@ export default async function MotorPage({
   const selectedId =
     selectedParam !== undefined && isUuid(selectedParam) ? selectedParam : null;
 
-  const [sourcesResult, pipelineResult, queueResult, currentUserResult] =
-    await Promise.all([
-      fetchResearchSources({ limit: 50 }),
-      fetchPipelineItems({ limit: 100 }),
-      fetchWorkQueue({ limit: 20 }),
-      fetchCurrentUser(),
-    ]);
+  const [runsResult, queueResult, currentUserResult] = await Promise.all([
+    fetchIntakeRuns(),
+    fetchWorkQueue({ limit: 20 }),
+    fetchCurrentUser(),
+  ]);
 
-  const sources = sourcesResult.kind === "ok" ? sourcesResult.data.items : null;
-  const pipeline =
-    pipelineResult.kind === "ok" ? pipelineResult.data.items : null;
+  const runs = runsResult.kind === "ok" ? runsResult.data.runs : null;
   const queueRows = queueResult.kind === "ok" ? queueResult.data.items : [];
   const isReviewer =
     currentUserResult.kind === "ok" &&
     currentUserResult.data.roles.includes("reviewer");
 
   const backendDown =
-    sourcesResult.kind === "unreachable" &&
-    pipelineResult.kind === "unreachable" &&
-    queueResult.kind === "unreachable";
+    runsResult.kind === "unreachable" && queueResult.kind === "unreachable";
 
   const focusId = selectedId ?? queueRows[0]?.work_item_id ?? null;
 
@@ -917,7 +814,7 @@ export default async function MotorPage({
       {backendDown && (
         <p role="status">Backend API&apos;ye şu anda erişilemiyor.</p>
       )}
-      <IntakeSection sources={sources} pipeline={pipeline} />
+      <IntakeMonitor runs={runs} />
       <div className="motor-layout">
         <aside className="motor-queue">
           <h2>Aktif işler</h2>

@@ -97,6 +97,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.evidence_packs.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
     import contentos.ideas.models  # noqa: F401
+    import contentos.intake.models  # noqa: F401
     import contentos.media.models  # noqa: F401
     import contentos.normalization.models  # noqa: F401
     import contentos.operations.models  # noqa: F401
@@ -158,6 +159,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "publication_attempts",
         "operational_pauses",
         "operational_pause_events",
+        "intake_runs",
+        "intake_run_events",
     }
 
 

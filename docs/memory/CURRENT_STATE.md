@@ -3531,6 +3531,44 @@ the inputs listed below.
   arbitrary tasks, model/budget runtime editing (env-owned), process
   kill. Unavailable measurements render as unavailable.
 
+- AUTONOMOUS INTAKE + RUNS (operator request: "a URL is not an
+  editorial decision"): migration `0028` (`intake_runs` counters +
+  policy snapshot + partial-unique one-live-run-per-source;
+  `intake_run_events` append-only timeline; real-PG verified
+  up/down/up). New `contentos/intake/` package: deterministic URL
+  prefilter (listing/asset/utility/date-archive/scheme rules →
+  DiscoveryService.reject with coded reasons + named rule notes),
+  IntakeRunService (audited start/pause/resume/stop, events),
+  IntakeOrchestrator — ONE bounded, idempotent, restart-safe step that
+  re-derives everything from durable rows: inline discovery via the
+  existing strategies → prefilter batches (accept/reject via the
+  domain service) → bounded fetch dispatch of the FROZEN fetch task
+  (batch, per-run cap, per-source daily budget from
+  `intake_*` settings; per-item dispatch events prevent duplicates;
+  stalled in-flight re-dispatch after 10 min) → promotion dispatch of
+  the frozen promote task (DB-unique, chains deterministic scoring)
+  → completion with a full summary event. The step task
+  (`contentos.intake.step`, acks_late, shared=False) self-reschedules;
+  operational `research`/engine pauses park runs as PAUSED. The
+  orchestrator can NOT commission/reject opportunities, select ideas,
+  or move workflow state — the first human decision is now "üretelim
+  mi?" on scored opportunities. API: `/internal/intake` (start 409-on
+  -live-run/paused, runs list/detail, incremental events, audited
+  pause/resume/stop). Dashboard summary + attention counts
+  (production_decisions, active_intake_runs). ADMIN: `Çalışmalar`
+  (/calisma + /calisma/[id] live run view: stage timeline, Turkish
+  event feed, results, controls, 5s polling), `Fırsat İncelemesi`
+  (/firsatlar: explainable score → ÜRET/İNCELE/ATLA + commission/
+  reject with reasons), Kaynaklar "Keşfi başlat" → starts a run and
+  opens it immediately, Motor intake strip → autonomous monitor,
+  Kontrol Merkezi: "Benden Bekleyenler" + "Aktif Çalışmalar"; nav
+  reorganized task-first (raw accept/fetch stays only on research
+  advanced pages as debug). 46 new backend + 10 new admin tests.
+  Docs: `docs/INTAKE_ORCHESTRATION.md`. Deliberately NOT built: AI
+  relevance/taxonomy agent (no such subsystem — the deterministic
+  score is the honest relevance signal), auto-rejection of scored
+  opportunities (a named human decision per Phase 5).
+
 ## Current standing state (all phases 1–7 CLOSED; publishing E2E REAL)
 
 The full loop research → … → PUBLISHED runs end to end on real
