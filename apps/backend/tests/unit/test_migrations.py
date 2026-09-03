@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0028"]
+    assert script.get_heads() == ["0029"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -77,6 +77,7 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0015").down_revision == "0014"
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
+    assert script.get_revision("0029").down_revision == "0028"
     assert script.get_revision("0028").down_revision == "0027"
     assert script.get_revision("0027").down_revision == "0026"
     assert script.get_revision("0026").down_revision == "0025"
@@ -88,6 +89,20 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0020").down_revision == "0019"
     assert script.get_revision("0019").down_revision == "0018"
     assert script.get_revision("0018").down_revision == "0017"
+
+
+def test_strategy_and_inspiration_migration_is_additive_and_protected() -> None:
+    sql = offline_sql("upgrade", "0028:0029")
+
+    assert "CREATE TABLE audience_strategies" in sql
+    assert "CREATE TABLE topic_clusters" in sql
+    assert "CREATE TABLE strategic_keywords" in sql
+    assert "CREATE TABLE inspiration_signals" in sql
+    assert "CREATE TABLE inspiration_evaluations" in sql
+    assert "uq_strategic_keywords_scope" in sql
+    assert "trg_inspiration_signals_append_only" in sql
+    assert "trg_inspiration_evaluations_append_only" in sql
+    assert sql.count("ON DELETE RESTRICT") >= 4
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:

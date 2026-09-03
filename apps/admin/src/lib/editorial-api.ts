@@ -88,6 +88,20 @@ export const SCORE_ELIGIBILITIES = [
   "not_commissionable",
   "needs_operator_review",
 ] as const;
+export const INSPIRATION_BANDS = ["high", "medium", "low", "unknown"] as const;
+export const SEARCH_OPPORTUNITY_BANDS = [
+  "strong",
+  "moderate",
+  "weak",
+  "unknown",
+] as const;
+export const OPPORTUNITY_RECOMMENDATIONS = [
+  "produce",
+  "continue_research",
+  "eliminate",
+  "human_review",
+] as const;
+export const TREND_STATES = ["known", "unknown"] as const;
 export const COMPONENT_AVAILABILITIES = [
   "known",
   "unknown",
@@ -250,6 +264,15 @@ const workQueueRowSchema = z.object({
   score_evaluated_at: timestampSchema.nullable(),
   score_engine_name: z.string().nullable(),
   score_engine_version: z.string().nullable(),
+  inspiration_evaluation_id: z.string().uuid().nullable(),
+  inspiration_band: z.enum(INSPIRATION_BANDS).nullable(),
+  search_opportunity: z.enum(SEARCH_OPPORTUNITY_BANDS).nullable(),
+  trend_state: z.enum(TREND_STATES).nullable(),
+  recommendation: z.enum(OPPORTUNITY_RECOMMENDATIONS).nullable(),
+  inspiration_rationale: z.string().nullable(),
+  strategy_context: jsonRecordSchema,
+  inspiration_signal_count: countSchema,
+  inspiration_concept_count: countSchema,
   selected_idea_id: z.string().uuid().nullable(),
   selected_idea_title: z.string().nullable(),
   selected_idea_originality: z.enum(ORIGINALITY_STATUSES).nullable(),

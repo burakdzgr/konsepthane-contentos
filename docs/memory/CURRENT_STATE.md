@@ -1,6 +1,22 @@
 ﻿# Konsepthane ContentOS - Current State
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
+
+## Idea Intelligence and operator experience increment
+
+The strategy-aware Idea Intelligence baseline is implemented on top of the
+existing architecture (migration head `0029`). It adds operator-managed target
+audiences, strategic keywords and topic clusters; append-only, source-linked
+inspiration signals and explainable inspiration evaluations; honest independent
+search/trend state; the `PRODUCE`, `CONTINUE_RESEARCH`, `ELIMINATE` and
+`HUMAN_REVIEW` recommendation policy; bounded strategy context in ContentBrief;
+and strategy-aware candidate ordering which never filters unexpected ideas.
+
+The Turkish-first admin now has a compact primary navigation, a real-data
+control center, an understandable `Strateji` area, and opportunity cards that
+separate `İlham Değeri` from `Arama Fırsatı`. Machine stages remain automatic;
+the meaningful operator gates remain content commissioning/rejection and final
+human publication approval. See `docs/IDEA_INTELLIGENCE.md`.
 
 ## Current phase
 

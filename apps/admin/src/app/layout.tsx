@@ -10,7 +10,8 @@ import { fetchDashboardSummary } from "@/lib/dashboard-api";
 import { fetchIntakeRuns } from "@/lib/intake-api";
 import { getSessionToken } from "@/lib/session";
 
-import { logoutAction } from "./login/actions";
+import { HeaderChrome } from "./chrome";
+import { ContentOsMark } from "./icons";
 import { AppNav, type NavBadges } from "./nav";
 
 import "./globals.css";
@@ -22,12 +23,6 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
-};
-
-const ENVIRONMENT_LABELS: Record<string, string> = {
-  local: "Local",
-  test: "Test",
-  production: "Production",
 };
 
 export default async function RootLayout({
@@ -95,8 +90,11 @@ export default async function RootLayout({
         <div className="app-shell">
           <aside className="app-sidebar">
             <div className="app-identity">
-              <span className="app-name">ContentOS</span>
-              <span className="app-role">Content Operations Engine</span>
+              <ContentOsMark />
+              <span className="app-identity-copy">
+                <span className="app-name">ContentOS</span>
+                <span className="app-role">Content Operations Engine</span>
+              </span>
             </div>
             <AppNav badges={badges} />
             <div className="sidebar-stats">
@@ -130,29 +128,15 @@ export default async function RootLayout({
             </div>
           </aside>
           <div className="app-body">
-            <header className="app-header">
-              <div className="app-header-title">
-                <span className="app-name">ContentOS Motoru</span>
-                <span
-                  className="badge env-badge"
-                  data-env={environment ?? "unknown"}
-                >
-                  {environment !== null
-                    ? (ENVIRONMENT_LABELS[environment] ?? environment)
-                    : "Ortam bilinmiyor"}
-                </span>
-              </div>
-              <div className="app-header-controls">
-                {user !== null && (
-                  <span className="app-user">
-                    {user.display_name} ({user.roles.join(", ")})
-                  </span>
-                )}
-                <form action={logoutAction}>
-                  <button type="submit">Çıkış yap</button>
-                </form>
-              </div>
-            </header>
+            <HeaderChrome
+              environment={environment}
+              health={health}
+              user={
+                user === null
+                  ? null
+                  : { displayName: user.display_name, roles: user.roles }
+              }
+            />
             <main className="app-main">{children}</main>
           </div>
         </div>

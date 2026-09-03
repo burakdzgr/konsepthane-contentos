@@ -74,6 +74,13 @@ from contentos.ideas.enums import (
     OriginalityStatus,
 )
 from contentos.ideas.models import Idea, IdeaSelectionEvent
+from contentos.inspiration.enums import (
+    InspirationBand,
+    OpportunityRecommendation,
+    SearchOpportunityBand,
+    TrendState,
+)
+from contentos.inspiration.models import InspirationEvaluation
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.enums import (
     ComponentAvailability,
@@ -148,6 +155,15 @@ class WorkQueueRow(_FrozenModel):
     score_evaluated_at: datetime | None
     score_engine_name: str | None
     score_engine_version: str | None
+    inspiration_evaluation_id: uuid.UUID | None
+    inspiration_band: InspirationBand | None
+    search_opportunity: SearchOpportunityBand | None
+    trend_state: TrendState | None
+    recommendation: OpportunityRecommendation | None
+    inspiration_rationale: str | None
+    strategy_context: dict[str, Any]
+    inspiration_signal_count: int
+    inspiration_concept_count: int
     selected_idea_id: uuid.UUID | None
     selected_idea_title: str | None
     selected_idea_originality: OriginalityStatus | None
@@ -546,6 +562,30 @@ def _latest_selection_subquery() -> Any:
     return select(ranked).where(ranked.c.rn == 1).subquery()
 
 
+def _latest_inspiration_subquery() -> Any:
+    ranked = select(
+        InspirationEvaluation.id.label("evaluation_id"),
+        InspirationEvaluation.opportunity_id.label("opportunity_id"),
+        InspirationEvaluation.inspiration_band.label("inspiration_band"),
+        InspirationEvaluation.search_opportunity.label("search_opportunity"),
+        InspirationEvaluation.trend_state.label("trend_state"),
+        InspirationEvaluation.recommendation.label("recommendation"),
+        InspirationEvaluation.rationale.label("rationale"),
+        InspirationEvaluation.strategy_context.label("strategy_context"),
+        InspirationEvaluation.input_snapshot.label("input_snapshot"),
+        func.row_number()
+        .over(
+            partition_by=InspirationEvaluation.opportunity_id,
+            order_by=(
+                InspirationEvaluation.evaluated_at.desc(),
+                InspirationEvaluation.id.desc(),
+            ),
+        )
+        .label("rn"),
+    ).subquery()
+    return select(ranked).where(ranked.c.rn == 1).subquery()
+
+
 def _latest_pack_subquery() -> Any:
     ranked = select(
         EvidencePack.opportunity_id.label("opportunity_id"),
@@ -623,6 +663,7 @@ def list_work_items(
     current_state_entered_at DESC, created_at DESC, id.
     """
     effective_score = _effective_score_subquery()
+    latest_inspiration = _latest_inspiration_subquery()
     latest_selection = _latest_selection_subquery()
     latest_pack = _latest_pack_subquery()
     latest_analysis = _latest_analysis_subquery()
@@ -668,6 +709,14 @@ def list_work_items(
                 effective_score.c.evaluated_at,
                 effective_score.c.engine_name,
                 effective_score.c.engine_version,
+                latest_inspiration.c.evaluation_id,
+                latest_inspiration.c.inspiration_band,
+                latest_inspiration.c.search_opportunity,
+                latest_inspiration.c.trend_state,
+                latest_inspiration.c.recommendation,
+                latest_inspiration.c.rationale,
+                latest_inspiration.c.strategy_context,
+                latest_inspiration.c.input_snapshot,
                 latest_selection.c.idea_id,
                 latest_selection.c.action,
                 Idea.working_title,
@@ -685,6 +734,10 @@ def list_work_items(
         .outerjoin(
             effective_score,
             effective_score.c.opportunity_id == EditorialOpportunity.id,
+        )
+        .outerjoin(
+            latest_inspiration,
+            latest_inspiration.c.opportunity_id == EditorialOpportunity.id,
         )
         .outerjoin(
             latest_selection,
@@ -726,6 +779,14 @@ def list_work_items(
             score_evaluated_at,
             score_engine_name,
             score_engine_version,
+            inspiration_evaluation_id,
+            inspiration_band,
+            search_opportunity,
+            trend_state,
+            recommendation,
+            inspiration_rationale,
+            strategy_context,
+            inspiration_input_snapshot,
             selection_idea_id,
             selection_action,
             selected_title,
@@ -763,6 +824,19 @@ def list_work_items(
                 score_evaluated_at=score_evaluated_at,
                 score_engine_name=score_engine_name,
                 score_engine_version=score_engine_version,
+                inspiration_evaluation_id=inspiration_evaluation_id,
+                inspiration_band=inspiration_band,
+                search_opportunity=search_opportunity,
+                trend_state=trend_state,
+                recommendation=recommendation,
+                inspiration_rationale=inspiration_rationale,
+                strategy_context=dict(strategy_context or {}),
+                inspiration_signal_count=len(
+                    (inspiration_input_snapshot or {}).get("signal_ids", [])
+                ),
+                inspiration_concept_count=int(
+                    (inspiration_input_snapshot or {}).get("concept_count", 0)
+                ),
                 selected_idea_id=selection_idea_id if selected else None,
                 selected_idea_title=selected_title if selected else None,
                 selected_idea_originality=selected_originality if selected else None,

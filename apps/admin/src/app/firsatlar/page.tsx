@@ -22,28 +22,52 @@ const RECOMMENDATION: Record<
   string,
   { label: string; tone: string; hint: string }
 > = {
-  commissionable: {
-    label: "ÜRET",
+  produce: {
+    label: "İÇERİK ÜRET",
     tone: "ok",
-    hint: "Skor motoru üretilebilir buldu; komisyon kapısı açık.",
+    hint: "Fikir seti, araştırma ve strateji eşleşmesi üretim kararı için yeterli.",
   },
-  needs_operator_review: {
-    label: "İNCELE",
+  continue_research: {
+    label: "ARAŞTIRMAYA DEVAM ET",
     tone: "warn",
-    hint: "Sinyaller eksik; karar tamamen size ait.",
+    hint: "Konu umut veriyor; mevcut fikirler veya kanıtlar henüz yeterince güçlü değil.",
   },
-  not_commissionable: {
-    label: "ATLA",
+  human_review: {
+    label: "İNSAN İNCELEMESİ",
+    tone: "warn",
+    hint: "Sinyaller dengeli değil; editoryal değerlendirme gerekiyor.",
+  },
+  eliminate: {
+    label: "ELE",
     tone: "bad",
-    hint: "Skor motoru üretime uygun bulmadı; reddetmek tek tıklık.",
+    hint: "İlham ve temel uygunluk birlikte zayıf.",
   },
+};
+
+const BAND_LABELS: Record<string, string> = {
+  high: "Yüksek",
+  medium: "Orta",
+  low: "Düşük",
+  unknown: "Bilinmiyor",
+  strong: "Güçlü",
+  moderate: "Orta",
+  weak: "Zayıf",
 };
 
 function OpportunityCard({ row }: { row: WorkQueueRow }) {
   const recommendation =
-    row.score_eligibility !== null
-      ? (RECOMMENDATION[row.score_eligibility] ?? null)
+    row.recommendation !== null
+      ? (RECOMMENDATION[row.recommendation] ?? null)
       : null;
+  const clusters = Array.isArray(row.strategy_context.clusters)
+    ? row.strategy_context.clusters
+        .map((entry) =>
+          typeof entry === "object" && entry !== null && "name" in entry
+            ? String(entry.name)
+            : null,
+        )
+        .filter((entry): entry is string => entry !== null)
+    : [];
   return (
     <article className="opportunity-card">
       <header className="agent-card-header">
@@ -57,27 +81,31 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
             {recommendation.label}
           </span>
         ) : (
-          <span className="badge">SKOR BEKLENİYOR</span>
+          <span className="badge">DEĞERLENDİRİLİYOR</span>
         )}
       </header>
       {row.topic_summary !== null && <p>{row.topic_summary}</p>}
       <dl className="agent-facts">
         <div>
-          <dt>Skor bandı</dt>
-          <dd>{row.score_band ?? "yok"}</dd>
-        </div>
-        <div>
-          <dt>Skor</dt>
-          <dd>
-            {row.score_overall_value !== null
-              ? row.score_overall_value.toFixed(2)
-              : "yok"}
+          <dt>İlham Değeri</dt>
+          <dd title="Bir fikrin ne kadar özgün, uygulanabilir ve paylaşılabilir olduğunu değerlendirir.">
+            {row.inspiration_band === null
+              ? "Bilinmiyor"
+              : BAND_LABELS[row.inspiration_band]}
           </dd>
         </div>
         <div>
-          <dt>Pazar</dt>
+          <dt>Arama fırsatı</dt>
           <dd>
-            {row.locale} / {row.market}
+            {row.search_opportunity === null
+              ? "Bilinmiyor"
+              : BAND_LABELS[row.search_opportunity]}
+          </dd>
+        </div>
+        <div>
+          <dt>Stratejik alan</dt>
+          <dd title="Bu içeriğin Konsepthane'nin büyümek istediği konu alanlarıyla ilişkisini gösterir.">
+            {clusters.join(", ") || "Eşleşme yok"}
           </dd>
         </div>
         <div>
@@ -89,11 +117,11 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
           </dd>
         </div>
       </dl>
-      {row.score_missing_signals.length > 0 && (
-        <p className="muted">
-          Eksik sinyaller: {row.score_missing_signals.join(", ")}
-        </p>
-      )}
+      <p className="muted">
+        Araştırma: {row.inspiration_signal_count} kaynak sinyali ·{" "}
+        {row.inspiration_concept_count} gruplanmış fikir · Trend:{" "}
+        {row.trend_state === "known" ? "Var" : "Bilinmiyor"}
+      </p>
       {row.score_risk_flags.length > 0 && (
         <p className="muted">
           Risk işaretleri: {row.score_risk_flags.join(", ")}
@@ -102,52 +130,57 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
       {recommendation !== null && (
         <p className="muted">{recommendation.hint}</p>
       )}
+      {row.inspiration_rationale !== null && <p>{row.inspiration_rationale}</p>}
       <div className="opportunity-actions">
         <Link href={`/editorial/${row.work_item_id}`}>İncele</Link>
-        {row.opportunity_id !== null && (
-          <>
-            <form action={commissionOpportunityAction} className="control-form">
-              <input
-                type="hidden"
-                name="work_item_id"
-                value={row.work_item_id}
-              />
-              <input
-                type="hidden"
-                name="opportunity_id"
-                value={row.opportunity_id}
-              />
-              <input
-                type="text"
-                name="reason"
-                required
-                placeholder="üretim gerekçesi"
-                aria-label={`${row.title_working_label} üretim gerekçesi`}
-              />
-              <button type="submit">İçerik üretimini onayla</button>
-            </form>
-            <form action={rejectOpportunityAction} className="control-form">
-              <input
-                type="hidden"
-                name="work_item_id"
-                value={row.work_item_id}
-              />
-              <input
-                type="hidden"
-                name="opportunity_id"
-                value={row.opportunity_id}
-              />
-              <input
-                type="text"
-                name="reason"
-                required
-                placeholder="ret gerekçesi"
-                aria-label={`${row.title_working_label} ret gerekçesi`}
-              />
-              <button type="submit">Reddet</button>
-            </form>
-          </>
-        )}
+        {row.opportunity_id !== null &&
+          row.recommendation !== "continue_research" && (
+            <>
+              <form
+                action={commissionOpportunityAction}
+                className="control-form"
+              >
+                <input
+                  type="hidden"
+                  name="work_item_id"
+                  value={row.work_item_id}
+                />
+                <input
+                  type="hidden"
+                  name="opportunity_id"
+                  value={row.opportunity_id}
+                />
+                <input
+                  type="text"
+                  name="reason"
+                  required
+                  placeholder="üretim gerekçesi"
+                  aria-label={`${row.title_working_label} üretim gerekçesi`}
+                />
+                <button type="submit">İçerik üretimini onayla</button>
+              </form>
+              <form action={rejectOpportunityAction} className="control-form">
+                <input
+                  type="hidden"
+                  name="work_item_id"
+                  value={row.work_item_id}
+                />
+                <input
+                  type="hidden"
+                  name="opportunity_id"
+                  value={row.opportunity_id}
+                />
+                <input
+                  type="text"
+                  name="reason"
+                  required
+                  placeholder="ret gerekçesi"
+                  aria-label={`${row.title_working_label} ret gerekçesi`}
+                />
+                <button type="submit">Reddet</button>
+              </form>
+            </>
+          )}
       </div>
     </article>
   );
@@ -166,17 +199,30 @@ export default async function OpportunityReviewPage({
   });
   const rows =
     result.kind === "ok"
-      ? result.data.items.filter((row) => row.score_id !== null)
+      ? result.data.items.filter(
+          (row) =>
+            row.inspiration_evaluation_id !== null &&
+            row.recommendation !== "continue_research",
+        )
       : null;
   const pendingScore =
     result.kind === "ok"
-      ? result.data.items.filter((row) => row.score_id === null).length
+      ? result.data.items.filter(
+          (row) => row.inspiration_evaluation_id === null,
+        ).length
+      : 0;
+  const continuedResearch =
+    result.kind === "ok"
+      ? result.data.items.filter(
+          (row) => row.recommendation === "continue_research",
+        ).length
       : 0;
   return (
     <section className="panel panel-wide" aria-labelledby="firsatlar-title">
       <div className="kontrol-header">
         <div>
-          <h1 id="firsatlar-title">Fırsat İncelemesi</h1>
+          <p className="eyebrow">Gerçek editoryal kararlar</p>
+          <h1 id="firsatlar-title">Benden Bekleyenler</h1>
           <p className="muted">
             Bu konuda Konsepthane için içerik üretelim mi? Makine keşfetti,
             filtreledi, getirdi ve skorladı — karar sizin. Karar gerekçesiyle
@@ -198,13 +244,20 @@ export default async function OpportunityReviewPage({
       )}
       {rows !== null && pendingScore > 0 && (
         <p className="muted">
-          {pendingScore} fırsat henüz skorlanıyor; skorlanınca burada belirir.
+          {pendingScore} fırsatı ContentOS değerlendiriyor; karar gerektirirse
+          burada belirir.
+        </p>
+      )}
+      {rows !== null && continuedResearch > 0 && (
+        <p className="muted">
+          {continuedResearch} fırsat için sistem otomatik olarak araştırmayı
+          sürdürüyor; sizden karar beklenmiyor.
         </p>
       )}
       {rows !== null && rows.length === 0 && (
         <p className="empty-note">
-          İncelenecek skorlanmış fırsat yok. Otonom alım yeni fırsat ürettikçe
-          burada listelenir (<Link href="/calisma">Çalışmalar</Link>).
+          ContentOS çalışıyor, şu anda sizden karar bekleyen bir iş yok. Süreci
+          <Link href="/calisma"> Çalışmalar</Link> alanından izleyebilirsiniz.
         </p>
       )}
       {rows !== null && rows.length > 0 && (

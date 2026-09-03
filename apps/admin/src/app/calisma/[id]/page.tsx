@@ -201,20 +201,25 @@ function ControlForm({
   danger?: boolean;
 }) {
   return (
-    <form action={controlIntakeRunAction} className="control-form">
-      <input type="hidden" name="run_id" value={run.id} />
-      <input type="hidden" name="action" value={action} />
-      <input
-        type="text"
-        name="reason"
-        required
-        placeholder={placeholder}
-        aria-label={`${label} gerekçesi`}
-      />
-      <button type="submit" className={danger ? "danger" : undefined}>
+    <details className="run-control-menu" data-danger={danger || undefined}>
+      <summary role="button" tabIndex={0}>
         {label}
-      </button>
-    </form>
+      </summary>
+      <form action={controlIntakeRunAction} className="control-form">
+        <input type="hidden" name="run_id" value={run.id} />
+        <input type="hidden" name="action" value={action} />
+        <input
+          type="text"
+          name="reason"
+          required
+          placeholder={placeholder}
+          aria-label={`${label} gerekçesi`}
+        />
+        <button type="submit" className={danger ? "danger" : undefined}>
+          Onayla
+        </button>
+      </form>
+    </details>
   );
 }
 
@@ -235,7 +240,17 @@ function AgentRail({ agents }: { agents: AgentView[] | null }) {
               : { label: "BOŞTA", tone: "idle" };
         return (
           <li key={agent.key}>
-            <span>{AGENT_NAMES[agent.key] ?? agent.key}</span>
+            <span className="agent-mini-identity">
+              <span className="agent-status-dot" data-tone={status.tone} />
+              <span className="agent-mini-copy">
+                <strong>{AGENT_NAMES[agent.key] ?? agent.key}</strong>
+                <small>
+                  {agent.attempts_today > 0
+                    ? `${agent.attempts_today} deneme · ${agent.failures_today} hata`
+                    : "Beklemede"}
+                </small>
+              </span>
+            </span>
             <span className="badge" data-tone={status.tone}>
               {status.label}
             </span>
@@ -272,8 +287,8 @@ function RunStats({
     <div className="stat-grid">
       {stats.map((stat) => (
         <div key={stat.label} className="stat-card">
-          <span className="stat-value">{stat.value}</span>
           <span className="stat-label">{stat.label}</span>
+          <span className="stat-value">{stat.value}</span>
         </div>
       ))}
     </div>
@@ -314,8 +329,8 @@ export default async function RunDetailPage({
       event.kind === "operational_pause",
   );
   return (
-    <section className="panel panel-wide" aria-labelledby="run-title">
-      <div className="kontrol-header">
+    <section className="run-console panel-wide" aria-labelledby="run-title">
+      <div className="kontrol-header run-console-header">
         <div>
           <p className="muted run-breadcrumb">
             <Link href="/calisma">← Çalışmalar</Link>
@@ -378,32 +393,48 @@ export default async function RunDetailPage({
         noticeMessages={RUN_NOTICES}
       />
 
-      <RunPipeline stages={stages} />
+      <section className="run-progress-panel" aria-label="Çalışma ilerlemesi">
+        <RunPipeline stages={stages} />
+        <div className="run-overall-progress" aria-hidden="true">
+          <span
+            style={{
+              width: `${Math.round(
+                (stages.filter((stage) => stage.state === "done").length /
+                  Math.max(stages.length, 1)) *
+                  100,
+              )}%`,
+            }}
+          />
+        </div>
+      </section>
 
-      <div className="kontrol-columns">
+      <div className="run-console-grid">
         <section className="panel-block" aria-label="Canlı aktivite akışı">
-          <h2>Canlı Aktivite Akışı</h2>
+          <div className="panel-block-heading">
+            <h2>Canlı Aktivite Akışı</h2>
+            {live && <span className="live-indicator">● Canlı</span>}
+          </div>
           {events.length === 0 ? (
             <p className="empty-note">Henüz olay yok.</p>
           ) : (
             <ul className="activity-feed run-feed">
               {events.map((event) => (
                 <li key={event.id} data-kind={event.kind}>
-                  <span className="mono">
+                  <span className="mono activity-time">
                     {formatUtcTimestamp(event.occurred_at)}
-                  </span>{" "}
+                  </span>
                   <span className="badge run-stage-badge">
                     {STAGE_LABELS[event.stage as IntakeStageView["key"]] ??
                       "Çalışma"}
-                  </span>{" "}
-                  {describeEvent(event)}
+                  </span>
+                  <span className="activity-copy">{describeEvent(event)}</span>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <div>
+        <div className="run-metrics-column">
           <section className="panel-block" aria-label="Çalışma istatistikleri">
             <h2>Çalışma İstatistikleri</h2>
             <RunStats run={run} chain={chain} />
@@ -425,13 +456,30 @@ export default async function RunDetailPage({
               </div>
             </section>
           )}
+        </div>
 
+        <aside className="run-side-rail">
           <section className="panel-block" aria-label="Agentlar">
             <h2>Agentlar</h2>
             <AgentRail agents={agents} />
             <p className="muted">
               <Link href="/kontrol#agentlar">Detaylı görünüm →</Link>
             </p>
+          </section>
+
+          <section className="panel-block" aria-label="Motor kontrolü">
+            <h2>Motor Kontrolü</h2>
+            <div className="run-quick-actions">
+              <Link href="/sources" data-tone="ok">
+                Yeni Keşif Başlat
+              </Link>
+              <Link href="/motor" data-tone="run">
+                Tüm Motor Kontrolleri
+              </Link>
+              <Link href="/kontrol#motor-kontrolu" data-tone="bad">
+                Alımı Durdurma Ayarları
+              </Link>
+            </div>
           </section>
 
           {(errorEvents.length > 0 || run.failure_note !== null) && (
@@ -464,7 +512,7 @@ export default async function RunDetailPage({
               </p>
             </section>
           )}
-        </div>
+        </aside>
       </div>
     </section>
   );

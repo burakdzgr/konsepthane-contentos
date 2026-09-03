@@ -61,6 +61,7 @@ from contentos.briefs.values import (
     BRIEF_COMPOSER_NAME,
     BRIEF_COMPOSER_VERSION,
     MAX_EXCLUSION_LENGTH,
+    MAX_LINK_NEEDS,
     MAX_UNCERTAINTY_NOTE_LENGTH,
     MAX_UNCERTAINTY_NOTES,
     AcceptanceCriterion,
@@ -79,6 +80,7 @@ from contentos.evidence_packs.enums import (
 from contentos.evidence_packs.repository import EvidencePackRepository
 from contentos.ideas.originality import find_fake_ugc_violations
 from contentos.ideas.policy import DEFAULT_IDEA_ORIGINALITY_POLICY
+from contentos.inspiration.service import InspirationIntelligenceService
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.research.enums import VerificationStatus
 from contentos.research.models import ResearchEvidence
@@ -201,6 +203,7 @@ class _CompositionContext:
     idea_projection: dict[str, Any]
     intent_projection: dict[str, Any]
     pack_projection: dict[str, Any]
+    strategy_projection: dict[str, Any]
 
 
 class BriefCompositionEngine:
@@ -442,6 +445,9 @@ class BriefCompositionEngine:
         )
         idea = upstream.idea
         dimensions = idea.planning_dimensions.get("dimensions") or None
+        strategy_projection = InspirationIntelligenceService(
+            self._session
+        ).strategy_context_for_opportunity(upstream.opportunity.id)
         return _CompositionContext(
             work_item_id=work_item.id,
             opportunity_id=upstream.opportunity.id,
@@ -486,6 +492,7 @@ class BriefCompositionEngine:
                 "locale_limitations": upstream.pack.locale_limitations,
                 "licensing_cautions": upstream.pack.licensing_cautions,
             },
+            strategy_projection=strategy_projection,
         )
 
     def _project_evidence(
@@ -571,6 +578,9 @@ class BriefCompositionEngine:
             "idea": context.idea_projection,
             "search_intent": context.intent_projection,
             "evidence_pack": context.pack_projection,
+            # Strategic keywords are a bounded editorial compass. They are
+            # context for intent and internal linking, never repetition quotas.
+            "strategy": context.strategy_projection,
             "evidence_units": context.projected_units,
             "omitted_evidence_count": context.omitted_count,
             "contradictions": context.contradictions,
@@ -620,6 +630,28 @@ class BriefCompositionEngine:
             AcceptanceCriterion(key=entry.key, requirement=entry.requirement)
             for entry in payload.acceptance_criteria
         )
+        link_needs = [
+            InternalLinkNeed(topic=need.topic, purpose=need.purpose)
+            for need in payload.internal_link_needs
+        ]
+        existing_topics = {need.topic.casefold() for need in link_needs}
+        strategy_keywords = context.strategy_projection.get("keywords", [])
+        if isinstance(strategy_keywords, list):
+            for entry in strategy_keywords:
+                if not isinstance(entry, dict):
+                    continue
+                phrase = entry.get("phrase")
+                if not isinstance(phrase, str) or phrase.casefold() in existing_topics:
+                    continue
+                link_needs.append(
+                    InternalLinkNeed(
+                        topic=phrase,
+                        purpose="İlgili stratejik konu kümesine doğal iç bağlantı fırsatı.",
+                    )
+                )
+                existing_topics.add(phrase.casefold())
+                if len(link_needs) >= MAX_LINK_NEEDS:
+                    break
         return BriefDraftInput(
             intent_summary=payload.intent_summary,
             content_objective=payload.content_objective,
@@ -656,10 +688,7 @@ class BriefCompositionEngine:
             practical_requirements=context.planning_dimensions,
             extra_exclusions=tuple(exclusions),
             uncertainty_notes=tuple(uncertainty),
-            internal_link_needs=tuple(
-                InternalLinkNeed(topic=need.topic, purpose=need.purpose)
-                for need in payload.internal_link_needs
-            ),
+            internal_link_needs=tuple(link_needs),
             media_needs=tuple(
                 MediaNeed(role=need.role, purpose=need.purpose, constraints=need.constraints)
                 for need in payload.media_needs

@@ -1,11 +1,15 @@
 # Konsepthane ContentOS
 
-ContentOS is Konsepthane's internal editorial automation platform. It is a
+ContentOS is Konsepthane's internal idea-intelligence and editorial automation
+platform. It discovers useful ideas and inspiration signals, evaluates them
+against operator strategy, and carries approved opportunities through the
+existing evidence, brief, Writer, Editor, QA, media and publishing workflow. It is a
 **separate system** from the public Konsepthane website and will communicate
-with it only through a future versioned, authenticated Publishing API boundary
-(ADR 0003). It is a **single-operator private control panel**: there is no
-application-level login, user system, roles, or RBAC by design (ADR 0004 scope);
-access protection belongs to the deployment infrastructure boundary.
+with it only through the versioned, authenticated Publishing API boundary
+(ADR 0003). The admin is an authenticated, Turkish-first operator control panel.
+
+The product distinction and current strategy/inspiration model are documented
+in [docs/IDEA_INTELLIGENCE.md](docs/IDEA_INTELLIGENCE.md).
 
 ## Phase 1 architecture
 

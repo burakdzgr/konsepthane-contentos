@@ -23,6 +23,27 @@ It has no independent route to production publishing.
 A captured topic, URL, trend, query, or other candidate signal. It is not yet a
 verified fact or commissioned idea.
 
+### Inspiration signal
+A bounded idea/concept clue extracted from normalized source material. Multiple
+signals may describe the same underlying concept and every signal keeps its
+source/document provenance. It is not ResearchEvidence.
+
+### İlham Değeri
+An explainable editorial heuristic for novelty, usefulness, specificity,
+visual potential, shareability, emotional impact, audience and market fit,
+variation potential, and strategic fit. It is not a scientific measurement.
+
+### Audience strategy
+An operator-managed audience priority for a locale and market.
+
+### Strategic keyword
+An editorial/business compass used for discovery and planning. It is never a
+Writer keyword-frequency instruction.
+
+### Topic cluster
+A simple operator-managed content family which related strategic keywords and
+opportunities strengthen.
+
 ### Normalized record
 A stable internal representation of source material that retains its source and
 capture provenance.

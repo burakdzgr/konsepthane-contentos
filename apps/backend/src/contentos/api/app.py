@@ -15,6 +15,7 @@ from contentos.api.routes.health import router as health_router
 from contentos.api.routes.intake import router as intake_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
+from contentos.api.routes.strategy import router as strategy_router
 from contentos.api.security import require_operator, require_reviewer
 from contentos.core.config import Settings
 from contentos.core.logging import configure_logging
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(editorial_control_router, dependencies=operator_guard)
     app.include_router(dashboard_router, dependencies=operator_guard)
     app.include_router(intake_router, dependencies=operator_guard)
+    app.include_router(strategy_router, dependencies=operator_guard)
     # Human decisions require the REVIEWER role (ADR 0004): a pure reviewer
     # may decide without being able to drive the pipeline, and vice versa.
     app.include_router(decisions_router, dependencies=[Depends(require_reviewer)])

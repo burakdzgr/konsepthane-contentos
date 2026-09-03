@@ -97,6 +97,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.evidence_packs.models  # noqa: F401
     import contentos.fetching.snapshots  # noqa: F401
     import contentos.ideas.models  # noqa: F401
+    import contentos.inspiration.models  # noqa: F401
     import contentos.intake.models  # noqa: F401
     import contentos.media.models  # noqa: F401
     import contentos.normalization.models  # noqa: F401
@@ -110,6 +111,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.search_intent.models  # noqa: F401
     import contentos.signals.models  # noqa: F401
     import contentos.sources.models  # noqa: F401
+    import contentos.strategy.models  # noqa: F401
     import contentos.workflow.models  # noqa: F401
 
     assert set(Base.metadata.tables) == {
@@ -161,6 +163,11 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "operational_pause_events",
         "intake_runs",
         "intake_run_events",
+        "audience_strategies",
+        "topic_clusters",
+        "strategic_keywords",
+        "inspiration_signals",
+        "inspiration_evaluations",
     }
 
 

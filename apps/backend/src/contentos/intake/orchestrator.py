@@ -43,6 +43,7 @@ from contentos.operations.service import OperationsService
 from contentos.opportunities.models import EditorialOpportunity
 from contentos.opportunities.service import ELIGIBLE_OUTCOMES
 from contentos.sources.models import Source
+from contentos.strategy.service import StrategyService
 
 _logger = structlog.get_logger("contentos.intake.orchestrator")
 
@@ -50,6 +51,7 @@ _logger = structlog.get_logger("contentos.intake.orchestrator")
 # fetch task is state-guarded), so a lost queue message cannot stall a
 # run forever.
 STALLED_FETCH_REDISPATCH_SECONDS = 600
+PROMOTION_PRIORITY_SCAN_LIMIT = 500
 
 Dispatch = Callable[[str], None]
 
@@ -416,7 +418,12 @@ class IntakeOrchestrator:
             ranked.c.decision.in_(tuple(ELIGIBLE_OUTCOMES)),
         )
         query = (
-            select(NormalizedDocument.id)
+            select(
+                NormalizedDocument.id,
+                NormalizedDocument.title,
+                DiscoveryItem.title_hint,
+                DiscoveryItem.locale,
+            )
             .join(FetchSnapshot, FetchSnapshot.id == NormalizedDocument.fetch_snapshot_id)
             .join(DiscoveryItem, DiscoveryItem.id == FetchSnapshot.discovery_item_id)
             .outerjoin(
@@ -430,10 +437,27 @@ class IntakeOrchestrator:
                 EditorialOpportunity.id.is_(None),
             )
             .order_by(NormalizedDocument.id)
-            .limit(limit + len(exclude))
+            .limit(max(PROMOTION_PRIORITY_SCAN_LIMIT, limit + len(exclude)))
         )
-        results = [doc_id for doc_id in self._session.scalars(query).all() if doc_id not in exclude]
-        return results[:limit]
+        source = self._session.get(Source, run.source_id)
+        market = source.market if source is not None else "TR"
+        strategy = StrategyService(self._session)
+        candidates = [
+            (
+                strategy.priority_for_text(
+                    " ".join(part for part in (title, title_hint) if part),
+                    locale=locale,
+                    market=market,
+                ),
+                doc_id,
+            )
+            for doc_id, title, title_hint, locale in self._session.execute(query).all()
+            if doc_id not in exclude
+        ]
+        # Strategy changes processing order only. A zero-priority unexpected
+        # discovery remains in the list and is never censored.
+        candidates.sort(key=lambda row: (-row[0], str(row[1])))
+        return [doc_id for _, doc_id in candidates[:limit]]
 
     def _promote_step(
         self, run: IntakeRun, policy: IntakePolicy, *, fetch_done: bool

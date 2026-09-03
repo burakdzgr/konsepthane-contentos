@@ -34,10 +34,6 @@ import type {
   WorkQueueRow,
 } from "@/lib/editorial-api";
 
-type SelectionEvent = WorkItemDetail["selection_events"][number];
-type ResearchInput = WorkItemDetail["research_inputs"][number];
-type WorkflowEvent = WorkItemDetail["workflow_events"][number];
-
 export const WORK_ITEM_ID = "a1111111-2222-4333-8444-555555555555";
 export const OPPORTUNITY_ID = "b1111111-2222-4333-8444-555555555555";
 export const SCORE_ID = "c1111111-2222-4333-8444-555555555555";
@@ -83,6 +79,22 @@ export function queueRow(overrides: Partial<WorkQueueRow> = {}): WorkQueueRow {
     score_evaluated_at: AT,
     score_engine_name: "opportunity-score",
     score_engine_version: "1",
+    inspiration_evaluation_id: "b1111111-2222-4333-8444-555555555555",
+    inspiration_band: "high",
+    search_opportunity: "unknown",
+    trend_state: "unknown",
+    recommendation: "produce",
+    inspiration_rationale: "İlham değeri yüksek ve stratejik konu eşleşti.",
+    strategy_context: {
+      clusters: [
+        {
+          id: "b2111111-2222-4333-8444-555555555555",
+          name: "Doğum Günü",
+        },
+      ],
+    },
+    inspiration_signal_count: 6,
+    inspiration_concept_count: 4,
     selected_idea_id: IDEA_ID,
     selected_idea_title: "Balon temalı plan",
     selected_idea_originality: "passed",

@@ -17,6 +17,7 @@ from contentos.duplicates import models as _duplicate_models  # noqa: F401
 from contentos.evidence_packs import models as _evidence_pack_models  # noqa: F401
 from contentos.fetching import snapshots as _fetch_snapshots  # noqa: F401
 from contentos.ideas import models as _idea_models  # noqa: F401
+from contentos.inspiration import models as _inspiration_models  # noqa: F401
 from contentos.intake import models as _intake_models  # noqa: F401
 from contentos.normalization import models as _normalization_models  # noqa: F401
 from contentos.operations import models as _operations_models  # noqa: F401
@@ -26,6 +27,7 @@ from contentos.research import models as _research_models  # noqa: F401
 from contentos.search_intent import models as _search_intent_models  # noqa: F401
 from contentos.signals import models as _signal_models  # noqa: F401
 from contentos.sources import models as _sources_models  # noqa: F401
+from contentos.strategy import models as _strategy_models  # noqa: F401
 from contentos.workflow import models as _workflow_models  # noqa: F401
 
 target_metadata = Base.metadata

@@ -30,7 +30,11 @@ vi.mock("@/lib/intake-api", async () => {
     await vi.importActual<typeof import("@/lib/intake-api")>(
       "@/lib/intake-api",
     );
-  return { ...actual, fetchIntakeRuns: vi.fn() };
+  return {
+    ...actual,
+    fetchIntakeRuns: vi.fn(),
+    fetchIntakeRunDetail: vi.fn(),
+  };
 });
 
 import KontrolPage from "@/app/kontrol/page";
@@ -44,7 +48,11 @@ import {
   type DashboardSummary,
 } from "@/lib/dashboard-api";
 import { fetchWorkQueue, WORKFLOW_STATES } from "@/lib/editorial-api";
-import { fetchIntakeRuns } from "@/lib/intake-api";
+import {
+  fetchIntakeRunDetail,
+  fetchIntakeRuns,
+  type IntakeRunView,
+} from "@/lib/intake-api";
 import { queuePage, queueRow } from "./editorial-fixtures";
 
 const summaryMock = vi.mocked(fetchDashboardSummary);
@@ -53,6 +61,7 @@ const activityMock = vi.mocked(fetchDashboardActivity);
 const publicationsMock = vi.mocked(fetchDashboardPublications);
 const queueMock = vi.mocked(fetchWorkQueue);
 const runsMock = vi.mocked(fetchIntakeRuns);
+const runDetailMock = vi.mocked(fetchIntakeRunDetail);
 
 const AT = "2026-09-03T10:00:00+00:00";
 
@@ -172,48 +181,127 @@ beforeEach(() => {
     data: { generated_at: AT, runs: [] },
     requestId: null,
   });
+  runDetailMock.mockResolvedValue({ kind: "unreachable" });
 });
 
 describe("Kontrol Merkezi page", () => {
-  it("renders real KPI values and the full pipeline", async () => {
+  it("focuses the latest live run and uses its durable progress", async () => {
+    const liveRun: IntakeRunView = {
+      id: "1f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+      source_id: "11111111-2222-4333-8444-555555555555",
+      source_slug: "kara",
+      source_name: "Kara's Party Ideas",
+      status: "running",
+      discovered_new: 4993,
+      rediscovered: 0,
+      prefilter_accepted: 4201,
+      prefilter_rejected: 792,
+      fetch_dispatched: 50,
+      fetched: 18,
+      fetch_failed: 0,
+      promotions_dispatched: 11,
+      opportunities_created: 11,
+      remaining_accepted: 4151,
+      remaining_discovered: 0,
+      policy: {},
+      failure_note: null,
+      created_at: AT,
+      discovery_completed_at: AT,
+      prefilter_completed_at: AT,
+      finished_at: null,
+      updated_at: AT,
+      last_event_at: AT,
+    };
+    runsMock.mockResolvedValue({
+      kind: "ok",
+      data: { generated_at: AT, runs: [liveRun] },
+      requestId: null,
+    });
+    runDetailMock.mockResolvedValue({
+      kind: "ok",
+      requestId: null,
+      data: {
+        generated_at: AT,
+        run: liveRun,
+        chain: {
+          normalized_succeeded: 18,
+          normalized_failed: 0,
+          duplicates_evaluated: 11,
+          last_processed_title: "Frozen Birthday Party",
+          last_processed_url:
+            "https://karaspartyideas.com/frozen-birthday-party",
+        },
+        stages: [
+          { key: "discovery", state: "done", counts: { new: 4993 } },
+          { key: "prefilter", state: "done", counts: { accepted: 4201 } },
+          { key: "fetch", state: "active", counts: { fetched: 18 } },
+          { key: "normalize", state: "active", counts: { succeeded: 18 } },
+          { key: "duplicate", state: "active", counts: { evaluated: 11 } },
+          { key: "promote", state: "done", counts: { opportunities: 11 } },
+        ],
+        events: [
+          {
+            id: 1,
+            stage: "discovery",
+            kind: "discovery_completed",
+            detail: { entries_seen: 4993 },
+            occurred_at: AT,
+          },
+        ],
+      },
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Kara's Party Ideas — Research Run #1f1e",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("ÇALIŞIYOR")).toBeTruthy();
+    expect(screen.getAllByText("4.993").length).toBeGreaterThan(0);
+    expect(screen.getByText("Frozen Birthday Party")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Duraklat/ })).toBeTruthy();
+    expect(runDetailMock).toHaveBeenCalledWith(liveRun.id);
+  });
+
+  it("renders real KPI values and the compact operations pipeline", async () => {
     await renderPage();
 
     expect(
       screen.getByRole("heading", { name: "ContentOS Motoru" }),
     ).toBeTruthy();
     expect(screen.getByText("İçerik Üretim Kontrol Merkezi")).toBeTruthy();
-    // KPI cards carry the summary's actual numbers.
-    const drafting = screen.getByRole("link", { name: /3 Drafting/ });
-    expect(drafting.getAttribute("href")).toBe("/editorial?state=drafting");
-    expect(screen.getByRole("link", { name: /2 İnsan Onayı/ })).toBeTruthy();
-    // The pipeline shows all eleven stages.
+    expect(screen.getByText("Çalışma İstatistikleri")).toBeTruthy();
+    expect(screen.getByText("Keşfedilen URL")).toBeTruthy();
+    expect(screen.getByText("Fetch Edilen")).toBeTruthy();
+    // The control center groups the durable workflow into the nine visual
+    // stages used by the operations-console design.
     for (const label of [
-      "Research",
-      "Opportunity",
-      "Evidence",
-      "Brief",
-      "Writer",
-      "Editor",
-      "QA",
-      "Human Review",
-      "Package",
-      "Schedule",
-      "Publish",
+      "Keşif",
+      "Ön Eleme",
+      "Fetch",
+      "Normalize",
+      "Analiz",
+      "Fırsat",
+      "Kanıt",
+      "SEO / Niyet",
+      "Editoryal",
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    expect(screen.getByText("1 getirme hatası")).toBeTruthy();
+    expect(screen.getAllByText("1 hata").length).toBeGreaterThan(0);
   });
 
   it("shows the agent card with honest status and controls", async () => {
     await renderPage();
 
-    expect(screen.getByText("Writer Ajanı")).toBeTruthy();
-    expect(screen.getByText("AKTİF")).toBeTruthy();
+    expect(screen.getByText("Writer Agent")).toBeTruthy();
+    expect(screen.getByText("RUNNING")).toBeTruthy();
     expect(screen.getByText("openai/gpt-5")).toBeTruthy();
-    expect(screen.getByText("%75")).toBeTruthy();
+    expect(screen.getByText(/%75/)).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Yeni işi durdur" }),
+      screen.getByText(/Yeni İş Alımını Durdur/, { selector: "summary" }),
     ).toBeTruthy();
   });
 
@@ -230,10 +318,8 @@ describe("Kontrol Merkezi page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("MOTOR DURDU")).toBeTruthy();
-    expect(
-      screen.getByText(/Motor durduruldu — hiçbir ajan yeni iş almaz/),
-    ).toBeTruthy();
+    expect(screen.getByText("PAUSED")).toBeTruthy();
+    expect(screen.getByText(/Motor durduruldu: acil bakım/)).toBeTruthy();
     expect(screen.getByText(/acil bakım/)).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "▶ Motoru Başlat" }),

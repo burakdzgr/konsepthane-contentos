@@ -32,32 +32,34 @@ describe("AppNav", () => {
 
     const nav = screen.getByRole("navigation", { name: "Birincil" });
     expect(nav).toBeTruthy();
-    expect(screen.getByText("Komuta")).toBeTruthy();
+    expect(screen.getByText("Çalışma Alanı")).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: "Kontrol Merkezi" })
         .getAttribute("href"),
     ).toBe("/kontrol");
     expect(
-      screen.getByRole("link", { name: "Motor" }).getAttribute("href"),
-    ).toBe("/motor");
+      screen.getByRole("link", { name: "Strateji" }).getAttribute("href"),
+    ).toBe("/strateji");
     expect(
       screen.getByRole("link", { name: "Kaynaklar" }).getAttribute("href"),
     ).toBe("/sources");
     expect(
       screen
-        .getByRole("link", { name: /Onay Bekleyenler/ })
+        .getByRole("link", { name: /Benden Bekleyenler/ })
         .getAttribute("href"),
-    ).toBe("/editorial?state=awaiting_human_review");
+    ).toBe("/firsatlar");
   });
 
-  it("marks unavailable domains honestly instead of dead links", () => {
+  it("moves technical operations under the system section", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
 
-    expect(screen.getByText("Dağıtım (mevcut değil)").tagName).toBe("SPAN");
-    expect(screen.getByText("Analitik (mevcut değil)").tagName).toBe("SPAN");
-    expect(screen.queryByRole("link", { name: /Dağıtım/ })).toBeNull();
+    expect(screen.getByText("Sistem")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Gelişmiş Motor" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Teknik Görünümler" }),
+    ).toBeTruthy();
   });
 
   it("marks only the current page with aria-current", () => {
@@ -76,21 +78,13 @@ describe("AppNav", () => {
     ).toBeNull();
   });
 
-  it("distinguishes filtered editorial entries by their state param", () => {
+  it("keeps detailed state filters out of the primary navigation", () => {
     usePathnameMock.mockReturnValue("/editorial");
     withSearch({ state: "drafting" });
     render(<AppNav />);
 
-    expect(
-      screen
-        .getByRole("link", { name: "Taslaklar" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
-    expect(
-      screen
-        .getByRole("link", { name: "Briefler" })
-        .getAttribute("aria-current"),
-    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "Taslaklar" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Briefler" })).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "İçerikler" })
@@ -106,7 +100,7 @@ describe("AppNav", () => {
 
     expect(
       screen
-        .getByRole("link", { name: "Araştırma (gelişmiş)" })
+        .getByRole("link", { name: "Teknik Görünümler" })
         .getAttribute("aria-current"),
     ).toBe("page");
   });

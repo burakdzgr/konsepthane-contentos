@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+import { AppIcon, type AppIconName } from "./icons";
+
 // The sidebar navigation: every entry points at a REAL page or a real
 // filtered view; capabilities that do not exist yet (distribution,
 // analytics) are honestly marked unavailable instead of dead links.
@@ -19,6 +21,7 @@ export type NavBadges = {
 type NavEntry = {
   href: string;
   label: string;
+  icon: AppIconName;
   badge?: keyof NavBadges;
   disabled?: boolean;
 };
@@ -30,51 +33,37 @@ type NavSection = {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: "Komuta",
+    title: "Çalışma Alanı",
     entries: [
-      { href: "/kontrol", label: "Kontrol Merkezi" },
-      { href: "/calisma", label: "Çalışmalar", badge: "calisma" },
-      { href: "/motor", label: "Motor" },
-    ],
-  },
-  {
-    title: "Kaynaklar",
-    entries: [{ href: "/sources", label: "Kaynaklar" }],
-  },
-  {
-    title: "İçerik Pipeline",
-    entries: [
-      { href: "/firsatlar", label: "Fırsatlar", badge: "firsatlar" },
-      { href: "/editorial", label: "İçerikler" },
-      { href: "/editorial?state=briefing", label: "Briefler" },
-      { href: "/editorial?state=drafting", label: "Taslaklar" },
+      { href: "/kontrol", label: "Kontrol Merkezi", icon: "home" },
       {
-        href: "/editorial?state=awaiting_human_review",
-        label: "Onay Bekleyenler",
-        badge: "onay",
+        href: "/calisma",
+        label: "Çalışmalar",
+        icon: "activity",
+        badge: "calisma",
       },
+      { href: "/sources", label: "Kaynaklar", icon: "source" },
     ],
   },
   {
-    title: "Yayınlama",
+    title: "İçerik",
     entries: [
       {
-        href: "/kontrol#yayin-kuyrugu",
-        label: "Yayın Kuyruğu",
-        badge: "yayin",
+        href: "/firsatlar",
+        label: "Benden Bekleyenler",
+        icon: "spark",
+        badge: "firsatlar",
       },
-      { href: "/editorial?state=published", label: "Yayınlananlar" },
-      { href: "", label: "Dağıtım (mevcut değil)", disabled: true },
+      { href: "/editorial", label: "İçerikler", icon: "content" },
+      { href: "/strateji", label: "Strateji", icon: "spark" },
     ],
   },
   {
-    title: "Ajanlar & Sistem",
+    title: "Sistem",
     entries: [
-      { href: "/kontrol#agentlar", label: "Agentlar" },
-      { href: "/kontrol#motor-kontrolu", label: "Motor Kontrolü" },
-      { href: "/research", label: "Araştırma (gelişmiş)" },
-      { href: "/", label: "Sistem Sağlığı" },
-      { href: "", label: "Analitik (mevcut değil)", disabled: true },
+      { href: "/", label: "Sistem Sağlığı", icon: "health" },
+      { href: "/motor", label: "Gelişmiş Motor", icon: "motor" },
+      { href: "/research", label: "Teknik Görünümler", icon: "research" },
     ],
   },
 ];
@@ -120,7 +109,8 @@ function SidebarLinks({ badges }: { badges: NavBadges }) {
             if (entry.disabled) {
               return (
                 <span key={entry.label} className="nav-entry-disabled">
-                  {entry.label}
+                  <AppIcon name={entry.icon} size={16} />
+                  <span>{entry.label}</span>
                 </span>
               );
             }
@@ -134,7 +124,8 @@ function SidebarLinks({ badges }: { badges: NavBadges }) {
                   isCurrent(entry, pathname, stateParam) ? "page" : undefined
                 }
               >
-                {entry.label}
+                <AppIcon name={entry.icon} size={16} />
+                <span className="nav-entry-label">{entry.label}</span>
                 {count > 0 && <span className="nav-badge">{count}</span>}
               </Link>
             );

@@ -34,7 +34,7 @@ describe("Opportunity review page", () => {
         queueRow({
           current_state: "idea_scoring",
           disposition: "open",
-          score_eligibility: "commissionable",
+          recommendation: "produce",
         }),
       ]),
       requestId: null,
@@ -43,14 +43,15 @@ describe("Opportunity review page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("heading", { name: "Fırsat İncelemesi" }),
+      screen.getByRole("heading", { name: "Benden Bekleyenler" }),
     ).toBeTruthy();
     expect(queueMock).toHaveBeenCalledWith({
       workflowState: "idea_scoring",
       opportunityDisposition: "open",
       limit: 50,
     });
-    expect(screen.getByText("ÜRET")).toBeTruthy();
+    expect(screen.getByText("İÇERİK ÜRET")).toBeTruthy();
+    expect(screen.getByText("Yüksek")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "İçerik üretimini onayla" }),
     ).toBeTruthy();
@@ -60,14 +61,15 @@ describe("Opportunity review page", () => {
     expect(screen.getByPlaceholderText("ret gerekçesi")).toBeTruthy();
   });
 
-  it("maps score eligibilities to honest recommendations", async () => {
+  it("keeps machine continuation out of the human decision inbox", async () => {
     queueMock.mockResolvedValue({
       kind: "ok",
       data: queuePage([
         queueRow({
           current_state: "idea_scoring",
           disposition: "open",
-          score_eligibility: "needs_operator_review",
+          recommendation: "continue_research",
+          inspiration_band: "low",
         }),
       ]),
       requestId: null,
@@ -75,7 +77,16 @@ describe("Opportunity review page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("İNCELE")).toBeTruthy();
+    expect(
+      screen.getByText(/sistem otomatik olarak araştırmayı sürdürüyor/),
+    ).toBeTruthy();
+    expect(screen.queryByText("ARAŞTIRMAYA DEVAM ET")).toBeNull();
+    expect(
+      screen.getByText(/şu anda sizden karar bekleyen bir iş yok/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "İçerik üretimini onayla" }),
+    ).toBeNull();
   });
 
   it("keeps unscored opportunities out with an honest note", async () => {
@@ -85,8 +96,8 @@ describe("Opportunity review page", () => {
         queueRow({
           current_state: "idea_scoring",
           disposition: "open",
-          score_id: null,
-          score_eligibility: null,
+          inspiration_evaluation_id: null,
+          recommendation: null,
         }),
       ]),
       requestId: null,
@@ -94,7 +105,9 @@ describe("Opportunity review page", () => {
 
     await renderPage();
 
-    expect(screen.getByText(/1 fırsat henüz skorlanıyor/)).toBeTruthy();
+    expect(
+      screen.getByText(/1 fırsatı ContentOS değerlendiriyor/),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "İçerik üretimini onayla" }),
     ).toBeNull();

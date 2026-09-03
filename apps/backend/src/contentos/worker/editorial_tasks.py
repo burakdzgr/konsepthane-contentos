@@ -51,6 +51,7 @@ from contentos.evidence_packs.service import (
 )
 from contentos.ideas.generation import IdeaGenerationEngine
 from contentos.ideas.service import IdeaService
+from contentos.inspiration.service import InspirationIntelligenceService
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.opportunities.errors import OpportunityNotFoundError
 from contentos.opportunities.repository import OpportunityRepository
@@ -225,6 +226,7 @@ def register_editorial_pipeline_tasks(
         parsed_id = _parse_uuid(opportunity_id)
         with task_session() as session:
             evaluation = OpportunityScoringService(session).evaluate_opportunity(parsed_id)
+            intelligence = InspirationIntelligenceService(session).evaluate(parsed_id)
             session.commit()
             # Commissioning remains a HUMAN decision: no downstream dispatch.
             return _summary(
@@ -234,6 +236,12 @@ def register_editorial_pipeline_tasks(
                 opportunity_score_id=str(evaluation.score.id),
                 band=evaluation.score.overall_band.value,
                 eligibility=evaluation.score.eligibility.value,
+                inspiration_band=intelligence.evaluation.inspiration_band.value,
+                search_opportunity=intelligence.evaluation.search_opportunity.value,
+                recommendation=intelligence.evaluation.recommendation.value,
+                inspiration_signal_count=len(
+                    intelligence.evaluation.input_snapshot.get("signal_ids", [])
+                ),
             )
 
     # --- generate_idea_candidates -------------------------------------------

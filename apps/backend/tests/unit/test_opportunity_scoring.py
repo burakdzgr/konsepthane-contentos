@@ -24,6 +24,9 @@ from contentos.fetching.models import (
     RobotsDecision,
 )
 from contentos.fetching.snapshot_service import FetchSnapshotService
+from contentos.inspiration.enums import SearchOpportunityBand, TrendState
+from contentos.inspiration.models import InspirationSignal
+from contentos.inspiration.service import InspirationIntelligenceService
 from contentos.normalization.service import NormalizationService
 from contentos.opportunities.enums import (
     ComponentAvailability,
@@ -55,6 +58,7 @@ from contentos.research.enums import EvidenceType, ExtractionMethod
 from contentos.research.service import ResearchEvidenceService
 from contentos.sources.enums import SourceKind, TrustTier
 from contentos.sources.service import SourceRegistryService
+from contentos.strategy.service import StrategyService
 from contentos.workflow.repository import WorkflowRepository
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
@@ -222,6 +226,38 @@ def engine_inputs(
         sources_with_evidence=min(evidence_count, len(documents)),
         evaluated_at=evaluated_at,
     )
+
+
+def test_inspiration_signals_keep_document_provenance_and_unknowns(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with open_session(session_factory) as session:
+        opportunity_id, document_id = promote(session, "frozen-dogum-gunu")
+        add_evidence(session, document_id, "Frozen teması görsel bir kutlama uygulamasıdır.")
+        cluster = StrategyService(session).create_cluster(name="Çocuk Doğum Günü", priority=100)
+        StrategyService(session).create_keyword(
+            phrase="frozen doğum günü",
+            priority=95,
+            topic_cluster_id=cluster.id,
+        )
+        OpportunityScoringService(session).evaluate_opportunity(opportunity_id, evaluated_at=NOW)
+
+        first = InspirationIntelligenceService(session).evaluate(opportunity_id, evaluated_at=NOW)
+        second = InspirationIntelligenceService(session).evaluate(opportunity_id, evaluated_at=NOW)
+        session.commit()
+
+        signals = list(
+            session.scalars(
+                select(InspirationSignal).where(InspirationSignal.opportunity_id == opportunity_id)
+            )
+        )
+        assert len(signals) == 1
+        assert signals[0].normalized_document_id == document_id
+        assert first.evaluation.search_opportunity is SearchOpportunityBand.UNKNOWN
+        assert first.evaluation.trend_state is TrendState.UNKNOWN
+        assert "measured_search_demand" in first.evaluation.missing_signals
+        assert second.created is False
+        assert second.evaluation.id == first.evaluation.id
 
 
 class TestEngineMath:

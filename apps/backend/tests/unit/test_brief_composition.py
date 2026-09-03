@@ -48,6 +48,7 @@ from contentos.fetching.models import (
 from contentos.fetching.snapshot_service import FetchSnapshotService
 from contentos.ideas.enums import ContentType
 from contentos.ideas.service import IdeaService
+from contentos.inspiration.service import InspirationIntelligenceService
 from contentos.normalization.service import NormalizationService
 from contentos.opportunities.enums import (
     OpportunityActor,
@@ -67,6 +68,7 @@ from contentos.search_intent.service import SearchIntentService
 from contentos.search_intent.values import IntentComposition
 from contentos.sources.enums import SourceKind, TrustTier
 from contentos.sources.service import SourceRegistryService
+from contentos.strategy.service import StrategyService
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 from contentos.workflow.service import WorkflowService
@@ -485,6 +487,35 @@ class TestSuccessfulComposition:
             assert "uzun ve özgün araştırma metni" not in serialized
             assert "clean_text" not in serialized
             assert "current_state" not in serialized
+
+    def test_relevant_strategy_reaches_brief_without_keyword_quota(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with open_session(session_factory) as session:
+            context = seed_context(session)
+            strategy = StrategyService(session)
+            cluster = strategy.create_cluster(name="Çocuk Doğum Günü", priority=95)
+            strategy.create_keyword(
+                phrase="doğum günü partisi",
+                priority=100,
+                topic_cluster_id=cluster.id,
+            )
+            InspirationIntelligenceService(session).evaluate(context.opportunity_id)
+            session.commit()
+
+            provider = CapturingFake(payload=composition_payload(context))
+            result = compose(session, context, provider)
+            session.commit()
+
+            assert provider.last_request is not None
+            projection = provider.last_request.input_projection["strategy"]
+            assert projection["bounded"] is True
+            assert [entry["phrase"] for entry in projection["keywords"]] == ["doğum günü partisi"]
+            assert "repeat" not in json.dumps(projection).casefold()
+            assert result.brief is not None
+            assert any(
+                need["topic"] == "doğum günü partisi" for need in result.brief.internal_link_needs
+            )
 
     def test_manual_path_regression(self, session_factory: sessionmaker[Session]) -> None:
         with open_session(session_factory) as session:
