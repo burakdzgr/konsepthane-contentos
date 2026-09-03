@@ -8,10 +8,11 @@ import { usePathname } from "next/navigation";
 // page for assistive technology.
 
 const NAV_LINKS = [
-  { href: "/", label: "Status" },
-  { href: "/sources", label: "Sources" },
-  { href: "/research", label: "Research Pipeline" },
-  { href: "/editorial", label: "Editorial" },
+  { href: "/motor", label: "Motor" },
+  { href: "/", label: "Durum" },
+  { href: "/sources", label: "Kaynaklar" },
+  { href: "/research", label: "Araştırma Hattı" },
+  { href: "/editorial", label: "Editoryal" },
 ] as const;
 
 function isCurrent(href: string, pathname: string): boolean {
@@ -24,7 +25,7 @@ function isCurrent(href: string, pathname: string): boolean {
 export function AppNav() {
   const pathname = usePathname() ?? "/";
   return (
-    <nav className="app-nav" aria-label="Primary">
+    <nav className="app-nav" aria-label="Birincil">
       {NAV_LINKS.map((link) => (
         <Link
           key={link.href}

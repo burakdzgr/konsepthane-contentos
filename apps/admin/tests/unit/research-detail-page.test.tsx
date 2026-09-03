@@ -41,20 +41,18 @@ describe("Research detail page", () => {
 
     await renderPage();
 
+    expect(screen.getByRole("heading", { name: "Keşif öğesi" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Keşif" })).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Discovery item" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Discovery" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Fetch history" })).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Normalization history" }),
+      screen.getByRole("heading", { name: "Getirme geçmişi" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Duplicate decisions" }),
+      screen.getByRole("heading", { name: "Normalleştirme geçmişi" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Evidence summary" }),
+      screen.getByRole("heading", { name: "Kopya kararları" }),
     ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Kanıt özeti" })).toBeTruthy();
 
     expect(screen.getAllByText("Örnek Kaynak").length).toBeGreaterThan(0);
     expect(screen.getByText("Uzun Başlık")).toBeTruthy();
@@ -70,7 +68,7 @@ describe("Research detail page", () => {
     expect(screen.getByText(ITEM_ID)).toBeTruthy();
     // Statements/excerpts never render; the page says counts only.
     expect(
-      screen.getByText(/statements and excerpts are not shown/i),
+      screen.getByText(/kanıt ifadeleri ve alıntılar burada gösterilmez/),
     ).toBeTruthy();
     // Read-only: no buttons at all on the detail page.
     expect(screen.queryAllByRole("button")).toEqual([]);
@@ -89,7 +87,9 @@ describe("Research detail page", () => {
     await renderPage();
 
     expect(
-      screen.getByText("Showing the latest 1 of 22 fetch attempts."),
+      screen.getByText(
+        "22 getirme denemesi içinden en son 1 tanesi gösteriliyor.",
+      ),
     ).toBeTruthy();
   });
 
@@ -115,11 +115,11 @@ describe("Research detail page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("No fetch attempts recorded.")).toBeTruthy();
+    expect(screen.getByText("Kayıtlı getirme denemesi yok.")).toBeTruthy();
     expect(
-      screen.getByText("No normalization attempts recorded."),
+      screen.getByText("Kayıtlı normalleştirme denemesi yok."),
     ).toBeTruthy();
-    expect(screen.getByText("No duplicate decisions recorded.")).toBeTruthy();
+    expect(screen.getByText("Kayıtlı kopya kararı yok.")).toBeTruthy();
   });
 
   it("raises the framework not-found flow for a missing item", async () => {
@@ -143,10 +143,10 @@ describe("Research detail page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Kabul et" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reddet" })).toBeTruthy();
     const reasonSelect = screen.getByLabelText(
-      "Rejection reason",
+      "Reddetme gerekçesi",
     ) as HTMLSelectElement;
     const reasons = Array.from(reasonSelect.options)
       .map((option) => option.value)
@@ -159,8 +159,12 @@ describe("Research detail page", () => {
       "invalid_url",
       "unsupported_scheme",
     ]);
-    expect(screen.queryByRole("button", { name: "Start fetch" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Requeue" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Getirmeyi başlat" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Yeniden kuyruğa al" }),
+    ).toBeNull();
   });
 
   it("shows only Start fetch for an ACCEPTED item", async () => {
@@ -177,10 +181,12 @@ describe("Research detail page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Start fetch" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
-    expect(screen.getByText(/continues automatically/i)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Getirmeyi başlat" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Kabul et" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reddet" })).toBeNull();
+    expect(screen.getByText(/otomatik olarak devam eder/)).toBeTruthy();
   });
 
   it("shows only Requeue with a required reason for a FETCH_FAILED item", async () => {
@@ -197,11 +203,17 @@ describe("Research detail page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Requeue" })).toBeTruthy();
-    const reason = screen.getByLabelText("Requeue reason") as HTMLInputElement;
+    expect(
+      screen.getByRole("button", { name: "Yeniden kuyruğa al" }),
+    ).toBeTruthy();
+    const reason = screen.getByLabelText(
+      "Yeniden kuyruğa alma gerekçesi",
+    ) as HTMLInputElement;
     expect(reason.required).toBe(true);
-    expect(screen.queryByRole("button", { name: "Start fetch" })).toBeNull();
-    expect(screen.getByText(/does not start the fetch/i)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Getirmeyi başlat" }),
+    ).toBeNull();
+    expect(screen.getByText(/getirmeyi başlatmaz/)).toBeTruthy();
   });
 
   it("shows terminal text and no actions for a REJECTED item", async () => {
@@ -220,7 +232,7 @@ describe("Research detail page", () => {
     await renderPage();
 
     expect(screen.queryAllByRole("button")).toEqual([]);
-    expect(screen.getByText(/rejection is terminal/i)).toBeTruthy();
+    expect(screen.getByText(/Reddetme kalıcıdır/)).toBeTruthy();
   });
 
   it("renders an action notice from the redirect params", async () => {
@@ -237,20 +249,18 @@ describe("Research detail page", () => {
       }),
     );
 
-    expect(screen.getByText(/fetch queued/i)).toBeTruthy();
+    expect(screen.getByText(/Getirme kuyruğa alındı/)).toBeTruthy();
   });
 
   it("renders unreachable and malformed states without crashing", async () => {
     fetchMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage();
-    expect(screen.getByRole("status").textContent).toMatch(
-      /cannot be reached/i,
-    );
+    expect(screen.getByRole("status").textContent).toMatch(/ulaşılamıyor/);
 
     fetchMock.mockResolvedValue({ kind: "malformed" });
     render(
       await ResearchDetailPage({ params: Promise.resolve({ id: ITEM_ID }) }),
     );
-    expect(screen.getByText(/unexpected data/i)).toBeTruthy();
+    expect(screen.getByText(/beklenmeyen veri döndürdü/)).toBeTruthy();
   });
 });

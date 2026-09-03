@@ -11,7 +11,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ContentOS Admin",
-  description: "Private internal control panel for Konsepthane ContentOS.",
+  description: "Konsepthane ContentOS için özel dahili kontrol paneli.",
   robots: {
     index: false,
     follow: false,
@@ -32,12 +32,12 @@ export default async function RootLayout({
     user = userResult.kind === "ok" ? userResult.data : null;
   }
   return (
-    <html lang="en">
+    <html lang="tr">
       <body>
         <header className="app-header">
           <div className="app-identity">
             <span className="app-name">ContentOS</span>
-            <span className="app-role">Internal Control Panel</span>
+            <span className="app-role">Dahili Kontrol Paneli</span>
           </div>
           <AppNav />
           {user !== null && (
@@ -46,7 +46,7 @@ export default async function RootLayout({
             </span>
           )}
           <form action={logoutAction}>
-            <button type="submit">Sign out</button>
+            <button type="submit">Çıkış yap</button>
           </form>
         </header>
         <main className="app-main">{children}</main>

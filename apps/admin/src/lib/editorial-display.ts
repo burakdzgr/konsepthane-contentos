@@ -119,9 +119,9 @@ export function findingSeverityTone(value: string): BadgeTone {
   return FINDING_SEVERITY_TONES[value] ?? "neutral";
 }
 
-// A missing verdict is the truth "UNKNOWN", never a pass and never a zero.
+// A missing verdict is the truth "BİLİNMİYOR", never a pass and never a zero.
 export function verdictLabel(value: string | null): string {
-  return value === null ? "UNKNOWN" : value;
+  return value === null ? "BİLİNMİYOR" : value;
 }
 
 export function verdictTone(value: string | null): BadgeTone {
@@ -142,13 +142,13 @@ export function verdictTone(value: string | null): BadgeTone {
 export function cannibalizationLabel(status: string): string {
   switch (status) {
     case "not_checked":
-      return "Not checked";
+      return "Kontrol edilmedi";
     case "no_known_conflict":
-      return "No known conflict (contentos-internal scope only)";
+      return "Bilinen çakışma yok (yalnızca contentos-içi kapsam)";
     case "potential_conflict":
-      return "Potential conflict";
+      return "Olası çakışma";
     case "known_conflict":
-      return "Known conflict";
+      return "Bilinen çakışma";
     default:
       return status;
   }

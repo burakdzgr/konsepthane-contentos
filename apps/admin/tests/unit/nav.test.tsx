@@ -15,21 +15,24 @@ beforeEach(() => {
 });
 
 describe("AppNav", () => {
-  it("renders the three primary navigation links", () => {
+  it("renders the primary navigation links with Motor first", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
 
-    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const nav = screen.getByRole("navigation", { name: "Birincil" });
     expect(nav).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "Status" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Motor" }).getAttribute("href"),
+    ).toBe("/motor");
+    expect(
+      screen.getByRole("link", { name: "Durum" }).getAttribute("href"),
     ).toBe("/");
     expect(
-      screen.getByRole("link", { name: "Sources" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Kaynaklar" }).getAttribute("href"),
     ).toBe("/sources");
     expect(
       screen
-        .getByRole("link", { name: "Research Pipeline" })
+        .getByRole("link", { name: "Araştırma Hattı" })
         .getAttribute("href"),
     ).toBe("/research");
   });
@@ -40,11 +43,11 @@ describe("AppNav", () => {
 
     expect(
       screen
-        .getByRole("link", { name: "Sources" })
+        .getByRole("link", { name: "Kaynaklar" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(
-      screen.getByRole("link", { name: "Status" }).getAttribute("aria-current"),
+      screen.getByRole("link", { name: "Durum" }).getAttribute("aria-current"),
     ).toBeNull();
   });
 
@@ -56,11 +59,11 @@ describe("AppNav", () => {
 
     expect(
       screen
-        .getByRole("link", { name: "Research Pipeline" })
+        .getByRole("link", { name: "Araştırma Hattı" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(
-      screen.getByRole("link", { name: "Status" }).getAttribute("aria-current"),
+      screen.getByRole("link", { name: "Durum" }).getAttribute("aria-current"),
     ).toBeNull();
   });
 });

@@ -39,13 +39,13 @@ describe("Editorial work queue page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("heading", { name: "Editorial Work Queue" }),
+      screen.getByRole("heading", { name: "Editoryal İş Kuyruğu" }),
     ).toBeTruthy();
     expect(badge("briefing")).toBeTruthy();
     expect(badge("strong / commissionable")).toBeTruthy();
-    expect(screen.getByText("1 missing signals")).toBeTruthy();
+    expect(screen.getByText("1 eksik sinyal")).toBeTruthy();
     expect(screen.getByText("Balon temalı plan")).toBeTruthy();
-    expect(screen.getByText("originality: passed")).toBeTruthy();
+    expect(screen.getByText("özgünlük: passed")).toBeTruthy();
     expect(badge("v1 ready")).toBeTruthy();
     expect(badge("v1 draft")).toBeTruthy();
     const link = screen.getByRole("link", {
@@ -87,10 +87,10 @@ describe("Editorial work queue page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("Not evaluated")).toBeTruthy();
-    expect(screen.getByText("No selection")).toBeTruthy();
-    expect(screen.getByText("No pack")).toBeTruthy();
-    expect(screen.getByText("No brief")).toBeTruthy();
+    expect(screen.getByText("Değerlendirilmedi")).toBeTruthy();
+    expect(screen.getByText("Seçim yok")).toBeTruthy();
+    expect(screen.getByText("Paket yok")).toBeTruthy();
+    expect(screen.getByText("Brief yok")).toBeTruthy();
   });
 
   it("shows the blocked reason on blocked rows", async () => {
@@ -141,7 +141,7 @@ describe("Editorial work queue page", () => {
     fetchMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage();
     expect(
-      screen.getByText("The backend API cannot be reached right now."),
+      screen.getByText("Arka uç API'sine şu anda ulaşılamıyor."),
     ).toBeTruthy();
   });
 });

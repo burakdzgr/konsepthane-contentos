@@ -20,12 +20,12 @@ function apiProcessStatus(
   liveness: BackendResult<BackendLiveness>,
 ): StatusDisplay {
   if (liveness.kind === "ok") {
-    return { label: "Operational", tone: "ok" };
+    return { label: "Çalışıyor", tone: "ok" };
   }
   if (liveness.kind === "unreachable") {
-    return { label: "Unavailable", tone: "bad" };
+    return { label: "Erişilemiyor", tone: "bad" };
   }
-  return { label: "Unknown", tone: "unknown" };
+  return { label: "Bilinmiyor", tone: "unknown" };
 }
 
 function componentStatus(
@@ -33,16 +33,16 @@ function componentStatus(
   component: keyof BackendReadiness["checks"],
 ): StatusDisplay {
   if (readiness.kind !== "ok") {
-    return { label: "Unknown", tone: "unknown" };
+    return { label: "Bilinmiyor", tone: "unknown" };
   }
   const state = readiness.data.checks[component];
   if (state === "ok") {
-    return { label: "Operational", tone: "ok" };
+    return { label: "Çalışıyor", tone: "ok" };
   }
   if (state === "failed") {
-    return { label: "Not ready", tone: "bad" };
+    return { label: "Hazır değil", tone: "bad" };
   }
-  return { label: "Unknown", tone: "unknown" };
+  return { label: "Bilinmiyor", tone: "unknown" };
 }
 
 function StatusRow({ name, status }: { name: string; status: StatusDisplay }) {
@@ -64,24 +64,23 @@ export default async function HomePage() {
 
   return (
     <section className="panel" aria-labelledby="status-title">
-      <h1 id="status-title">Foundation Status</h1>
+      <h1 id="status-title">Sistem Durumu</h1>
       <p className="muted">
-        Live state as reported by the ContentOS backend at request time.
+        ContentOS backend&apos;inin istek anında bildirdiği canlı durum.
       </p>
       {liveness.kind === "unreachable" && (
-        <p role="status">The backend API cannot be reached right now.</p>
+        <p role="status">Backend API&apos;ye şu anda erişilemiyor.</p>
       )}
       {liveness.kind === "malformed" && (
-        <p role="status">The backend API returned unexpected data.</p>
+        <p role="status">Backend API beklenmedik veri döndürdü.</p>
       )}
       {readiness.kind !== "ok" && (
         <p className="muted" role="note">
-          Infrastructure states are unknown because backend readiness could not
-          be read.
+          Backend hazırlık durumu okunamadığı için altyapı durumları bilinmiyor.
         </p>
       )}
       <dl className="status-list">
-        <StatusRow name="API process" status={apiProcessStatus(liveness)} />
+        <StatusRow name="API süreci" status={apiProcessStatus(liveness)} />
         <StatusRow
           name="PostgreSQL"
           status={componentStatus(readiness, "postgres")}
@@ -94,12 +93,16 @@ export default async function HomePage() {
       </dl>
       <dl className="status-meta">
         <div className="status-row">
-          <dt>Service</dt>
-          <dd>{liveness.kind === "ok" ? liveness.data.service : "Unknown"}</dd>
+          <dt>Servis</dt>
+          <dd>
+            {liveness.kind === "ok" ? liveness.data.service : "Bilinmiyor"}
+          </dd>
         </div>
         <div className="status-row">
-          <dt>Version</dt>
-          <dd>{liveness.kind === "ok" ? liveness.data.version : "Unknown"}</dd>
+          <dt>Sürüm</dt>
+          <dd>
+            {liveness.kind === "ok" ? liveness.data.version : "Bilinmiyor"}
+          </dd>
         </div>
       </dl>
     </section>

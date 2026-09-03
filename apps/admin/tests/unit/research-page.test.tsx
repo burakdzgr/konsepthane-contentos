@@ -47,7 +47,7 @@ describe("Research Pipeline page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("heading", { name: "Research Pipeline" }),
+      screen.getByRole("heading", { name: "Araştırma Hattı" }),
     ).toBeTruthy();
     expect(badge("fetched")).toBeTruthy();
     expect(badge("success 200")).toBeTruthy();
@@ -168,9 +168,9 @@ describe("Research Pipeline page", () => {
 
     await renderPage({ state: "fetched", offset: "50" });
 
-    expect(screen.getByText("Showing 51–51 of 80")).toBeTruthy();
+    expect(screen.getByText("80 kayıttan 51–51 gösteriliyor")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Önceki" }).getAttribute("href"),
     ).toBe("/research?state=fetched");
   });
 
@@ -182,15 +182,15 @@ describe("Research Pipeline page", () => {
     });
     await renderPage();
     expect(screen.getByRole("status").textContent).toMatch(
-      /no discovery items match/i,
+      /eşleşen keşif öğesi yok/,
     );
 
     fetchMock.mockResolvedValue({ kind: "unreachable" });
     render(await ResearchPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText(/cannot be reached/i)).toBeTruthy();
+    expect(screen.getByText(/ulaşılamıyor/)).toBeTruthy();
 
     fetchMock.mockResolvedValue({ kind: "malformed" });
     render(await ResearchPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText(/unexpected data/i)).toBeTruthy();
+    expect(screen.getByText(/beklenmeyen veri döndürdü/)).toBeTruthy();
   });
 });

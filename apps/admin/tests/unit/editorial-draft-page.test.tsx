@@ -46,11 +46,11 @@ describe("Writer draft detail page", () => {
     await renderPage();
 
     for (const heading of [
-      "Draft version",
-      "Body",
-      "Claim → evidence chain",
-      "Supersession audit",
-      "Writer generation attempts",
+      "Taslak sürümü",
+      "Gövde",
+      "İddia → kanıt zinciri",
+      "Geçersiz kılma denetimi",
+      "Yazar üretim denemeleri",
     ]) {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     }
@@ -80,7 +80,7 @@ describe("Writer draft detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getAllByText("UNKNOWN").length).toBe(2);
+    expect(screen.getAllByText("BİLİNMİYOR").length).toBe(2);
   });
 
   it("keeps failed attempts visible with their error class", async () => {

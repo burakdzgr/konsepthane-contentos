@@ -26,9 +26,9 @@ import { promoteResearchAction, reopenDuplicateAction } from "./actions";
 
 const QUEUE_NOTICES: Record<string, string> = {
   "promotion-queued":
-    "Promotion queued. The work item appears here once the worker records it.",
+    "Yükseltme kuyruğa alındı. İş öğesi, worker kaydettiğinde burada görünür.",
   "duplicate-reopened":
-    "Duplicate reopened as an operator work item. Scoring is a separate explicit action.",
+    "Kopya, operatör iş öğesi olarak yeniden açıldı. Puanlama ayrı ve açık bir eylemdir.",
 };
 
 // The Phase-3 editorial work queue from durable PostgreSQL state at request
@@ -67,9 +67,9 @@ function FilterForm({ filters }: { filters: QueueFilterState }) {
   return (
     <form className="filter-form" method="get" action="/editorial">
       <label>
-        Workflow state
+        İş akışı durumu
         <select name="state" defaultValue={filters.state ?? ""}>
-          <option value="">Any</option>
+          <option value="">Tümü</option>
           {QUEUE_FILTER_STATES.map((value) => (
             <option key={value} value={value}>
               {value}
@@ -78,9 +78,9 @@ function FilterForm({ filters }: { filters: QueueFilterState }) {
         </select>
       </label>
       <label>
-        Disposition
+        Fırsat durumu
         <select name="disposition" defaultValue={filters.disposition ?? ""}>
-          <option value="">Any</option>
+          <option value="">Tümü</option>
           {OPPORTUNITY_DISPOSITIONS.map((value) => (
             <option key={value} value={value}>
               {value}
@@ -89,23 +89,23 @@ function FilterForm({ filters }: { filters: QueueFilterState }) {
         </select>
       </label>
       <label>
-        Search
+        Arama
         <input
           type="text"
           name="q"
           defaultValue={filters.q ?? ""}
           maxLength={100}
-          placeholder="title or topic fragment"
+          placeholder="başlık veya konu parçası"
         />
       </label>
-      <button type="submit">Apply</button>
+      <button type="submit">Uygula</button>
     </form>
   );
 }
 
 function ScoreCell({ row }: { row: WorkQueueRow }) {
   if (row.score_id === null) {
-    return <span className="muted">Not evaluated</span>;
+    return <span className="muted">Değerlendirilmedi</span>;
   }
   return (
     <span>
@@ -117,7 +117,7 @@ function ScoreCell({ row }: { row: WorkQueueRow }) {
       </span>
       {row.score_missing_signals.length > 0 && (
         <span className="muted cell-secondary">
-          {row.score_missing_signals.length} missing signals
+          {row.score_missing_signals.length} eksik sinyal
         </span>
       )}
     </span>
@@ -126,13 +126,13 @@ function ScoreCell({ row }: { row: WorkQueueRow }) {
 
 function IdeaCell({ row }: { row: WorkQueueRow }) {
   if (row.selected_idea_id === null) {
-    return <span className="muted">No selection</span>;
+    return <span className="muted">Seçim yok</span>;
   }
   return (
     <span>
       {row.selected_idea_title}
       <span className="muted cell-secondary">
-        originality: {row.selected_idea_originality ?? "unknown"}
+        özgünlük: {row.selected_idea_originality ?? "bilinmiyor"}
       </span>
     </span>
   );
@@ -140,7 +140,7 @@ function IdeaCell({ row }: { row: WorkQueueRow }) {
 
 function PackCell({ row }: { row: WorkQueueRow }) {
   if (row.latest_pack_id === null) {
-    return <span className="muted">No pack</span>;
+    return <span className="muted">Paket yok</span>;
   }
   return (
     <span
@@ -154,7 +154,7 @@ function PackCell({ row }: { row: WorkQueueRow }) {
 
 function BriefCell({ row }: { row: WorkQueueRow }) {
   if (row.latest_brief_id === null) {
-    return <span className="muted">No brief</span>;
+    return <span className="muted">Brief yok</span>;
   }
   return (
     <span
@@ -169,7 +169,7 @@ function BriefCell({ row }: { row: WorkQueueRow }) {
 function ResearchIntakeForms() {
   return (
     <section aria-labelledby="editorial-intake">
-      <h2 id="editorial-intake">Research intake</h2>
+      <h2 id="editorial-intake">Araştırma girişi</h2>
       <div className="control-stack">
         <form action={promoteResearchAction} className="control-form">
           <input
@@ -177,13 +177,13 @@ function ResearchIntakeForms() {
             name="normalized_document_id"
             required
             maxLength={36}
-            placeholder="normalized document id"
-            aria-label="Normalized document id to promote"
+            placeholder="normalize edilmiş doküman kimliği"
+            aria-label="Yükseltilecek normalize edilmiş doküman kimliği"
           />
-          <button type="submit">Promote research</button>
+          <button type="submit">Araştırmayı yükselt</button>
           <span className="muted">
-            Queues promotion of an eligible normalized document; the worker
-            applies the duplicate gates.
+            Uygun bir normalize edilmiş dokümanın yükseltilmesini kuyruğa alır;
+            kopya kapılarını worker uygular.
           </span>
         </form>
         <form action={reopenDuplicateAction} className="control-form">
@@ -192,29 +192,29 @@ function ResearchIntakeForms() {
             name="normalized_document_id"
             required
             maxLength={36}
-            placeholder="normalized document id"
-            aria-label="Duplicate document id to reopen"
+            placeholder="normalize edilmiş doküman kimliği"
+            aria-label="Yeniden açılacak kopya doküman kimliği"
           />
           <input
             type="text"
             name="reason"
             required
             maxLength={1000}
-            placeholder="reason"
-            aria-label="Reopen reason"
+            placeholder="gerekçe"
+            aria-label="Yeniden açma gerekçesi"
           />
           <input
             type="text"
             name="distinct_angle"
             required
             maxLength={1000}
-            placeholder="demonstrably distinct angle"
-            aria-label="Distinct angle"
+            placeholder="kanıtlanabilir şekilde farklı bir açı"
+            aria-label="Farklı açı"
           />
-          <button type="submit">Reopen duplicate</button>
+          <button type="submit">Kopyayı yeniden aç</button>
           <span className="muted">
-            Operator override for an effective DUPLICATE decision; the decision
-            itself is never altered.
+            Geçerli bir DUPLICATE kararı için operatör müdahalesi; kararın
+            kendisi asla değiştirilmez.
           </span>
         </form>
       </div>
@@ -239,11 +239,11 @@ export default async function EditorialPage({
 
   return (
     <section className="panel panel-wide" aria-labelledby="editorial-title">
-      <h1 id="editorial-title">Editorial Work Queue</h1>
+      <h1 id="editorial-title">Editoryal İş Kuyruğu</h1>
       <p className="muted">
-        Phase-3 editorial pipeline: research promotion through accepted brief.
-        Every state and artifact comes from durable records; nothing here
-        publishes content.
+        Faz-3 editoryal hattı: araştırma yükseltmesinden kabul edilmiş
+        brief&apos;e kadar. Her durum ve artefakt kalıcı kayıtlardan gelir;
+        buradaki hiçbir şey içerik yayınlamaz.
       </p>
       <ControlNotice
         notice={firstParam(rawParams.notice)}
@@ -252,14 +252,14 @@ export default async function EditorialPage({
       />
       <FilterForm filters={filters} />
       {result.kind === "unreachable" && (
-        <p role="status">The backend API cannot be reached right now.</p>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       )}
       {result.kind === "malformed" && (
-        <p role="status">The backend API returned unexpected data.</p>
+        <p role="status">Arka uç API&apos;si beklenmedik veri döndürdü.</p>
       )}
       {result.kind === "ok" && result.data.items.length === 0 && (
         <p className="empty-note" role="status">
-          No editorial work items match the current view.
+          Geçerli görünümle eşleşen editoryal iş öğesi yok.
         </p>
       )}
       {result.kind === "ok" && result.data.items.length > 0 && (
@@ -268,14 +268,14 @@ export default async function EditorialPage({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">Work item</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Disposition</th>
-                  <th scope="col">Score</th>
-                  <th scope="col">Selected idea</th>
-                  <th scope="col">Evidence pack</th>
+                  <th scope="col">İş öğesi</th>
+                  <th scope="col">Durum</th>
+                  <th scope="col">Fırsat durumu</th>
+                  <th scope="col">Skor</th>
+                  <th scope="col">Seçili fikir</th>
+                  <th scope="col">Kanıt paketi</th>
                   <th scope="col">Brief</th>
-                  <th scope="col">Entered state</th>
+                  <th scope="col">Duruma giriş</th>
                 </tr>
               </thead>
               <tbody>
@@ -323,10 +323,10 @@ export default async function EditorialPage({
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="Editorial queue pagination">
+          <nav className="pagination" aria-label="Editoryal kuyruk sayfalaması">
             <span className="muted">
-              Showing {filters.offset + 1}–
-              {filters.offset + result.data.items.length} of {result.data.total}
+              {filters.offset + 1}–{filters.offset + result.data.items.length} /{" "}
+              {result.data.total} gösteriliyor
             </span>
             {filters.offset > 0 && (
               <Link
@@ -335,12 +335,12 @@ export default async function EditorialPage({
                   Math.max(filters.offset - PAGE_SIZE, 0),
                 )}
               >
-                Previous
+                Önceki
               </Link>
             )}
             {filters.offset + result.data.items.length < result.data.total && (
               <Link href={pageHref(filters, filters.offset + PAGE_SIZE)}>
-                Next
+                Sonraki
               </Link>
             )}
           </nav>

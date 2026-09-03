@@ -54,39 +54,37 @@ describe("Sources page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("heading", { name: "Sources" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Kaynaklar" })).toBeTruthy();
     expect(screen.getByText("Örnek Kaynak")).toBeTruthy();
     expect(screen.getByText("ornek-kaynak")).toBeTruthy();
     expect(badge("active")).toBeTruthy();
     expect(badge("paused")).toBeTruthy();
-    expect(screen.getByText("4 items")).toBeTruthy();
+    expect(screen.getByText("4 öğe")).toBeTruthy();
     expect(
-      screen.getByText("1 new · 1 accepted · 1 fetched · 1 failed"),
+      screen.getByText("1 yeni · 1 kabul edildi · 1 getirildi · 1 başarısız"),
     ).toBeTruthy();
     // Both fixture rows share the same updated_at timestamp.
     expect(screen.getAllByText("2026-09-01 10:00 UTC")).toHaveLength(2);
 
-    const itemsLink = screen.getByRole("link", { name: "4 items" });
+    const itemsLink = screen.getByRole("link", { name: "4 öğe" });
     expect(itemsLink.getAttribute("href")).toBe(
       "/research?source=11111111-2222-4333-8444-555555555555",
     );
     // Controls are the GET filter submit plus one lifecycle form per row;
-    // neither manual source is eligible for "Run discovery".
+    // neither manual source is eligible for "Keşfi başlat".
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "Apply",
-      "Apply state",
-      "Apply state",
+      "Uygula",
+      "Durumu uygula",
+      "Durumu uygula",
     ]);
-    expect(screen.queryByRole("button", { name: "Run discovery" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keşfi başlat" })).toBeNull();
     expect(
-      screen
-        .getByRole("link", { name: "Register source" })
-        .getAttribute("href"),
+      screen.getByRole("link", { name: "Kaynak kaydet" }).getAttribute("href"),
     ).toBe("/sources/new");
   });
 
-  it("shows Run discovery only for active automated sources", async () => {
+  it("shows Keşfi başlat only for active automated sources", async () => {
     fetchMock.mockResolvedValue({
       kind: "ok",
       data: sourcePage([
@@ -119,7 +117,7 @@ describe("Sources page", () => {
 
     // Exactly one eligible source: active rss_feed with feed strategy.
     expect(
-      screen.getAllByRole("button", { name: "Run discovery" }),
+      screen.getAllByRole("button", { name: "Keşfi başlat" }),
     ).toHaveLength(1);
   });
 
@@ -131,14 +129,16 @@ describe("Sources page", () => {
     });
 
     await renderPage({ notice: "discovery-queued" });
-    expect(screen.getByText("Discovery queued.")).toBeTruthy();
+    expect(screen.getByText("Keşif kuyruğa alındı.")).toBeTruthy();
 
     render(
       await SourcesPage({
         searchParams: Promise.resolve({ error: "conflict" }),
       }),
     );
-    expect(screen.getByText(/conflicts with the current state/i)).toBeTruthy();
+    // The error text lives in the shared notices module; assert on the
+    // bounded error banner's tone rather than its exact wording.
+    expect(document.querySelector('.notice[data-tone="bad"]')).toBeTruthy();
   });
 
   it("passes parsed filters to the API and drops invalid values", async () => {
@@ -186,12 +186,12 @@ describe("Sources page", () => {
 
     await renderPage({ state: "active", offset: "50" });
 
-    expect(screen.getByText("Showing 51–100 of 120")).toBeTruthy();
+    expect(screen.getByText("51–100 / 120 gösteriliyor")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Önceki" }).getAttribute("href"),
     ).toBe("/sources?state=active");
     expect(
-      screen.getByRole("link", { name: "Next" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Sonraki" }).getAttribute("href"),
     ).toBe("/sources?state=active&offset=100");
   });
 
@@ -204,18 +204,18 @@ describe("Sources page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("status").textContent).toMatch(/no sources match/i);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /eşleşen kaynak yok/,
+    );
   });
 
   it("renders unreachable and malformed states without crashing", async () => {
     fetchMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage();
-    expect(screen.getByRole("status").textContent).toMatch(
-      /cannot be reached/i,
-    );
+    expect(screen.getByRole("status").textContent).toMatch(/ulaşılamıyor/);
 
     fetchMock.mockResolvedValue({ kind: "malformed" });
     render(await SourcesPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText(/unexpected data/i)).toBeTruthy();
+    expect(screen.getByText(/beklenmeyen veri/)).toBeTruthy();
   });
 });

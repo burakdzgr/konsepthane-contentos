@@ -54,15 +54,13 @@ describe("Foundation Status page", () => {
 
     await renderStatusPage();
 
-    expect(
-      screen.getByRole("heading", { name: "Foundation Status" }),
-    ).toBeTruthy();
-    expect(rowValue("API process")).toBe("Operational");
-    expect(rowValue("PostgreSQL")).toBe("Operational");
-    expect(rowValue("pgvector")).toBe("Operational");
-    expect(rowValue("Redis")).toBe("Operational");
-    expect(rowValue("Service")).toBe("Konsepthane ContentOS");
-    expect(rowValue("Version")).toBe("0.1.0");
+    expect(screen.getByRole("heading", { name: "Sistem Durumu" })).toBeTruthy();
+    expect(rowValue("API süreci")).toBe("Çalışıyor");
+    expect(rowValue("PostgreSQL")).toBe("Çalışıyor");
+    expect(rowValue("pgvector")).toBe("Çalışıyor");
+    expect(rowValue("Redis")).toBe("Çalışıyor");
+    expect(rowValue("Servis")).toBe("Konsepthane ContentOS");
+    expect(rowValue("Sürüm")).toBe("0.1.0");
   });
 
   it("renders actual failed and unknown component states when not ready", async () => {
@@ -77,10 +75,10 @@ describe("Foundation Status page", () => {
 
     await renderStatusPage();
 
-    expect(rowValue("API process")).toBe("Operational");
-    expect(rowValue("PostgreSQL")).toBe("Not ready");
-    expect(rowValue("pgvector")).toBe("Unknown");
-    expect(rowValue("Redis")).toBe("Operational");
+    expect(rowValue("API süreci")).toBe("Çalışıyor");
+    expect(rowValue("PostgreSQL")).toBe("Hazır değil");
+    expect(rowValue("pgvector")).toBe("Bilinmiyor");
+    expect(rowValue("Redis")).toBe("Çalışıyor");
   });
 
   it("shows unavailable without inventing failures when unreachable", async () => {
@@ -89,14 +87,14 @@ describe("Foundation Status page", () => {
 
     await renderStatusPage();
 
-    expect(rowValue("API process")).toBe("Unavailable");
-    expect(rowValue("PostgreSQL")).toBe("Unknown");
-    expect(rowValue("pgvector")).toBe("Unknown");
-    expect(rowValue("Redis")).toBe("Unknown");
-    expect(rowValue("Service")).toBe("Unknown");
-    expect(screen.queryByText("Not ready")).toBeNull();
+    expect(rowValue("API süreci")).toBe("Erişilemiyor");
+    expect(rowValue("PostgreSQL")).toBe("Bilinmiyor");
+    expect(rowValue("pgvector")).toBe("Bilinmiyor");
+    expect(rowValue("Redis")).toBe("Bilinmiyor");
+    expect(rowValue("Servis")).toBe("Bilinmiyor");
+    expect(screen.queryByText("Hazır değil")).toBeNull();
     expect(screen.getByRole("status").textContent).toMatch(
-      /cannot be reached/i,
+      /şu anda erişilemiyor/i,
     );
   });
 
@@ -106,10 +104,10 @@ describe("Foundation Status page", () => {
 
     await renderStatusPage();
 
-    expect(rowValue("API process")).toBe("Unknown");
-    expect(rowValue("PostgreSQL")).toBe("Unknown");
-    expect(screen.queryByText("Operational")).toBeNull();
-    expect(screen.getByRole("status").textContent).toMatch(/unexpected data/i);
+    expect(rowValue("API süreci")).toBe("Bilinmiyor");
+    expect(rowValue("PostgreSQL")).toBe("Bilinmiyor");
+    expect(screen.queryByText("Çalışıyor")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/beklenmedik veri/i);
   });
 
   it("never renders fake statistics or the internal API URL", async () => {

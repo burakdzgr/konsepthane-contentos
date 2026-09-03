@@ -8,13 +8,13 @@ export default function RouteError({
 }) {
   return (
     <section className="panel" role="alert">
-      <h1>Something went wrong</h1>
+      <h1>Bir şeyler ters gitti</h1>
       <p>
-        The control panel hit an unexpected error. No technical details are
-        shown here for safety.
+        Kontrol paneli beklenmedik bir hatayla karşılaştı. Güvenlik nedeniyle
+        teknik ayrıntılar burada gösterilmiyor.
       </p>
       <button type="button" onClick={() => reset()}>
-        Try again
+        Tekrar dene
       </button>
     </section>
   );

@@ -8,13 +8,14 @@ import { loginAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 const ERRORS: Record<string, string> = {
-  invalid: "Invalid credentials.",
-  expired: "Your session has expired or was revoked. Sign in again.",
-  unreachable: "The backend cannot be reached right now. Try again.",
+  invalid: "Kullanıcı adı veya parola hatalı.",
+  expired:
+    "Oturumunuzun süresi doldu veya oturum iptal edildi. Yeniden giriş yapın.",
+  unreachable: "Backend'e şu anda erişilemiyor. Tekrar deneyin.",
 };
 
 const NOTICES: Record<string, string> = {
-  "logged-out": "You have been signed out.",
+  "logged-out": "Çıkış yaptınız.",
 };
 
 export default async function LoginPage({
@@ -31,11 +32,11 @@ export default async function LoginPage({
 
   return (
     <section className="panel" aria-labelledby="login-title">
-      <h1 id="login-title">Sign in</h1>
+      <h1 id="login-title">Giriş yap</h1>
       <p className="muted">
-        Foundation Status:{" "}
+        Sistem Durumu:{" "}
         <span className="badge" data-tone={operational ? "ok" : "bad"}>
-          {operational ? "Operational" : "Unavailable"}
+          {operational ? "Çalışıyor" : "Erişilemiyor"}
         </span>
       </p>
       {error !== undefined && ERRORS[error] !== undefined && (
@@ -51,8 +52,8 @@ export default async function LoginPage({
           required
           maxLength={64}
           autoComplete="username"
-          placeholder="username"
-          aria-label="Username"
+          placeholder="kullanıcı adı"
+          aria-label="Kullanıcı adı"
         />
         <input
           type="password"
@@ -60,14 +61,14 @@ export default async function LoginPage({
           required
           maxLength={256}
           autoComplete="current-password"
-          placeholder="password"
-          aria-label="Password"
+          placeholder="parola"
+          aria-label="Parola"
         />
-        <button type="submit">Sign in</button>
+        <button type="submit">Giriş yap</button>
       </form>
       <p className="muted">
-        Accounts are provisioned by an administrator; there is no
-        self-registration.
+        Hesaplar bir yönetici tarafından oluşturulur; kendi kendine kayıt
+        yoktur.
       </p>
     </section>
   );

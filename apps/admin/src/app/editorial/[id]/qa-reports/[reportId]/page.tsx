@@ -50,10 +50,10 @@ function SummarySection({ detail }: { detail: QaReportDetail }) {
   const report = detail.report;
   return (
     <section aria-labelledby="qa-summary">
-      <h2 id="qa-summary">Report version</h2>
+      <h2 id="qa-summary">Rapor sürümü</h2>
       <dl className="status-list">
-        <Row name="Version">v{report.version}</Row>
-        <Row name="Outcome">
+        <Row name="Sürüm">v{report.version}</Row>
+        <Row name="Sonuç">
           <span
             className="badge"
             data-tone={
@@ -63,11 +63,11 @@ function SummarySection({ detail }: { detail: QaReportDetail }) {
             {report.outcome}
           </span>{" "}
           <span className="muted">
-            computed deterministically by{" "}
-            {String(detail.gate_policy_snapshot["version"] ?? "UNKNOWN")}
+            {String(detail.gate_policy_snapshot["version"] ?? "BİLİNMİYOR")}{" "}
+            tarafından deterministik olarak hesaplandı
           </span>
         </Row>
-        <Row name="Status">
+        <Row name="Durum">
           <span className="badge" data-tone={draftStatusTone(report.status)}>
             {report.status}
           </span>
@@ -77,33 +77,33 @@ function SummarySection({ detail }: { detail: QaReportDetail }) {
               <Link
                 href={`/editorial/${report.work_item_id}/qa-reports/${report.superseded_by_report_id}`}
               >
-                superseded by newer version
+                daha yeni sürümle geçersiz kılındı
               </Link>
             </>
           )}
         </Row>
-        <Row name="Evaluated package">
+        <Row name="Değerlendirilen paket">
           <Link
             href={`/editorial/${report.work_item_id}/drafts/${report.content_draft_id}`}
           >
-            draft
+            taslak
           </Link>{" "}
           ·{" "}
           <Link
             href={`/editorial/${report.work_item_id}/reviews/${report.editorial_review_id}`}
           >
-            editor review
+            editör değerlendirmesi
           </Link>
         </Row>
-        <Row name="Engine">
+        <Row name="Motor">
           <span className="mono">
             {report.engine_name}/{report.engine_version}
           </span>
         </Row>
-        <Row name="Content hash">
+        <Row name="İçerik hash'i">
           <span className="mono">{report.content_hash}</span>
         </Row>
-        <Row name="Created">{formatUtcTimestamp(report.created_at)}</Row>
+        <Row name="Oluşturuldu">{formatUtcTimestamp(report.created_at)}</Row>
       </dl>
     </section>
   );
@@ -113,18 +113,18 @@ function GatesSection({ detail }: { detail: QaReportDetail }) {
   const entries = Object.entries(detail.gate_results);
   return (
     <section aria-labelledby="qa-gates">
-      <h2 id="qa-gates">Hard gates</h2>
+      <h2 id="qa-gates">Katı kapılar</h2>
       <p className="muted">
-        Every gate reports an explicit result; the absence of a result is never
-        a pass. Waivers limit scope honestly — needs stay visible.
+        Her kapı açık bir sonuç bildirir; sonucun yokluğu asla geçer sayılmaz.
+        Vazgeçmeler kapsamı dürüstçe sınırlar — ihtiyaçlar görünür kalır.
       </p>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
-              <th scope="col">Gate</th>
-              <th scope="col">Result</th>
-              <th scope="col">Detail</th>
+              <th scope="col">Kapı</th>
+              <th scope="col">Sonuç</th>
+              <th scope="col">Detay</th>
             </tr>
           </thead>
           <tbody>
@@ -135,7 +135,7 @@ function GatesSection({ detail }: { detail: QaReportDetail }) {
                 typeof (gateDetail as Record<string, unknown>)["result"] ===
                   "string"
                   ? String((gateDetail as Record<string, unknown>)["result"])
-                  : "UNKNOWN";
+                  : "BİLİNMİYOR";
               return (
                 <tr key={gate}>
                   <td className="mono">{gate}</td>
@@ -158,18 +158,18 @@ function GatesSection({ detail }: { detail: QaReportDetail }) {
 function WaiversSection({ detail }: { detail: QaReportDetail }) {
   return (
     <section aria-labelledby="qa-waivers">
-      <h2 id="qa-waivers">Audited waivers</h2>
+      <h2 id="qa-waivers">Denetlenen vazgeçmeler</h2>
       {detail.waivers.length === 0 && (
-        <p className="empty-note">No waivers exist for this work item.</p>
+        <p className="empty-note">Bu iş öğesi için vazgeçme yok.</p>
       )}
       {detail.waivers.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Gate</th>
-                <th scope="col">Reason</th>
-                <th scope="col">When</th>
+                <th scope="col">Kapı</th>
+                <th scope="col">Gerekçe</th>
+                <th scope="col">Ne zaman</th>
               </tr>
             </thead>
             <tbody>
@@ -191,20 +191,20 @@ function WaiversSection({ detail }: { detail: QaReportDetail }) {
 function AuditSection({ detail }: { detail: QaReportDetail }) {
   return (
     <section aria-labelledby="qa-audit">
-      <h2 id="qa-audit">Supersession audit</h2>
+      <h2 id="qa-audit">Geçersiz kılma denetimi</h2>
       {detail.status_events.length === 0 && (
-        <p className="empty-note">No status changes recorded.</p>
+        <p className="empty-note">Kayıtlı durum değişikliği yok.</p>
       )}
       {detail.status_events.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Change</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Reason</th>
-                <th scope="col">Replacement</th>
+                <th scope="col">Ne zaman</th>
+                <th scope="col">Değişiklik</th>
+                <th scope="col">Aktör</th>
+                <th scope="col">Gerekçe</th>
+                <th scope="col">Yerine geçen</th>
               </tr>
             </thead>
             <tbody>
@@ -241,16 +241,16 @@ export default async function QaReportDetailPage({
   if (result.kind === "unreachable") {
     return (
       <section className="panel" aria-labelledby="qa-detail-title">
-        <h1 id="qa-detail-title">QA report</h1>
-        <p role="status">The backend API cannot be reached right now.</p>
+        <h1 id="qa-detail-title">QA raporu</h1>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       </section>
     );
   }
   if (result.kind === "malformed") {
     return (
       <section className="panel" aria-labelledby="qa-detail-title">
-        <h1 id="qa-detail-title">QA report</h1>
-        <p role="status">The backend API returned unexpected data.</p>
+        <h1 id="qa-detail-title">QA raporu</h1>
+        <p role="status">Arka uç API&apos;si beklenmedik veri döndürdü.</p>
       </section>
     );
   }
@@ -258,9 +258,9 @@ export default async function QaReportDetailPage({
   const detail = result.data;
   return (
     <section className="panel panel-wide" aria-labelledby="qa-detail-title">
-      <h1 id="qa-detail-title">QA report</h1>
+      <h1 id="qa-detail-title">QA raporu</h1>
       <p className="muted">
-        <Link href={`/editorial/${id}`}>← Back to the work item</Link>
+        <Link href={`/editorial/${id}`}>← İş öğesine dön</Link>
       </p>
       <SummarySection detail={detail} />
       <GatesSection detail={detail} />

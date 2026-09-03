@@ -3469,6 +3469,27 @@ the inputs listed below.
   demonstration guide + two contentos media assets remain in the
   ilham dev database/bucket.)
 
+- ADMIN UX (operator request): the ENTIRE admin UI is now Turkish —
+  every page (status, login, sources, research, editorial + subpages),
+  nav, notices, error boundary; `lang="tr"`; notice/error CODE keys,
+  wire enum values, searchParams and routes untouched (translation is
+  presentation-only). PLUS the new single-page **Motor** view
+  (`/motor`, first nav entry): the whole pipeline as one wizard —
+  collapsible intake strip (source discovery → discovery-item accept →
+  fetch → promote), the active work-item queue, and for the focused
+  item a six-stage stepper (Fikir → Kanıt → SEO & Brief → Taslak &
+  Editör → QA & Onay → Yayın) with EXACTLY the explicit next step(s)
+  the current durable state admits, derived by the pure
+  `src/lib/motor-plan.ts` (state→stage map, Turkish state labels,
+  `deriveNextSteps`). Motor server actions reuse the SAME control-api
+  commands and land back on /motor; complex interactions (evidence
+  selection, media binding, manual drafts, reject/revoke) deep-link to
+  the detail page — nothing re-implemented, nothing bypassed; the
+  reviewer-role gate holds on /motor exactly as on the detail page.
+  16 new tests (motor-plan derivation + motor page rendering incl.
+  role withholding and truthful empty/unreachable states); suite now
+  1322 backend + 248 admin, full gate green.
+
 ## Current standing state (all phases 1–7 CLOSED; publishing E2E REAL)
 
 The full loop research → … → PUBLISHED runs end to end on real

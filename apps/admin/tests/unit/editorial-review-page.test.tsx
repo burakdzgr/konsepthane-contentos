@@ -45,22 +45,22 @@ describe("Editor review detail page", () => {
     await renderPage();
 
     for (const heading of [
-      "Review version",
-      "Findings",
-      "Supersession audit",
-      "Editor generation attempts",
+      "Değerlendirme sürümü",
+      "Bulgular",
+      "Geçersiz kılma denetimi",
+      "Editör üretim denemeleri",
     ]) {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     }
     expect(screen.getByText("pass")).toBeTruthy();
-    expect(screen.getByText(/never model-authored/)).toBeTruthy();
-    expect(screen.getByText("recomputed")).toBeTruthy();
+    expect(screen.getByText(/asla model yazımı değil/)).toBeTruthy();
+    expect(screen.getByText("yeniden hesaplandı")).toBeTruthy();
     expect(screen.getByText("ton-notu")).toBeTruthy();
     expect(screen.getByText(/konsept-detaylari/)).toBeTruthy();
     expect(screen.getByText(/\(factual\)/)).toBeTruthy();
     expect(screen.getByText("succeeded")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "open the exact draft version" }),
+      screen.getByRole("link", { name: "tam taslak sürümünü aç" }),
     ).toBeTruthy();
   });
 
@@ -74,7 +74,7 @@ describe("Editor review detail page", () => {
       requestId: null,
     });
     await renderPage();
-    expect(screen.getByText("UNKNOWN")).toBeTruthy();
+    expect(screen.getByText("BİLİNMİYOR")).toBeTruthy();
   });
 
   it("keeps deterministic drift findings visible with their origin", async () => {

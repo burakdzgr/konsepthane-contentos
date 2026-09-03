@@ -33,17 +33,17 @@ function SummarySection({ detail }: { detail: DraftDetail }) {
   const draft = detail.draft;
   return (
     <section aria-labelledby="draft-summary">
-      <h2 id="draft-summary">Draft version</h2>
+      <h2 id="draft-summary">Taslak sürümü</h2>
       <dl className="status-list">
-        <Row name="Version">v{draft.version}</Row>
-        <Row name="Origin">
-          {draft.origin === "operator" ? "operator" : "writer engine"} (
+        <Row name="Sürüm">v{draft.version}</Row>
+        <Row name="Köken">
+          {draft.origin === "operator" ? "operatör" : "yazar motoru"} (
           <span className="mono">
             {draft.engine_name}/{draft.engine_version}
           </span>
           )
         </Row>
-        <Row name="Status">
+        <Row name="Durum">
           <span className="badge" data-tone={draftStatusTone(draft.status)}>
             {draft.status}
           </span>
@@ -53,13 +53,13 @@ function SummarySection({ detail }: { detail: DraftDetail }) {
               <Link
                 href={`/editorial/${draft.work_item_id}/drafts/${draft.superseded_by_draft_id}`}
               >
-                superseded by newer version
+                daha yeni sürümle geçersiz kılındı
               </Link>
             </>
           )}
         </Row>
-        <Row name="Title proposal">{draft.title_proposal ?? "—"}</Row>
-        <Row name="Uncertainty coverage">
+        <Row name="Başlık önerisi">{draft.title_proposal ?? "—"}</Row>
+        <Row name="Belirsizlik kapsamı">
           <span
             className="badge"
             data-tone={verdictTone(draft.uncertainty_coverage_status)}
@@ -67,7 +67,7 @@ function SummarySection({ detail }: { detail: DraftDetail }) {
             {verdictLabel(draft.uncertainty_coverage_status)}
           </span>
         </Row>
-        <Row name="Originality">
+        <Row name="Özgünlük">
           <span
             className="badge"
             data-tone={verdictTone(draft.originality_outcome)}
@@ -75,16 +75,16 @@ function SummarySection({ detail }: { detail: DraftDetail }) {
             {verdictLabel(draft.originality_outcome)}
           </span>
         </Row>
-        <Row name="Body schema">
+        <Row name="Gövde şeması">
           <span className="mono">{draft.body_schema_version}</span>
         </Row>
-        <Row name="Content hash">
+        <Row name="İçerik hash'i">
           <span className="mono">{draft.content_hash}</span>
         </Row>
         <Row name="Brief">
           <span className="mono">{draft.content_brief_id}</span>
         </Row>
-        <Row name="Created">{formatUtcTimestamp(draft.created_at)}</Row>
+        <Row name="Oluşturuldu">{formatUtcTimestamp(draft.created_at)}</Row>
       </dl>
     </section>
   );
@@ -93,7 +93,7 @@ function SummarySection({ detail }: { detail: DraftDetail }) {
 function BodySection({ detail }: { detail: DraftDetail }) {
   return (
     <section aria-labelledby="draft-body">
-      <h2 id="draft-body">Body</h2>
+      <h2 id="draft-body">Gövde</h2>
       {detail.body.sections.map((section) => (
         <article key={section.key} className="card">
           <h3>
@@ -113,22 +113,22 @@ function BodySection({ detail }: { detail: DraftDetail }) {
                 <p>{block.text}</p>
                 {block.claim_refs.length > 0 && (
                   <p className="mono muted">
-                    claims: {block.claim_refs.join(", ")}
+                    iddialar: {block.claim_refs.join(", ")}
                   </p>
                 )}
                 {block.uncertainty_refs.length > 0 && (
                   <p className="mono muted">
-                    uncertainty: {block.uncertainty_refs.join(", ")}
+                    belirsizlik: {block.uncertainty_refs.join(", ")}
                   </p>
                 )}
                 {block.link_need_ref !== undefined && (
                   <p className="mono muted">
-                    internal link need #{block.link_need_ref} (from the brief)
+                    iç bağlantı ihtiyacı #{block.link_need_ref} (brief&apos;ten)
                   </p>
                 )}
                 {block.media_need_ref !== undefined && (
                   <p className="mono muted">
-                    media need #{block.media_need_ref} (from the brief)
+                    medya ihtiyacı #{block.media_need_ref} (brief&apos;ten)
                   </p>
                 )}
               </dd>
@@ -143,24 +143,24 @@ function BodySection({ detail }: { detail: DraftDetail }) {
 function ClaimChainSection({ usages }: { usages: DraftClaimUsageView[] }) {
   return (
     <section aria-labelledby="draft-claims">
-      <h2 id="draft-claims">Claim → evidence chain</h2>
+      <h2 id="draft-claims">İddia → kanıt zinciri</h2>
       <p className="muted">
-        Every claim used in the body, bound to its brief claim and the exact
-        ResearchEvidence identities behind it.
+        Gövdede kullanılan her iddia, brief&apos;teki iddiasına ve arkasındaki
+        tam ResearchEvidence kimliklerine bağlıdır.
       </p>
       {usages.length === 0 && (
-        <p className="empty-note">This draft binds no claims.</p>
+        <p className="empty-note">Bu taslak hiçbir iddia bağlamıyor.</p>
       )}
       {usages.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Block</th>
-                <th scope="col">Claim</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Handling</th>
-                <th scope="col">Evidence IDs</th>
+                <th scope="col">Blok</th>
+                <th scope="col">İddia</th>
+                <th scope="col">Tür</th>
+                <th scope="col">Ele alış</th>
+                <th scope="col">Kanıt kimlikleri</th>
               </tr>
             </thead>
             <tbody>
@@ -179,7 +179,7 @@ function ClaimChainSection({ usages }: { usages: DraftClaimUsageView[] }) {
                   <td className="mono">
                     {usage.research_evidence_ids.length > 0
                       ? usage.research_evidence_ids.join(", ")
-                      : "none recorded"}
+                      : "kayıt yok"}
                   </td>
                 </tr>
               ))}
@@ -194,20 +194,20 @@ function ClaimChainSection({ usages }: { usages: DraftClaimUsageView[] }) {
 function AuditSection({ detail }: { detail: DraftDetail }) {
   return (
     <section aria-labelledby="draft-audit">
-      <h2 id="draft-audit">Supersession audit</h2>
+      <h2 id="draft-audit">Geçersiz kılma denetimi</h2>
       {detail.status_events.length === 0 && (
-        <p className="empty-note">No status changes recorded.</p>
+        <p className="empty-note">Kayıtlı durum değişikliği yok.</p>
       )}
       {detail.status_events.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Change</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Reason</th>
-                <th scope="col">Replacement</th>
+                <th scope="col">Ne zaman</th>
+                <th scope="col">Değişiklik</th>
+                <th scope="col">Aktör</th>
+                <th scope="col">Gerekçe</th>
+                <th scope="col">Yerine geçen</th>
               </tr>
             </thead>
             <tbody>
@@ -233,26 +233,24 @@ function AuditSection({ detail }: { detail: DraftDetail }) {
 function AttemptsSection({ detail }: { detail: DraftDetail }) {
   return (
     <section aria-labelledby="draft-attempts">
-      <h2 id="draft-attempts">Writer generation attempts</h2>
+      <h2 id="draft-attempts">Yazar üretim denemeleri</h2>
       <p className="muted">
-        Safe persisted metadata only — failed attempts stay visible; prompts and
-        raw model output are never stored and never shown.
+        Yalnızca güvenli, kalıcı üstveriler — başarısız denemeler görünür kalır;
+        istemler ve ham model çıktısı asla saklanmaz ve asla gösterilmez.
       </p>
       {detail.generation_attempts.length === 0 && (
-        <p className="empty-note">
-          No writer generation attempts exist for this brief.
-        </p>
+        <p className="empty-note">Bu brief için yazar üretim denemesi yok.</p>
       )}
       {detail.generation_attempts.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Status</th>
-                <th scope="col">Retry</th>
-                <th scope="col">Provider / model</th>
-                <th scope="col">Schema</th>
-                <th scope="col">When</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Yeniden deneme</th>
+                <th scope="col">Sağlayıcı / model</th>
+                <th scope="col">Şema</th>
+                <th scope="col">Ne zaman</th>
               </tr>
             </thead>
             <tbody>
@@ -285,7 +283,7 @@ function AttemptsSection({ detail }: { detail: DraftDetail }) {
       )}
       {detail.generation_attempts_truncated && (
         <p className="muted" role="note">
-          Older attempts exist beyond the ones shown.
+          Gösterilenlerin ötesinde daha eski denemeler var.
         </p>
       )}
     </section>
@@ -306,16 +304,16 @@ export default async function DraftDetailPage({
   if (result.kind === "unreachable") {
     return (
       <section className="panel" aria-labelledby="draft-detail-title">
-        <h1 id="draft-detail-title">Writer draft</h1>
-        <p role="status">The backend API cannot be reached right now.</p>
+        <h1 id="draft-detail-title">Yazar taslağı</h1>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       </section>
     );
   }
   if (result.kind === "malformed") {
     return (
       <section className="panel" aria-labelledby="draft-detail-title">
-        <h1 id="draft-detail-title">Writer draft</h1>
-        <p role="status">The backend API returned unexpected data.</p>
+        <h1 id="draft-detail-title">Yazar taslağı</h1>
+        <p role="status">Arka uç API&apos;si beklenmedik veri döndürdü.</p>
       </section>
     );
   }
@@ -323,9 +321,9 @@ export default async function DraftDetailPage({
   const detail = result.data;
   return (
     <section className="panel panel-wide" aria-labelledby="draft-detail-title">
-      <h1 id="draft-detail-title">Writer draft</h1>
+      <h1 id="draft-detail-title">Yazar taslağı</h1>
       <p className="muted">
-        <Link href={`/editorial/${id}`}>← Back to the work item</Link>
+        <Link href={`/editorial/${id}`}>← İş öğesine dön</Link>
       </p>
       <SummarySection detail={detail} />
       <BodySection detail={detail} />

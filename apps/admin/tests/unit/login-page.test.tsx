@@ -39,23 +39,23 @@ describe("Login page", () => {
       requestId: null,
     });
     await renderPage();
-    expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
-    expect(screen.getByLabelText("Username")).toBeTruthy();
-    expect(screen.getByLabelText("Password")).toBeTruthy();
-    expect(screen.getByText("Operational")).toBeTruthy();
-    expect(screen.getByText(/no.*self-registration/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Giriş yap" })).toBeTruthy();
+    expect(screen.getByLabelText("Kullanıcı adı")).toBeTruthy();
+    expect(screen.getByLabelText("Parola")).toBeTruthy();
+    expect(screen.getByText("Çalışıyor")).toBeTruthy();
+    expect(screen.getByText(/kendi kendine kayıt/i)).toBeTruthy();
   });
 
   it("shows Unavailable when the backend is not ready", async () => {
     readinessMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage();
-    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("Erişilemiyor")).toBeTruthy();
   });
 
   it("shows expiry and invalid-credential notices", async () => {
     readinessMock.mockResolvedValue({ kind: "unreachable" });
     await renderPage({ error: "expired" });
-    expect(screen.getByText(/session has expired/i)).toBeTruthy();
+    expect(screen.getByText(/oturumunuzun süresi doldu/i)).toBeTruthy();
   });
 
   it("never renders the internal backend URL", async () => {

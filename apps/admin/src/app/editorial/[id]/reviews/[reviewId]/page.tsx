@@ -44,20 +44,19 @@ function SummarySection({ detail }: { detail: ReviewDetail }) {
   const recomputed = review.writer_envelope_recomputed;
   return (
     <section aria-labelledby="review-summary">
-      <h2 id="review-summary">Review version</h2>
+      <h2 id="review-summary">Değerlendirme sürümü</h2>
       <dl className="status-list">
-        <Row name="Version">v{review.version}</Row>
-        <Row name="Verdict">
+        <Row name="Sürüm">v{review.version}</Row>
+        <Row name="Hüküm">
           <span className="badge" data-tone={reviewVerdictTone(review.verdict)}>
             {review.verdict}
           </span>{" "}
           <span className="muted">
-            computed by{" "}
-            {String(detail.verdict_policy_snapshot["version"] ?? "UNKNOWN")};
-            never model-authored
+            {String(detail.verdict_policy_snapshot["version"] ?? "BİLİNMİYOR")}{" "}
+            tarafından hesaplandı; asla model yazımı değil
           </span>
         </Row>
-        <Row name="Status">
+        <Row name="Durum">
           <span className="badge" data-tone={draftStatusTone(review.status)}>
             {review.status}
           </span>
@@ -67,34 +66,34 @@ function SummarySection({ detail }: { detail: ReviewDetail }) {
               <Link
                 href={`/editorial/${review.work_item_id}/reviews/${review.superseded_by_review_id}`}
               >
-                superseded by newer version
+                daha yeni sürümle geçersiz kılındı
               </Link>
             </>
           )}
         </Row>
-        <Row name="Reviewed draft">
+        <Row name="Değerlendirilen taslak">
           <Link
             href={`/editorial/${review.work_item_id}/drafts/${review.content_draft_id}`}
           >
-            open the exact draft version
+            tam taslak sürümünü aç
           </Link>{" "}
           <span className="mono muted">{review.content_draft_id}</span>
         </Row>
-        <Row name="Engine">
+        <Row name="Motor">
           <span className="mono">
             {review.engine_name}/{review.engine_version}
           </span>
         </Row>
-        <Row name="Writer-envelope recheck">
+        <Row name="Yazar zarfı yeniden kontrolü">
           <span
             className="badge"
             data-tone={recomputed === null ? "neutral" : "ok"}
           >
             {recomputed === null
-              ? "UNKNOWN"
+              ? "BİLİNMİYOR"
               : recomputed
-                ? "recomputed"
-                : "not recomputed"}
+                ? "yeniden hesaplandı"
+                : "yeniden hesaplanmadı"}
           </span>{" "}
           {envelopeEntries(detail).map(([key, value]) => (
             <span key={key} className="mono muted">
@@ -102,10 +101,10 @@ function SummarySection({ detail }: { detail: ReviewDetail }) {
             </span>
           ))}
         </Row>
-        <Row name="Content hash">
+        <Row name="İçerik hash'i">
           <span className="mono">{review.content_hash}</span>
         </Row>
-        <Row name="Created">{formatUtcTimestamp(review.created_at)}</Row>
+        <Row name="Oluşturuldu">{formatUtcTimestamp(review.created_at)}</Row>
       </dl>
     </section>
   );
@@ -114,26 +113,26 @@ function SummarySection({ detail }: { detail: ReviewDetail }) {
 function FindingsSection({ findings }: { findings: ReviewFindingView[] }) {
   return (
     <section aria-labelledby="review-findings">
-      <h2 id="review-findings">Findings</h2>
+      <h2 id="review-findings">Bulgular</h2>
       <p className="muted">
-        Policy signals about this exact draft — never evidence, never facts.
-        Deterministic gate results carry the drift- prefix.
+        Tam olarak bu taslağa dair politika sinyalleri — asla kanıt, asla olgu
+        değildir. Deterministik kapı sonuçları drift- önekini taşır.
       </p>
       {findings.length === 0 && (
-        <p className="empty-note">No findings: a clean pass.</p>
+        <p className="empty-note">Bulgu yok: temiz bir geçiş.</p>
       )}
       {findings.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Key</th>
-                <th scope="col">Dimension</th>
-                <th scope="col">Severity</th>
-                <th scope="col">Origin</th>
-                <th scope="col">Anchor</th>
-                <th scope="col">Description</th>
-                <th scope="col">Recommendation</th>
+                <th scope="col">Anahtar</th>
+                <th scope="col">Boyut</th>
+                <th scope="col">Önem</th>
+                <th scope="col">Köken</th>
+                <th scope="col">Bağlantı noktası</th>
+                <th scope="col">Açıklama</th>
+                <th scope="col">Öneri</th>
               </tr>
             </thead>
             <tbody>
@@ -174,20 +173,20 @@ function FindingsSection({ findings }: { findings: ReviewFindingView[] }) {
 function AuditSection({ detail }: { detail: ReviewDetail }) {
   return (
     <section aria-labelledby="review-audit">
-      <h2 id="review-audit">Supersession audit</h2>
+      <h2 id="review-audit">Geçersiz kılma denetimi</h2>
       {detail.status_events.length === 0 && (
-        <p className="empty-note">No status changes recorded.</p>
+        <p className="empty-note">Kayıtlı durum değişikliği yok.</p>
       )}
       {detail.status_events.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Change</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Reason</th>
-                <th scope="col">Replacement</th>
+                <th scope="col">Ne zaman</th>
+                <th scope="col">Değişiklik</th>
+                <th scope="col">Aktör</th>
+                <th scope="col">Gerekçe</th>
+                <th scope="col">Yerine geçen</th>
               </tr>
             </thead>
             <tbody>
@@ -213,14 +212,14 @@ function AuditSection({ detail }: { detail: ReviewDetail }) {
 function AttemptsSection({ detail }: { detail: ReviewDetail }) {
   return (
     <section aria-labelledby="review-attempts">
-      <h2 id="review-attempts">Editor generation attempts</h2>
+      <h2 id="review-attempts">Editör üretim denemeleri</h2>
       <p className="muted">
-        Safe persisted metadata only — failed attempts stay visible; prompts and
-        raw model output are never stored and never shown.
+        Yalnızca güvenli, kalıcı üstveriler — başarısız denemeler görünür kalır;
+        istemler ve ham model çıktısı asla saklanmaz ve asla gösterilmez.
       </p>
       {detail.generation_attempts.length === 0 && (
         <p className="empty-note">
-          No editor generation attempts exist for this work item.
+          Bu iş öğesi için editör üretim denemesi yok.
         </p>
       )}
       {detail.generation_attempts.length > 0 && (
@@ -228,11 +227,11 @@ function AttemptsSection({ detail }: { detail: ReviewDetail }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Status</th>
-                <th scope="col">Retry</th>
-                <th scope="col">Provider / model</th>
-                <th scope="col">Schema</th>
-                <th scope="col">When</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Yeniden deneme</th>
+                <th scope="col">Sağlayıcı / model</th>
+                <th scope="col">Şema</th>
+                <th scope="col">Ne zaman</th>
               </tr>
             </thead>
             <tbody>
@@ -281,16 +280,16 @@ export default async function ReviewDetailPage({
   if (result.kind === "unreachable") {
     return (
       <section className="panel" aria-labelledby="review-detail-title">
-        <h1 id="review-detail-title">Editor review</h1>
-        <p role="status">The backend API cannot be reached right now.</p>
+        <h1 id="review-detail-title">Editör değerlendirmesi</h1>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       </section>
     );
   }
   if (result.kind === "malformed") {
     return (
       <section className="panel" aria-labelledby="review-detail-title">
-        <h1 id="review-detail-title">Editor review</h1>
-        <p role="status">The backend API returned unexpected data.</p>
+        <h1 id="review-detail-title">Editör değerlendirmesi</h1>
+        <p role="status">Arka uç API&apos;si beklenmedik veri döndürdü.</p>
       </section>
     );
   }
@@ -298,9 +297,9 @@ export default async function ReviewDetailPage({
   const detail = result.data;
   return (
     <section className="panel panel-wide" aria-labelledby="review-detail-title">
-      <h1 id="review-detail-title">Editor review</h1>
+      <h1 id="review-detail-title">Editör değerlendirmesi</h1>
       <p className="muted">
-        <Link href={`/editorial/${id}`}>← Back to the work item</Link>
+        <Link href={`/editorial/${id}`}>← İş öğesine dön</Link>
       </p>
       <SummarySection detail={detail} />
       <FindingsSection findings={detail.findings} />

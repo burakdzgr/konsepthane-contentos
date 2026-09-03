@@ -28,12 +28,12 @@ import {
 export const dynamic = "force-dynamic";
 
 const DETAIL_NOTICES: Record<string, string> = {
-  accepted: "Item accepted. Starting the fetch is a separate action.",
-  rejected: "Item rejected. Rejection is terminal.",
+  accepted: "Öğe kabul edildi. Getirmeyi başlatmak ayrı bir eylemdir.",
+  rejected: "Öğe reddedildi. Reddetme kalıcıdır.",
   requeued:
-    "Item requeued as accepted. Starting the fetch is a separate action.",
+    "Öğe kabul edilmiş olarak yeniden kuyruğa alındı. Getirmeyi başlatmak ayrı bir eylemdir.",
   "fetch-queued":
-    "Fetch queued. The pipeline continues automatically after a successful fetch.",
+    "Getirme kuyruğa alındı. Başarılı bir getirmeden sonra hat otomatik olarak devam eder.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -59,7 +59,7 @@ function TruncationNote({
   }
   return (
     <p className="muted" role="note">
-      Showing the latest {shown} of {total} {noun}.
+      {total} {noun} içinden en son {shown} tanesi gösteriliyor.
     </p>
   );
 }
@@ -68,9 +68,9 @@ function DiscoverySection({ detail }: { detail: PipelineDetail }) {
   const item = detail.discovery_item;
   return (
     <section aria-labelledby="detail-discovery">
-      <h2 id="detail-discovery">Discovery</h2>
+      <h2 id="detail-discovery">Keşif</h2>
       <dl className="status-list">
-        <Row name="State">
+        <Row name="Durum">
           <span
             className="badge"
             data-tone={discoveryStateTone(item.lifecycle_state)}
@@ -78,40 +78,42 @@ function DiscoverySection({ detail }: { detail: PipelineDetail }) {
             {item.lifecycle_state}
           </span>
         </Row>
-        <Row name="Source">
+        <Row name="Kaynak">
           {detail.source.name}{" "}
           <span className="mono muted">({detail.source.slug})</span>
         </Row>
-        <Row name="Canonical URL">
+        <Row name="Kanonik URL">
           <span className="cell-url" title={item.canonical_url}>
             {item.canonical_url}
           </span>
         </Row>
         {item.discovered_url !== item.canonical_url && (
-          <Row name="Discovered URL">
+          <Row name="Keşfedilen URL">
             <span className="cell-url" title={item.discovered_url}>
               {item.discovered_url}
             </span>
           </Row>
         )}
-        <Row name="Method">{item.discovery_method}</Row>
+        <Row name="Yöntem">{item.discovery_method}</Row>
         {item.title_hint !== null && (
-          <Row name="Title hint (untrusted)">{item.title_hint}</Row>
+          <Row name="Başlık ipucu (güvenilmez)">{item.title_hint}</Row>
         )}
         {item.rejection_reason !== null && (
-          <Row name="Rejection">
+          <Row name="Reddetme">
             {item.rejection_reason}
             {item.rejection_note !== null ? ` — ${item.rejection_note}` : ""}
           </Row>
         )}
-        <Row name="Discovered at">{formatUtcTimestamp(item.discovered_at)}</Row>
-        <Row name="Last seen">{formatUtcTimestamp(item.last_seen_at)}</Row>
+        <Row name="Keşfedilme zamanı">
+          {formatUtcTimestamp(item.discovered_at)}
+        </Row>
+        <Row name="Son görülme">{formatUtcTimestamp(item.last_seen_at)}</Row>
         {item.external_published_at !== null && (
-          <Row name="Source-claimed publish date">
+          <Row name="Kaynağın beyan ettiği yayın tarihi">
             {formatUtcTimestamp(item.external_published_at)}
           </Row>
         )}
-        <Row name="Item ID">
+        <Row name="Öğe kimliği">
           <span className="mono muted">{item.id}</span>
         </Row>
       </dl>
@@ -122,23 +124,23 @@ function DiscoverySection({ detail }: { detail: PipelineDetail }) {
 function FetchSection({ detail }: { detail: PipelineDetail }) {
   return (
     <section aria-labelledby="detail-fetch">
-      <h2 id="detail-fetch">Fetch history</h2>
+      <h2 id="detail-fetch">Getirme geçmişi</h2>
       {detail.fetch_attempts.length === 0 && (
-        <p className="empty-note">No fetch attempts recorded.</p>
+        <p className="empty-note">Kayıtlı getirme denemesi yok.</p>
       )}
       {detail.fetch_attempts.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Fetched</th>
-                <th scope="col">Outcome</th>
-                <th scope="col">Status</th>
-                <th scope="col">Type</th>
-                <th scope="col">Size</th>
+                <th scope="col">Getirildi</th>
+                <th scope="col">Sonuç</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Tür</th>
+                <th scope="col">Boyut</th>
                 <th scope="col">Robots</th>
-                <th scope="col">Retry</th>
-                <th scope="col">Detail</th>
+                <th scope="col">Yeniden deneme</th>
+                <th scope="col">Ayrıntı</th>
               </tr>
             </thead>
             <tbody>
@@ -172,7 +174,7 @@ function FetchSection({ detail }: { detail: PipelineDetail }) {
       <TruncationNote
         shown={detail.fetch_attempts.length}
         total={detail.total_fetch_attempts}
-        noun="fetch attempts"
+        noun="getirme denemesi"
       />
     </section>
   );
@@ -181,22 +183,22 @@ function FetchSection({ detail }: { detail: PipelineDetail }) {
 function NormalizationSection({ detail }: { detail: PipelineDetail }) {
   return (
     <section aria-labelledby="detail-normalization">
-      <h2 id="detail-normalization">Normalization history</h2>
+      <h2 id="detail-normalization">Normalleştirme geçmişi</h2>
       {detail.normalization_attempts.length === 0 && (
-        <p className="empty-note">No normalization attempts recorded.</p>
+        <p className="empty-note">Kayıtlı normalleştirme denemesi yok.</p>
       )}
       {detail.normalization_attempts.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Normalized</th>
-                <th scope="col">Status</th>
-                <th scope="col">Extractor</th>
-                <th scope="col">Title</th>
-                <th scope="col">Author</th>
-                <th scope="col">Published</th>
-                <th scope="col">Failure</th>
+                <th scope="col">Normalleştirildi</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Çıkarıcı</th>
+                <th scope="col">Başlık</th>
+                <th scope="col">Yazar</th>
+                <th scope="col">Yayınlanma</th>
+                <th scope="col">Hata</th>
               </tr>
             </thead>
             <tbody>
@@ -234,7 +236,7 @@ function NormalizationSection({ detail }: { detail: PipelineDetail }) {
       <TruncationNote
         shown={detail.normalization_attempts.length}
         total={detail.total_normalization_attempts}
-        noun="normalization attempts"
+        noun="normalleştirme denemesi"
       />
     </section>
   );
@@ -243,21 +245,21 @@ function NormalizationSection({ detail }: { detail: PipelineDetail }) {
 function DuplicateSection({ detail }: { detail: PipelineDetail }) {
   return (
     <section aria-labelledby="detail-duplicates">
-      <h2 id="detail-duplicates">Duplicate decisions</h2>
+      <h2 id="detail-duplicates">Kopya kararları</h2>
       {detail.duplicate_decisions.length === 0 && (
-        <p className="empty-note">No duplicate decisions recorded.</p>
+        <p className="empty-note">Kayıtlı kopya kararı yok.</p>
       )}
       {detail.duplicate_decisions.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Evaluated</th>
-                <th scope="col">Decision</th>
-                <th scope="col">Engine</th>
-                <th scope="col">Rationale</th>
-                <th scope="col">Matches</th>
-                <th scope="col">Document</th>
+                <th scope="col">Değerlendirildi</th>
+                <th scope="col">Karar</th>
+                <th scope="col">Motor</th>
+                <th scope="col">Gerekçe</th>
+                <th scope="col">Eşleşmeler</th>
+                <th scope="col">Doküman</th>
               </tr>
             </thead>
             <tbody>
@@ -293,7 +295,7 @@ function DuplicateSection({ detail }: { detail: PipelineDetail }) {
       <TruncationNote
         shown={detail.duplicate_decisions.length}
         total={detail.total_duplicate_decisions}
-        noun="duplicate decisions"
+        noun="kopya kararı"
       />
     </section>
   );
@@ -303,23 +305,23 @@ function EvidenceSection({ detail }: { detail: PipelineDetail }) {
   const evidence = detail.evidence;
   return (
     <section aria-labelledby="detail-evidence">
-      <h2 id="detail-evidence">Evidence summary</h2>
+      <h2 id="detail-evidence">Kanıt özeti</h2>
       <p className="muted">
-        Counts only: evidence statements and excerpts are not shown here.
+        Yalnızca sayılar: kanıt ifadeleri ve alıntılar burada gösterilmez.
       </p>
       <dl className="status-list">
-        <Row name="Total evidence">{evidence.total}</Row>
-        <Row name="By verification status">
+        <Row name="Toplam kanıt">{evidence.total}</Row>
+        <Row name="Doğrulama durumuna göre">
           {Object.entries(evidence.by_verification_status)
             .map(([status, count]) => `${status}: ${count}`)
             .join(" · ") || "—"}
         </Row>
-        <Row name="By evidence type">
+        <Row name="Kanıt türüne göre">
           {Object.entries(evidence.by_evidence_type)
             .map(([type, count]) => `${type}: ${count}`)
             .join(" · ") || "—"}
         </Row>
-        <Row name="Newest evidence">
+        <Row name="En yeni kanıt">
           {formatUtcTimestamp(evidence.latest_extracted_at)}
         </Row>
       </dl>
@@ -332,15 +334,15 @@ function ActionPanel({ detail }: { detail: PipelineDetail }) {
   const state = item.lifecycle_state;
   return (
     <section aria-labelledby="detail-actions">
-      <h2 id="detail-actions">Operator actions</h2>
+      <h2 id="detail-actions">Operatör eylemleri</h2>
       {state === "discovered" && (
         <div className="control-stack">
           <form action={acceptDiscoveryItemAction} className="control-form">
             <input type="hidden" name="discovery_item_id" value={item.id} />
-            <button type="submit">Accept</button>
+            <button type="submit">Kabul et</button>
             <span className="muted">
-              Accept admits the item for fetching; fetch stays a separate
-              action.
+              Kabul, öğeyi getirme için onaylar; getirme ayrı bir eylem olarak
+              kalır.
             </span>
           </form>
           <form action={rejectDiscoveryItemAction} className="control-form">
@@ -349,10 +351,10 @@ function ActionPanel({ detail }: { detail: PipelineDetail }) {
               name="reason"
               required
               defaultValue=""
-              aria-label="Rejection reason"
+              aria-label="Reddetme gerekçesi"
             >
               <option value="" disabled>
-                Rejection reason…
+                Reddetme gerekçesi…
               </option>
               {DISCOVERY_REJECTION_REASONS.map((reason) => (
                 <option key={reason} value={reason}>
@@ -364,20 +366,20 @@ function ActionPanel({ detail }: { detail: PipelineDetail }) {
               type="text"
               name="note"
               maxLength={2000}
-              placeholder="optional note"
-              aria-label="Rejection note"
+              placeholder="isteğe bağlı not"
+              aria-label="Reddetme notu"
             />
-            <button type="submit">Reject</button>
+            <button type="submit">Reddet</button>
           </form>
         </div>
       )}
       {state === "accepted" && (
         <form action={startDiscoveryItemFetchAction} className="control-form">
           <input type="hidden" name="discovery_item_id" value={item.id} />
-          <button type="submit">Start fetch</button>
+          <button type="submit">Getirmeyi başlat</button>
           <span className="muted">
-            After a successful fetch the pipeline continues automatically:
-            normalize → duplicate check → evidence.
+            Başarılı bir getirmeden sonra hat otomatik olarak devam eder:
+            normalleştirme → kopya denetimi → kanıt.
           </span>
         </form>
       )}
@@ -389,25 +391,25 @@ function ActionPanel({ detail }: { detail: PipelineDetail }) {
             name="reason"
             required
             maxLength={1000}
-            placeholder="reason for requeueing"
-            aria-label="Requeue reason"
+            placeholder="yeniden kuyruğa alma gerekçesi"
+            aria-label="Yeniden kuyruğa alma gerekçesi"
           />
-          <button type="submit">Requeue</button>
+          <button type="submit">Yeniden kuyruğa al</button>
           <span className="muted">
-            Requeue returns the item to accepted; it does not start the fetch.
+            Yeniden kuyruğa alma öğeyi kabul edilmiş durumuna döndürür;
+            getirmeyi başlatmaz.
           </span>
         </form>
       )}
       {state === "fetched" && (
         <p className="muted">
-          This item is fetched; the pipeline ran from its snapshot. No actions
-          are available here.
+          Bu öğe getirildi; hat, öğenin anlık görüntüsünden çalıştı. Burada
+          kullanılabilir eylem yok.
         </p>
       )}
       {state === "rejected" && (
         <p className="muted">
-          This item is rejected. Rejection is terminal; no actions are
-          available.
+          Bu öğe reddedildi. Reddetme kalıcıdır; kullanılabilir eylem yok.
         </p>
       )}
     </section>
@@ -431,16 +433,16 @@ export default async function ResearchDetailPage({
   if (result.kind === "unreachable") {
     return (
       <section className="panel" aria-labelledby="detail-title">
-        <h1 id="detail-title">Discovery item</h1>
-        <p role="status">The backend API cannot be reached right now.</p>
+        <h1 id="detail-title">Keşif öğesi</h1>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       </section>
     );
   }
   if (result.kind === "malformed") {
     return (
       <section className="panel" aria-labelledby="detail-title">
-        <h1 id="detail-title">Discovery item</h1>
-        <p role="status">The backend API returned unexpected data.</p>
+        <h1 id="detail-title">Keşif öğesi</h1>
+        <p role="status">Arka uç API&apos;si beklenmeyen veri döndürdü.</p>
       </section>
     );
   }
@@ -448,9 +450,9 @@ export default async function ResearchDetailPage({
   const detail = result.data;
   return (
     <section className="panel panel-wide" aria-labelledby="detail-title">
-      <h1 id="detail-title">Discovery item</h1>
+      <h1 id="detail-title">Keşif öğesi</h1>
       <p className="muted">
-        <Link href="/research">← Back to Research Pipeline</Link>
+        <Link href="/research">← Araştırma Hattına dön</Link>
       </p>
       <ControlNotice
         notice={firstParam(query.notice)}

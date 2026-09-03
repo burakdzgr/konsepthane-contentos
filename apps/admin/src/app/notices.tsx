@@ -3,12 +3,12 @@
 
 export const CONTROL_ERROR_MESSAGES: Record<string, string> = {
   conflict:
-    "The request conflicts with the current state. Reload the page and try again.",
-  invalid: "The submitted values were not valid.",
-  "not-found": "The record was not found.",
-  "queue-failed": "Queueing the task failed. Nothing was changed.",
-  unreachable: "The backend API cannot be reached right now.",
-  malformed: "The backend API returned unexpected data.",
+    "İstek mevcut durumla çelişiyor. Sayfayı yeniden yükleyip tekrar deneyin.",
+  invalid: "Gönderilen değerler geçerli değil.",
+  "not-found": "Kayıt bulunamadı.",
+  "queue-failed": "Görev kuyruğa alınamadı. Hiçbir şey değiştirilmedi.",
+  unreachable: "Backend API'ye şu anda erişilemiyor.",
+  malformed: "Backend API beklenmedik veri döndürdü.",
 };
 
 export function ControlNotice({

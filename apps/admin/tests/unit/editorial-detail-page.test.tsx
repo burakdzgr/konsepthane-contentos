@@ -138,33 +138,33 @@ describe("Editorial detail page", () => {
     await renderPage();
 
     for (const heading of [
-      "Workflow",
-      "Opportunity & score",
-      "Research inputs",
-      "Ideas",
-      "Evidence packs",
-      "Search intent",
-      "Briefs & claims",
-      "Writer drafts",
-      "Editor reviews",
-      "QA reports",
-      "Media",
-      "Human decisions",
-      "Publication",
-      "AI attempts",
-      "Workflow history",
+      "İş akışı",
+      "Fırsat ve skor",
+      "Araştırma girdileri",
+      "Fikirler",
+      "Kanıt paketleri",
+      "Arama niyeti",
+      "Brief'ler ve iddialar",
+      "Yazar taslakları",
+      "Editör değerlendirmeleri",
+      "QA raporları",
+      "Medya",
+      "İnsan kararları",
+      "Yayın",
+      "Yapay zeka denemeleri",
+      "İş akışı geçmişi",
     ]) {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     }
 
-    // Score explainability: band + eligibility + UNKNOWN stays Unknown.
+    // Score explainability: band + eligibility + UNKNOWN stays Bilinmiyor.
     expect(screen.getByText("strong / commissionable")).toBeTruthy();
-    expect(screen.getByText("(effective)")).toBeTruthy();
-    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
-    expect(screen.getByText("Not observed")).toBeTruthy();
+    expect(screen.getByText("(geçerli)")).toBeTruthy();
+    expect(screen.getAllByText("Bilinmiyor").length).toBeGreaterThan(0);
+    expect(screen.getByText("Gözlemlenmedi")).toBeTruthy();
 
     // Idea selection state + generation provenance.
-    expect(screen.getByText("(selected)")).toBeTruthy();
+    expect(screen.getByText("(seçili)")).toBeTruthy();
     expect(screen.getAllByText("passed").length).toBeGreaterThan(0);
 
     // Pack members + unresolved contradiction stays visible.
@@ -175,7 +175,7 @@ describe("Editorial detail page", () => {
 
     // Intent: known vs missing signals + honest cannibalization wording.
     expect(screen.getByText("search_volume, trend")).toBeTruthy();
-    expect(screen.getByText("Not checked")).toBeTruthy();
+    expect(screen.getByText("Kontrol edilmedi")).toBeTruthy();
 
     // Brief claim map with exact evidence links.
     expect(screen.getByText("konsept-detaylari")).toBeTruthy();
@@ -197,12 +197,12 @@ describe("Editorial detail page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("button", { name: "Accept for drafting" }),
+      screen.getByRole("button", { name: "Taslak için kabul et" }),
     ).toBeTruthy();
-    expect(screen.getByText(/does NOT publish content/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /publish/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /go live/i })).toBeNull();
+    expect(screen.getByText(/İçerik YAYINLAMAZ/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /yayınla/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /onayla/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /yayına al/i })).toBeNull();
   });
 
   it("offers commissioning with score context only while decidable", async () => {
@@ -235,13 +235,11 @@ describe("Editorial detail page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Commission" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Görevlendir" })).toBeTruthy();
     expect(
-      screen.getByText(/Effective score: strong \/ commissionable/),
+      screen.getByText(/Geçerli skor: strong \/ commissionable/),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Reject opportunity" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fırsatı reddet" })).toBeTruthy();
   });
 
   it("hides commissioning once commissioned and shows the pack builder gate", async () => {
@@ -269,15 +267,15 @@ describe("Editorial detail page", () => {
 
     await renderPage();
 
-    expect(screen.queryByRole("button", { name: "Commission" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Görevlendir" })).toBeNull();
     expect(
       screen.getByRole("button", {
-        name: "Build evidence pack from selection",
+        name: "Seçimden kanıt paketi oluştur",
       }),
     ).toBeTruthy();
-    expect(screen.getByText(/You select the evidence explicitly/)).toBeTruthy();
+    expect(screen.getByText(/Kanıtı açıkça siz seçersiniz/)).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Generate idea candidates" }),
+      screen.getByRole("button", { name: "Fikir adayları üret" }),
     ).toBeTruthy();
   });
 
@@ -298,16 +296,16 @@ describe("Editorial detail page", () => {
     await renderPage();
 
     expect(screen.getByText("kanıt paketi yetersiz")).toBeTruthy();
-    expect(screen.getByText("Legal resume target")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Resolve block" })).toBeTruthy();
+    expect(screen.getByText("Geçerli devam hedefi")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Engeli çöz" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Reject blocked item" }),
+      screen.getByRole("button", { name: "Engellenen öğeyi reddet" }),
     ).toBeTruthy();
     // No arbitrary target selector exists anywhere.
-    expect(screen.queryByLabelText(/target state/i)).toBeNull();
+    expect(screen.queryByLabelText(/hedef durum/i)).toBeNull();
   });
 
-  it("marks unknown score values as Unknown, never zero", async () => {
+  it("marks unknown score values as Bilinmiyor, never zero", async () => {
     detailMock.mockResolvedValue({
       kind: "ok",
       data: workItemDetail({
@@ -317,7 +315,7 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bilinmiyor").length).toBeGreaterThan(0);
   });
 
   it("shows writer commands in DRAFTING with an accepted brief", async () => {
@@ -341,16 +339,18 @@ describe("Editorial detail page", () => {
     await renderPage();
 
     expect(
-      screen.getByRole("button", { name: "Generate writer draft" }),
+      screen.getByRole("button", { name: "Yazar taslağı üret" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Submit operator draft" }),
+      screen.getByRole("button", { name: "Operatör taslağını gönder" }),
     ).toBeTruthy();
     // The listed draft keeps its truthful verdicts and links to detail.
     expect(screen.getByText("evaluated")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open draft" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Taslağı aç" })).toBeTruthy();
     // No rework commands outside their states.
-    expect(screen.queryByRole("button", { name: "Request rework" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Yeniden çalışma iste" }),
+    ).toBeNull();
   });
 
   it("shows rework in EDITING and routing in CHANGES_REQUESTED", async () => {
@@ -365,7 +365,9 @@ describe("Editorial detail page", () => {
       requestId: null,
     });
     await renderPage();
-    expect(screen.getByRole("button", { name: "Request rework" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Yeniden çalışma iste" }),
+    ).toBeTruthy();
 
     vi.mocked(detailMock).mockResolvedValue({
       kind: "ok",
@@ -388,7 +390,9 @@ describe("Editorial detail page", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(screen.getByRole("button", { name: "Route rework" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Yeniden çalışmayı yönlendir" }),
+    ).toBeTruthy();
   });
 
   it("renders UNKNOWN for drafts without persisted verdicts", async () => {
@@ -409,7 +413,7 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getAllByText("UNKNOWN").length).toBe(2);
+    expect(screen.getAllByText("BİLİNMİYOR").length).toBe(2);
   });
 
   it("shows editor review commands and truthful verdicts in EDITING", async () => {
@@ -431,12 +435,16 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(
-      screen.getByRole("button", { name: "Generate editor review" }),
+      screen.getByRole("button", { name: "Editör değerlendirmesi üret" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Accept review" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Değerlendirmeyi kabul et" }),
+    ).toBeTruthy();
     expect(screen.getByText("revise")).toBeTruthy();
-    expect(screen.getByText(/backend will refuse/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open review" })).toBeTruthy();
+    expect(screen.getByText(/arka uç reddedecektir/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Değerlendirmeyi aç" }),
+    ).toBeTruthy();
   });
 
   it("hides review commands outside EDITING", async () => {
@@ -447,9 +455,11 @@ describe("Editorial detail page", () => {
     });
     await renderPage();
     expect(
-      screen.queryByRole("button", { name: "Generate editor review" }),
+      screen.queryByRole("button", { name: "Editör değerlendirmesi üret" }),
     ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Accept review" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Değerlendirmeyi kabul et" }),
+    ).toBeNull();
   });
 
   it("shows QA commands and truthful gate badges in QA_REVIEW", async () => {
@@ -470,14 +480,18 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByRole("button", { name: "Run QA gates" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Waive media gate" }),
+      screen.getByRole("button", { name: "QA kapılarını çalıştır" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Request rework" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Medya kapısını atla" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Yeniden çalışma iste" }),
+    ).toBeTruthy();
     expect(screen.getByText(/media_needs: unsatisfied/)).toBeTruthy();
     expect(screen.getByText("not_ready")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open report" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Raporu aç" })).toBeTruthy();
   });
 
   it("states the pending human decision in AWAITING_HUMAN_REVIEW", async () => {
@@ -506,23 +520,21 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText("Human decision pending.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Run QA gates" })).toBeNull();
+    expect(screen.getByText("İnsan kararı bekleniyor.")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "QA kapılarını çalıştır" }),
+    ).toBeNull();
 
     // The reviewer decision surface, gated on the reviewer role.
+    expect(screen.getByRole("button", { name: "Paketi onayla" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Approve package" }),
+      screen.getByRole("button", { name: "Değişiklik iste" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Request changes" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reject package" })).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Revoke approval" }),
-    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Paketi reddet" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Onayı geri çek" })).toBeNull();
     // The routing choice is bounded to the three named responsible states.
     const select = screen.getByLabelText(
-      "Decision responsible state",
+      "Karar sorumlu durumu",
     ) as HTMLSelectElement;
     expect(Array.from(select.options).map((option) => option.value)).toEqual([
       "drafting",
@@ -555,15 +567,13 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(
-      screen.getByText(/signed in without the reviewer role/i),
+      screen.getByText(/Değerlendirici rolü olmadan oturum açtınız/),
     ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Paketi onayla" })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Approve package" }),
+      screen.queryByRole("button", { name: "Değişiklik iste" }),
     ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Request changes" }),
-    ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject package" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Paketi reddet" })).toBeNull();
   });
 
   it("shows the approval record, its validity, and revoke on APPROVED", async () => {
@@ -593,16 +603,12 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText("Approval on record")).toBeTruthy();
-    expect(screen.getByText("current")).toBeTruthy();
+    expect(screen.getByText("Kayıtlı onay")).toBeTruthy();
+    expect(screen.getByText("güncel")).toBeTruthy();
     expect(screen.getByText("Smoke Reviewer")).toBeTruthy();
     expect(screen.getAllByText("approved").length).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("button", { name: "Revoke approval" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Approve package" }),
-    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Onayı geri çek" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Paketi onayla" })).toBeNull();
   });
 
   it("renders a stale approval honestly when the hash no longer matches", async () => {
@@ -632,9 +638,9 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText("stale")).toBeTruthy();
+    expect(screen.getByText("bayat")).toBeTruthy();
     expect(
-      screen.getByText(/no longer matches the approved content hash/i),
+      screen.getByText(/onaylanan içerik hash'iyle artık eşleşmiyor/),
     ).toBeTruthy();
   });
 
@@ -690,7 +696,7 @@ describe("Editorial detail page", () => {
       requestId: null,
     });
     await renderPage();
-    expect(screen.getByText("operator · UNKNOWN")).toBeTruthy();
+    expect(screen.getByText("operator · BİLİNMİYOR")).toBeTruthy();
   });
 
   it("offers the media binding commands for an unsatisfied need", async () => {
@@ -706,14 +712,16 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText("Coverage: 0 / 1 needs satisfied.")).toBeTruthy();
-    expect(screen.getByText("Unsatisfied")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Upload & bind" })).toBeTruthy();
+    expect(screen.getByText("Kapsam: 0 / 1 ihtiyaç karşılandı.")).toBeTruthy();
+    expect(screen.getByText("Karşılanmadı")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Yükle ve bağla" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Bind existing asset" }),
+      screen.getByRole("button", { name: "Mevcut varlığı bağla" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Generate image" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Unbind" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Görsel üret" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Bağlamayı kaldır" }),
+    ).toBeNull();
   });
 
   it("shows the bound asset through the admin proxy and allows unbinding", async () => {
@@ -749,16 +757,18 @@ describe("Editorial detail page", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(screen.getByText("Coverage: 1 / 1 needs satisfied.")).toBeTruthy();
+    expect(screen.getByText("Kapsam: 1 / 1 ihtiyaç karşılandı.")).toBeTruthy();
     const image = screen.getByAltText(
       "Balon süslemeli parti masası",
     ) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe(
       `/editorial/media-assets/${mediaSatisfaction().asset.id}/content`,
     );
-    expect(screen.getByText(/Bound by Smoke Reviewer/)).toBeTruthy();
-    expect(screen.getByText("License: Konsepthane arşivi")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Unbind" })).toBeTruthy();
+    expect(screen.getByText(/Bağlayan: Smoke Reviewer/)).toBeTruthy();
+    expect(screen.getByText("Lisans: Konsepthane arşivi")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Bağlamayı kaldır" }),
+    ).toBeTruthy();
     // The bytes come only from the admin's own proxy route.
     expect(container.innerHTML).not.toContain("127.0.0.1:8000");
   });
@@ -776,9 +786,9 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText(/Media commands are closed/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Upload & bind" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Generate image" })).toBeNull();
+    expect(screen.getByText(/Medya komutları/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Yükle ve bağla" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Görsel üret" })).toBeNull();
   });
 
   it("offers assembly and scheduling on APPROVED with the package pinned", async () => {
@@ -803,13 +813,13 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(
-      screen.getByRole("button", { name: "Assemble publication package" }),
+      screen.getByRole("button", { name: "Yayın paketini birleştir" }),
     ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Yayını zamanla" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Schedule publication" }),
+      screen.getByText(/vazgeçilen karşılanmamış ihtiyaçlar: 0/),
     ).toBeTruthy();
-    expect(screen.getByText(/waived unmet needs: 0/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Publish now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Şimdi yayınla" })).toBeNull();
   });
 
   it("offers the governed dispatch on SCHEDULED and shows honest attempts", async () => {
@@ -843,11 +853,11 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByRole("button", { name: "Publish now" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Şimdi yayınla" })).toBeTruthy();
     expect(screen.getByText("rejected_by_api")).toBeTruthy();
     expect(screen.getByText(/publishing_api_rejected_422/)).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Assemble publication package" }),
+      screen.queryByRole("button", { name: "Yayın paketini birleştir" }),
     ).toBeNull();
   });
 
@@ -873,12 +883,10 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(
-      screen.getByRole("button", { name: "Resolve expired approval" }),
+      screen.getByRole("button", { name: "Süresi dolan onayı çöz" }),
     ).toBeTruthy();
-    expect(
-      screen.getByText(/no longer matches a current approval/),
-    ).toBeTruthy();
-    expect(screen.getByText(/target is DERIVED/)).toBeTruthy();
+    expect(screen.getByText(/artık güncel bir onayla eşleşmiyor/)).toBeTruthy();
+    expect(screen.getByText(/Hedef TÜRETİLİR/)).toBeTruthy();
   });
 
   it("never renders the internal backend URL", async () => {

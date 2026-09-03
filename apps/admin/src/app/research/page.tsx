@@ -90,7 +90,7 @@ function EnumSelect({
     <label>
       {label}
       <select name={name} defaultValue={selected ?? ""}>
-        <option value="">Any</option>
+        <option value="">Tümü</option>
         {values.map((value) => (
           <option key={value} value={value}>
             {value}
@@ -108,59 +108,59 @@ function FilterForm({ filters }: { filters: PipelineFilterState }) {
         <input type="hidden" name="source" value={filters.source} />
       )}
       <EnumSelect
-        label="Discovery"
+        label="Keşif"
         name="state"
         values={DISCOVERY_LIFECYCLE_STATES}
         selected={filters.state}
       />
       <EnumSelect
-        label="Method"
+        label="Yöntem"
         name="method"
         values={DISCOVERY_METHODS}
         selected={filters.method}
       />
       <EnumSelect
-        label="Fetch"
+        label="Getirme"
         name="fetch"
         values={FETCH_OUTCOMES}
         selected={filters.fetch}
       />
       <EnumSelect
-        label="Normalize"
+        label="Normalleştirme"
         name="normalize"
         values={NORMALIZATION_STATUSES}
         selected={filters.normalize}
       />
       <EnumSelect
-        label="Duplicate"
+        label="Kopya"
         name="duplicate"
         values={DUPLICATE_OUTCOMES}
         selected={filters.duplicate}
       />
       <label>
-        Evidence
+        Kanıt
         <select
           name="evidence"
           defaultValue={
             filters.evidence === undefined ? "" : String(filters.evidence)
           }
         >
-          <option value="">Any</option>
-          <option value="true">has evidence</option>
-          <option value="false">no evidence</option>
+          <option value="">Tümü</option>
+          <option value="true">kanıt var</option>
+          <option value="false">kanıt yok</option>
         </select>
       </label>
       <label>
-        URL contains
+        URL içerir
         <input
           type="text"
           name="q"
           defaultValue={filters.q ?? ""}
           maxLength={200}
-          placeholder="canonical URL fragment"
+          placeholder="kanonik URL parçası"
         />
       </label>
-      <button type="submit">Apply</button>
+      <button type="submit">Uygula</button>
     </form>
   );
 }
@@ -229,21 +229,21 @@ export default async function ResearchPage({
 
   return (
     <section className="panel panel-wide" aria-labelledby="research-title">
-      <h1 id="research-title">Research Pipeline</h1>
+      <h1 id="research-title">Araştırma Hattı</h1>
       <p className="muted">
-        What happened to each discovered URL, per stage, from durable state.
-        Read-only.
+        Keşfedilen her URL&apos;ye aşama aşama ne olduğu, kalıcı durumdan. Salt
+        okunur.
       </p>
       <FilterForm filters={filters} />
       {result.kind === "unreachable" && (
-        <p role="status">The backend API cannot be reached right now.</p>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       )}
       {result.kind === "malformed" && (
-        <p role="status">The backend API returned unexpected data.</p>
+        <p role="status">Arka uç API&apos;si beklenmeyen veri döndürdü.</p>
       )}
       {result.kind === "ok" && result.data.items.length === 0 && (
         <p className="empty-note" role="status">
-          No discovery items match the current view.
+          Geçerli görünümle eşleşen keşif öğesi yok.
         </p>
       )}
       {result.kind === "ok" && result.data.items.length > 0 && (
@@ -252,15 +252,15 @@ export default async function ResearchPage({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">Discovered</th>
-                  <th scope="col">Source</th>
+                  <th scope="col">Keşfedildi</th>
+                  <th scope="col">Kaynak</th>
                   <th scope="col">URL</th>
-                  <th scope="col">Discovery</th>
-                  <th scope="col">Fetch</th>
-                  <th scope="col">Normalize</th>
-                  <th scope="col">Duplicate</th>
-                  <th scope="col">Evidence</th>
-                  <th scope="col">Last seen</th>
+                  <th scope="col">Keşif</th>
+                  <th scope="col">Getirme</th>
+                  <th scope="col">Normalleştirme</th>
+                  <th scope="col">Kopya</th>
+                  <th scope="col">Kanıt</th>
+                  <th scope="col">Son görülme</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,10 +309,10 @@ export default async function ResearchPage({
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="Pipeline pagination">
+          <nav className="pagination" aria-label="Hat sayfalaması">
             <span className="muted">
-              Showing {filters.offset + 1}–
-              {filters.offset + result.data.items.length} of {result.data.total}
+              {result.data.total} kayıttan {filters.offset + 1}–
+              {filters.offset + result.data.items.length} gösteriliyor
             </span>
             {filters.offset > 0 && (
               <Link
@@ -321,12 +321,12 @@ export default async function ResearchPage({
                   Math.max(filters.offset - PAGE_SIZE, 0),
                 )}
               >
-                Previous
+                Önceki
               </Link>
             )}
             {filters.offset + result.data.items.length < result.data.total && (
               <Link href={pageHref(filters, filters.offset + PAGE_SIZE)}>
-                Next
+                Sonraki
               </Link>
             )}
           </nav>

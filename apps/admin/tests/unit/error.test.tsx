@@ -14,7 +14,7 @@ describe("RouteError", () => {
     const text = document.body.textContent ?? "";
 
     expect(screen.getByRole("alert")).toBeTruthy();
-    expect(screen.getByText(/something went wrong/i)).toBeTruthy();
+    expect(screen.getByText(/bir şeyler ters gitti/i)).toBeTruthy();
     expect(text).not.toContain("secret internal explosion");
     expect(text).not.toContain("contentos\\internal");
     expect(text).not.toContain("digest-123");
@@ -25,7 +25,7 @@ describe("RouteError", () => {
     const reset = vi.fn();
 
     render(<RouteError error={new Error("boom")} reset={reset} />);
-    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    fireEvent.click(screen.getByRole("button", { name: /tekrar dene/i }));
 
     expect(reset).toHaveBeenCalledTimes(1);
   });

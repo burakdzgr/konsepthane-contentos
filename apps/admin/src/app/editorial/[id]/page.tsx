@@ -89,60 +89,65 @@ import {
 export const dynamic = "force-dynamic";
 
 const DETAIL_NOTICES: Record<string, string> = {
-  "evaluation-queued": "Scoring queued. Reload to see the new evaluation.",
-  commissioned: "Opportunity commissioned. Idea work can begin.",
-  "opportunity-rejected": "Opportunity rejected with your reason.",
+  "evaluation-queued":
+    "Puanlama kuyruğa alındı. Yeni değerlendirmeyi görmek için sayfayı yenileyin.",
+  commissioned: "Fırsat görevlendirildi. Fikir çalışması başlayabilir.",
+  "opportunity-rejected": "Fırsat, gerekçenizle birlikte reddedildi.",
   "ideas-queued":
-    "Idea generation queued. Candidates appear when the worker finishes.",
-  "idea-selected": "Idea version selected.",
-  "idea-deselected": "Selection cleared. Nothing is selected now.",
-  "pack-queued": "Evidence pack assembly queued with your explicit selections.",
+    "Fikir üretimi kuyruğa alındı. Adaylar worker tamamladığında görünür.",
+  "idea-selected": "Fikir sürümü seçildi.",
+  "idea-deselected": "Seçim kaldırıldı. Şu anda hiçbir şey seçili değil.",
+  "pack-queued":
+    "Kanıt paketi birleştirme, açık seçimlerinizle kuyruğa alındı.",
   "contradiction-resolved":
-    "Contradiction resolved. The old pack keeps its sufficiency; reassemble to reflect the resolution.",
+    "Çelişki çözüldü. Eski paket yeterliliğini korur; çözümü yansıtmak için yeniden birleştirin.",
   "pack-reassembled":
-    "New pack version created. Continuing with it is the next explicit step.",
-  "block-resolved": "Block resolved back to the prior state.",
-  "blocked-rejected": "Blocked work item rejected.",
-  "analysis-queued": "Search-intent analysis queued with your exact pins.",
-  "compose-queued": "Brief composition queued. The result is a DRAFT.",
+    "Yeni paket sürümü oluşturuldu. Onunla devam etmek bir sonraki açık adımdır.",
+  "block-resolved": "Engel çözüldü; önceki duruma dönüldü.",
+  "blocked-rejected": "Engellenen iş öğesi reddedildi.",
+  "analysis-queued":
+    "Arama niyeti analizi, tam sabitlemelerinizle kuyruğa alındı.",
+  "compose-queued": "Brief oluşturma kuyruğa alındı. Sonuç bir TASLAK'tır.",
   "brief-accepted":
-    "Brief accepted for drafting. This does not publish content.",
-  "duplicate-reopened": "Duplicate reopened as this operator work item.",
+    "Brief, taslak yazımı için kabul edildi. Bu, içerik yayınlamaz.",
+  "duplicate-reopened": "Kopya, bu operatör iş öğesi olarak yeniden açıldı.",
   "draft-queued":
-    "Writer draft generation queued. The draft appears when the worker finishes.",
+    "Yazar taslağı üretimi kuyruğa alındı. Taslak, worker tamamladığında görünür.",
   "draft-submitted":
-    "Operator draft stored through the full gates; the item moved to editing.",
+    "Operatör taslağı tüm kapılardan geçirilerek kaydedildi; öğe düzenleme aşamasına geçti.",
   "rework-requested":
-    "Rework recorded: changes requested with the writer stage responsible.",
+    "Yeniden çalışma kaydedildi: yazar aşaması sorumlu olacak şekilde değişiklik istendi.",
   "changes-request-resolved":
-    "Routed out of changes-requested to the recorded responsible state.",
+    "Değişiklik istendi durumundan, kayıtlı sorumlu duruma yönlendirildi.",
   "review-queued":
-    "Editor review queued. The verdict appears when the worker finishes.",
+    "Editör değerlendirmesi kuyruğa alındı. Hüküm, worker tamamladığında görünür.",
   "review-accepted":
-    "Review accepted; the item moved to QA review. This does not publish content.",
-  "qa-queued": "QA gate run queued. Re-runs are idempotent.",
+    "Değerlendirme kabul edildi; öğe QA incelemesine geçti. Bu, içerik yayınlamaz.",
+  "qa-queued":
+    "QA kapısı çalıştırması kuyruğa alındı. Tekrarlanan çalıştırmalar idempotenttir.",
   "qa-gate-waived":
-    "Waiver recorded and audited. Gates were NOT re-run — run QA explicitly.",
+    "Vazgeçme kaydedildi ve denetlendi. Kapılar yeniden ÇALIŞTIRILMADI — QA'yı açıkça çalıştırın.",
   "package-approved":
-    "Package approved by you, on the record. Scheduling belongs to a later phase.",
+    "Paket, kayıt altında sizin tarafınızdan onaylandı. Zamanlama daha sonraki bir faza aittir.",
   "decision-changes-requested":
-    "Change request recorded and routed to the responsible stage.",
-  "package-rejected": "Package rejected, on the record.",
+    "Değişiklik isteği kaydedildi ve sorumlu aşamaya yönlendirildi.",
+  "package-rejected": "Paket, kayıt altında reddedildi.",
   "approval-revoked":
-    "Approval revoked (the original record stays) and routed for rework.",
+    "Onay geri çekildi (orijinal kayıt korunur) ve yeniden çalışma için yönlendirildi.",
   "media-bound":
-    "Media need bound to the asset. Gates were NOT re-run — run QA explicitly.",
-  "media-unbound": "Binding withdrawn; the need is honestly unsatisfied again.",
+    "Medya ihtiyacı varlığa bağlandı. Kapılar yeniden ÇALIŞTIRILMADI — QA'yı açıkça çalıştırın.",
+  "media-unbound":
+    "Bağlama geri çekildi; ihtiyaç yeniden dürüstçe karşılanmamış durumda.",
   "media-image-queued":
-    "Image generation queued. Generation satisfies nothing by itself — bind the asset explicitly.",
+    "Görsel üretimi kuyruğa alındı. Üretim tek başına hiçbir ihtiyacı karşılamaz — varlığı açıkça bağlayın.",
   "publication-package-assembled":
-    "Publication package assembled from the exact approved artifacts.",
+    "Yayın paketi, tam olarak onaylanan artefaktlardan birleştirildi.",
   "publication-scheduled":
-    "Publication scheduled. Nothing is published until the governed dispatch runs.",
+    "Yayın zamanlandı. Yönetimli gönderim çalışana kadar hiçbir şey yayınlanmaz.",
   "publish-queued":
-    "Publication dispatch queued; the worker re-checks the approval first.",
+    "Yayın gönderimi kuyruğa alındı; worker önce onayı yeniden kontrol eder.",
   "approval-expiry-resolved":
-    "Routed out of the expired approval to the derived target.",
+    "Süresi dolan onaydan türetilen hedefe yönlendirildi.",
 };
 
 function Row({ name, children }: { name: string; children: React.ReactNode }) {
@@ -168,7 +173,7 @@ function TruncationNote({
   }
   return (
     <p className="muted" role="note">
-      Showing the latest {shown} of {total} {noun}.
+      {total} {noun} içinden en son {shown} tanesi gösteriliyor.
     </p>
   );
 }
@@ -200,7 +205,7 @@ function ReasonForm({
         required
         maxLength={1000}
         placeholder={placeholder}
-        aria-label={`${label} reason`}
+        aria-label={`${label} gerekçesi`}
       />
       <button type="submit">{label}</button>
       {helper !== undefined && <span className="muted">{helper}</span>}
@@ -212,9 +217,9 @@ function WorkflowSection({ detail }: { detail: WorkItemDetail }) {
   const item = detail.work_item;
   return (
     <section aria-labelledby="detail-workflow">
-      <h2 id="detail-workflow">Workflow</h2>
+      <h2 id="detail-workflow">İş akışı</h2>
       <dl className="status-list">
-        <Row name="State">
+        <Row name="Durum">
           <span
             className="badge"
             data-tone={workflowStateTone(item.current_state)}
@@ -222,26 +227,27 @@ function WorkflowSection({ detail }: { detail: WorkItemDetail }) {
             {item.current_state}
           </span>{" "}
           <span className="muted">
-            since {formatUtcTimestamp(item.current_state_entered_at)}
+            {formatUtcTimestamp(item.current_state_entered_at)} tarihinden beri
           </span>
         </Row>
-        <Row name="Working title">{item.title_working_label}</Row>
-        <Row name="Origin">{item.origin}</Row>
-        <Row name="Locale / market">
+        <Row name="Çalışma başlığı">{item.title_working_label}</Row>
+        <Row name="Köken">{item.origin}</Row>
+        <Row name="Yerel ayar / pazar">
           {item.locale} / {item.market}
         </Row>
         {item.blocked_reason !== null && (
-          <Row name="Blocked reason">{item.blocked_reason}</Row>
+          <Row name="Engellenme gerekçesi">{item.blocked_reason}</Row>
         )}
         {item.current_state === "blocked" && (
-          <Row name="Legal resume target">
-            {item.blocked_resume_state ?? "No prior resumable state recorded"}
+          <Row name="Geçerli devam hedefi">
+            {item.blocked_resume_state ??
+              "Devam edilebilir önceki durum kaydı yok"}
           </Row>
         )}
         {item.rejected_reason !== null && (
-          <Row name="Rejected reason">{item.rejected_reason}</Row>
+          <Row name="Reddedilme gerekçesi">{item.rejected_reason}</Row>
         )}
-        <Row name="Work item ID">
+        <Row name="İş öğesi kimliği">
           <span className="mono muted">{item.id}</span>
         </Row>
       </dl>
@@ -251,20 +257,20 @@ function WorkflowSection({ detail }: { detail: WorkItemDetail }) {
             action={resolveBlockAction}
             workItemId={item.id}
             hidden={{}}
-            label="Resolve block"
-            placeholder="what changed to unblock this"
-            helper={`Resumes the history-derived prior state${
+            label="Engeli çöz"
+            placeholder="engeli kaldırmak için ne değişti"
+            helper={`Geçmişten türetilen önceki durumu${
               item.blocked_resume_state !== null
                 ? ` (${item.blocked_resume_state})`
                 : ""
-            }; no target can be chosen here.`}
+            } sürdürür; burada hedef seçilemez.`}
           />
           <ReasonForm
             action={rejectBlockedAction}
             workItemId={item.id}
             hidden={{}}
-            label="Reject blocked item"
-            placeholder="why this work item is abandoned"
+            label="Engellenen öğeyi reddet"
+            placeholder="bu iş öğesi neden terk ediliyor"
           />
         </div>
       )}
@@ -276,44 +282,46 @@ function ScoreCard({ score }: { score: ScoreView }) {
   return (
     <div className="detail-card">
       <dl className="status-list">
-        <Row name="Result">
+        <Row name="Sonuç">
           <span
             className="badge"
             data-tone={scoreEligibilityTone(score.eligibility)}
           >
             {score.overall_band} / {score.eligibility}
           </span>{" "}
-          {score.effective && <strong>(effective)</strong>}
+          {score.effective && <strong>(geçerli)</strong>}
         </Row>
-        <Row name="Overall value">
-          {score.overall_value !== null ? score.overall_value : "Unknown"}
+        <Row name="Genel değer">
+          {score.overall_value !== null ? score.overall_value : "Bilinmiyor"}
         </Row>
-        <Row name="Engine">
+        <Row name="Motor">
           <span className="mono">
             {score.engine_name}/{score.engine_version}
           </span>
         </Row>
-        <Row name="Missing signals">
+        <Row name="Eksik sinyaller">
           {score.missing_signals.length > 0
             ? score.missing_signals.join(", ")
-            : "None recorded"}
+            : "Kayıt yok"}
         </Row>
-        <Row name="Risk flags">
+        <Row name="Risk bayrakları">
           {score.risk_flags.length > 0
             ? score.risk_flags.join(", ")
-            : "None recorded"}
+            : "Kayıt yok"}
         </Row>
-        <Row name="Evaluated">{formatUtcTimestamp(score.evaluated_at)}</Row>
+        <Row name="Değerlendirildi">
+          {formatUtcTimestamp(score.evaluated_at)}
+        </Row>
       </dl>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
-              <th scope="col">Component</th>
-              <th scope="col">Availability</th>
-              <th scope="col">Value</th>
-              <th scope="col">Provider</th>
-              <th scope="col">Observed</th>
+              <th scope="col">Bileşen</th>
+              <th scope="col">Mevcudiyet</th>
+              <th scope="col">Değer</th>
+              <th scope="col">Sağlayıcı</th>
+              <th scope="col">Gözlemlendi</th>
             </tr>
           </thead>
           <tbody>
@@ -323,7 +331,7 @@ function ScoreCard({ score }: { score: ScoreView }) {
                 <td>
                   {component.availability === "unknown" ? (
                     <span className="badge" data-tone="neutral">
-                      Unknown
+                      Bilinmiyor
                     </span>
                   ) : (
                     component.availability
@@ -333,7 +341,7 @@ function ScoreCard({ score }: { score: ScoreView }) {
                   {component.availability === "known" &&
                   component.value !== null
                     ? component.value
-                    : "Not observed"}
+                    : "Gözlemlenmedi"}
                 </td>
                 <td>{component.provider ?? "—"}</td>
                 <td>{formatUtcTimestamp(component.observed_at)}</td>
@@ -351,10 +359,8 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
   if (opportunity === null) {
     return (
       <section aria-labelledby="detail-opportunity">
-        <h2 id="detail-opportunity">Opportunity & score</h2>
-        <p className="empty-note">
-          No opportunity is linked to this work item.
-        </p>
+        <h2 id="detail-opportunity">Fırsat ve skor</h2>
+        <p className="empty-note">Bu iş öğesine bağlı fırsat yok.</p>
       </section>
     );
   }
@@ -365,18 +371,20 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
     detail.work_item.current_state === "idea_scoring";
   return (
     <section aria-labelledby="detail-opportunity">
-      <h2 id="detail-opportunity">Opportunity & score</h2>
+      <h2 id="detail-opportunity">Fırsat ve skor</h2>
       <dl className="status-list">
-        <Row name="Disposition">
+        <Row name="Fırsat durumu">
           {opportunity.disposition}
           {opportunity.disposition_reason !== null &&
             ` — ${opportunity.disposition_reason}`}
         </Row>
-        <Row name="Topic">{opportunity.topic_summary}</Row>
+        <Row name="Konu">{opportunity.topic_summary}</Row>
         {opportunity.update_of_reference !== null && (
-          <Row name="Update reference">{opportunity.update_of_reference}</Row>
+          <Row name="Güncelleme referansı">
+            {opportunity.update_of_reference}
+          </Row>
         )}
-        <Row name="Promotion root document">
+        <Row name="Yükseltme kök dokümanı">
           <span className="mono muted">
             {opportunity.promotion_root_document_id}
           </span>
@@ -384,7 +392,7 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
       </dl>
       {detail.scores.length === 0 && (
         <p className="empty-note">
-          Not evaluated yet. Scoring is an explicit action.
+          Henüz değerlendirilmedi. Puanlama açık bir eylemdir.
         </p>
       )}
       {detail.scores.map((score) => (
@@ -393,15 +401,16 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
       <TruncationNote
         shown={detail.scores.length}
         total={detail.total_scores}
-        noun="score evaluations"
+        noun="skor değerlendirmesi"
       />
       <div className="control-stack">
         <form action={evaluateOpportunityAction} className="control-form">
           <input type="hidden" name="work_item_id" value={workItemId} />
           <input type="hidden" name="opportunity_id" value={opportunity.id} />
-          <button type="submit">Queue (re-)evaluation</button>
+          <button type="submit">(Yeniden) değerlendirmeyi kuyruğa al</button>
           <span className="muted">
-            Scoring records a new evaluation; it never commissions by itself.
+            Puanlama yeni bir değerlendirme kaydeder; asla kendi başına
+            görevlendirmez.
           </span>
         </form>
         {canDecide && (
@@ -410,23 +419,23 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
               action={commissionOpportunityAction}
               workItemId={workItemId}
               hidden={{ opportunity_id: opportunity.id }}
-              label="Commission"
-              placeholder="why this opportunity is worth pursuing"
+              label="Görevlendir"
+              placeholder="bu fırsat neden değerlendirmeye değer"
               helper={
                 effective !== undefined
-                  ? `Effective score: ${effective.overall_band} / ${effective.eligibility}` +
+                  ? `Geçerli skor: ${effective.overall_band} / ${effective.eligibility}` +
                     (effective.missing_signals.length > 0
-                      ? `; missing: ${effective.missing_signals.join(", ")}`
+                      ? `; eksik: ${effective.missing_signals.join(", ")}`
                       : "")
-                  : "No durable score exists yet — the backend will refuse."
+                  : "Henüz kalıcı bir skor yok — arka uç reddedecektir."
               }
             />
             <ReasonForm
               action={rejectOpportunityAction}
               workItemId={workItemId}
               hidden={{ opportunity_id: opportunity.id }}
-              label="Reject opportunity"
-              placeholder="why this opportunity is not pursued"
+              label="Fırsatı reddet"
+              placeholder="bu fırsat neden sürdürülmüyor"
             />
           </>
         )}
@@ -438,35 +447,35 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
 function ResearchInputsSection({ detail }: { detail: WorkItemDetail }) {
   return (
     <section aria-labelledby="detail-inputs">
-      <h2 id="detail-inputs">Research inputs</h2>
+      <h2 id="detail-inputs">Araştırma girdileri</h2>
       {detail.research_inputs.length === 0 && (
-        <p className="empty-note">No research inputs recorded.</p>
+        <p className="empty-note">Kayıtlı araştırma girdisi yok.</p>
       )}
       {detail.research_inputs.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Document</th>
-                <th scope="col">Role</th>
-                <th scope="col">Duplicate</th>
-                <th scope="col">Source</th>
-                <th scope="col">Trust</th>
-                <th scope="col">Published</th>
-                <th scope="col">Fetched</th>
-                <th scope="col">Added by</th>
+                <th scope="col">Doküman</th>
+                <th scope="col">Rol</th>
+                <th scope="col">Kopya</th>
+                <th scope="col">Kaynak</th>
+                <th scope="col">Güven</th>
+                <th scope="col">Yayınlandı</th>
+                <th scope="col">Getirildi</th>
+                <th scope="col">Ekleyen</th>
               </tr>
             </thead>
             <tbody>
               {detail.research_inputs.map((input) => (
                 <tr key={input.id}>
                   <td title={input.normalized_document_id}>
-                    {input.document_title ?? "Untitled"}
+                    {input.document_title ?? "Başlıksız"}
                   </td>
                   <td>{input.role}</td>
-                  <td>{input.duplicate_outcome ?? "Unknown"}</td>
-                  <td>{input.source_slug ?? "Unknown"}</td>
-                  <td>{input.trust_tier ?? "Unknown"}</td>
+                  <td>{input.duplicate_outcome ?? "Bilinmiyor"}</td>
+                  <td>{input.source_slug ?? "Bilinmiyor"}</td>
+                  <td>{input.trust_tier ?? "Bilinmiyor"}</td>
                   <td>{formatUtcTimestamp(input.external_published_at)}</td>
                   <td>{formatUtcTimestamp(input.fetched_at)}</td>
                   <td>{input.added_by}</td>
@@ -492,18 +501,18 @@ function IdeaCard({
   return (
     <div className="detail-card">
       <dl className="status-list">
-        <Row name="Working title">
+        <Row name="Çalışma başlığı">
           {idea.working_title} <span className="muted">v{idea.version}</span>{" "}
-          {idea.effective_selected && <strong>(selected)</strong>}
+          {idea.effective_selected && <strong>(seçili)</strong>}
         </Row>
-        <Row name="Angle">{idea.angle}</Row>
-        <Row name="Rationale">{idea.rationale}</Row>
-        <Row name="Audience">{idea.audience}</Row>
-        <Row name="Value">{idea.value_proposition}</Row>
-        <Row name="Type / origin">
+        <Row name="Açı">{idea.angle}</Row>
+        <Row name="Dayanak">{idea.rationale}</Row>
+        <Row name="Hedef kitle">{idea.audience}</Row>
+        <Row name="Değer">{idea.value_proposition}</Row>
+        <Row name="Tür / köken">
           {idea.content_type} · {idea.origin}
         </Row>
-        <Row name="Originality">
+        <Row name="Özgünlük">
           <span
             className="badge"
             data-tone={originalityTone(idea.originality_status)}
@@ -512,14 +521,14 @@ function IdeaCard({
           </span>
         </Row>
         {idea.exclusions.length > 0 && (
-          <Row name="Exclusions">{idea.exclusions.join("; ")}</Row>
+          <Row name="Hariç tutulanlar">{idea.exclusions.join("; ")}</Row>
         )}
         {idea.generation_attempt_id !== null && (
-          <Row name="Generation attempt">
+          <Row name="Üretim denemesi">
             <span className="mono muted">{idea.generation_attempt_id}</span>
           </Row>
         )}
-        <Row name="Idea ID">
+        <Row name="Fikir kimliği">
           <span className="mono muted">{idea.id}</span>
         </Row>
       </dl>
@@ -528,8 +537,8 @@ function IdeaCard({
           action={selectIdeaAction}
           workItemId={workItemId}
           hidden={{ idea_id: idea.id }}
-          label="Select this version"
-          placeholder="why this exact version"
+          label="Bu sürümü seç"
+          placeholder="neden tam olarak bu sürüm"
         />
       )}
       {canOperate && idea.effective_selected && (
@@ -537,9 +546,9 @@ function IdeaCard({
           action={deselectIdeaAction}
           workItemId={workItemId}
           hidden={{ idea_id: idea.id }}
-          label="Deselect"
-          placeholder="why the selection is cleared"
-          helper="Deselecting never restores an older selection."
+          label="Seçimi kaldır"
+          placeholder="seçim neden kaldırılıyor"
+          helper="Seçimi kaldırmak asla eski bir seçimi geri getirmez."
         />
       )}
     </div>
@@ -555,9 +564,9 @@ function IdeasSection({ detail }: { detail: WorkItemDetail }) {
     detail.work_item.current_state === "evidence_building";
   return (
     <section aria-labelledby="detail-ideas">
-      <h2 id="detail-ideas">Ideas</h2>
+      <h2 id="detail-ideas">Fikirler</h2>
       {detail.ideas.length === 0 && (
-        <p className="empty-note">No idea versions exist yet.</p>
+        <p className="empty-note">Henüz fikir sürümü yok.</p>
       )}
       {detail.ideas.map((idea) => (
         <IdeaCard
@@ -570,14 +579,14 @@ function IdeasSection({ detail }: { detail: WorkItemDetail }) {
       <TruncationNote
         shown={detail.ideas.length}
         total={detail.total_ideas}
-        noun="idea versions"
+        noun="fikir sürümü"
       />
       {canGenerate && opportunity !== null && (
         <form action={generateIdeasAction} className="control-form">
           <input type="hidden" name="work_item_id" value={workItemId} />
           <input type="hidden" name="opportunity_id" value={opportunity.id} />
           <label>
-            Candidates
+            Aday sayısı
             <select name="candidate_count" defaultValue="3">
               {["1", "2", "3", "4", "5"].map((value) => (
                 <option key={value} value={value}>
@@ -586,23 +595,23 @@ function IdeasSection({ detail }: { detail: WorkItemDetail }) {
               ))}
             </select>
           </label>
-          <button type="submit">Generate idea candidates</button>
+          <button type="submit">Fikir adayları üret</button>
           <span className="muted">
-            Model-assisted candidates only; nothing is auto-selected.
+            Yalnızca model destekli adaylar; hiçbir şey otomatik seçilmez.
           </span>
         </form>
       )}
       {detail.selection_events.length > 0 && (
         <>
-          <h3>Selection history</h3>
+          <h3>Seçim geçmişi</h3>
           <div className="table-scroll">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">When</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Idea</th>
-                  <th scope="col">Reason</th>
+                  <th scope="col">Ne zaman</th>
+                  <th scope="col">Eylem</th>
+                  <th scope="col">Fikir</th>
+                  <th scope="col">Gerekçe</th>
                 </tr>
               </thead>
               <tbody>
@@ -620,7 +629,7 @@ function IdeasSection({ detail }: { detail: WorkItemDetail }) {
           <TruncationNote
             shown={detail.selection_events.length}
             total={detail.total_selection_events}
-            noun="selection events"
+            noun="seçim olayı"
           />
         </>
       )}
@@ -638,14 +647,14 @@ function ContradictionCard({
   return (
     <div className="detail-card">
       <dl className="status-list">
-        <Row name="Claim">{contradiction.claim_key}</Row>
-        <Row name="Nature">{contradiction.nature}</Row>
-        <Row name="Severity">{contradiction.severity}</Row>
-        <Row name="Sides">
+        <Row name="İddia">{contradiction.claim_key}</Row>
+        <Row name="Nitelik">{contradiction.nature}</Row>
+        <Row name="Önem">{contradiction.severity}</Row>
+        <Row name="Taraflar">
           A: {contradiction.evidence_side_a.join(", ")} · B:{" "}
           {contradiction.evidence_side_b.join(", ")}
         </Row>
-        <Row name="Resolution">
+        <Row name="Çözüm">
           <span
             className="badge"
             data-tone={contradictionResolutionTone(
@@ -658,10 +667,10 @@ function ContradictionCard({
             ` — ${contradiction.resolution_reason}`}
         </Row>
         {contradiction.handling_recommendation !== null && (
-          <Row name="Handling">{contradiction.handling_recommendation}</Row>
+          <Row name="Ele alış">{contradiction.handling_recommendation}</Row>
         )}
         {contradiction.resolved_at !== null && (
-          <Row name="Resolved">
+          <Row name="Çözüldü">
             {contradiction.resolved_by} ·{" "}
             {formatUtcTimestamp(contradiction.resolved_at)}
           </Row>
@@ -679,10 +688,10 @@ function ContradictionCard({
             name="resolution_status"
             required
             defaultValue=""
-            aria-label="Resolution status"
+            aria-label="Çözüm durumu"
           >
             <option value="" disabled>
-              Resolution…
+              Çözüm…
             </option>
             {RESOLVED_CONTRADICTION_STATUSES.map((status) => (
               <option key={status} value={status}>
@@ -695,13 +704,13 @@ function ContradictionCard({
             name="reason"
             required
             maxLength={1000}
-            placeholder="resolution reason"
-            aria-label="Resolution reason"
+            placeholder="çözüm gerekçesi"
+            aria-label="Çözüm gerekçesi"
           />
-          <button type="submit">Resolve</button>
+          <button type="submit">Çöz</button>
           <span className="muted">
-            Resolving never changes this pack&apos;s stored sufficiency;
-            reassemble a new version afterwards.
+            Çözmek bu paketin kayıtlı yeterliliğini asla değiştirmez; ardından
+            yeni bir sürüm olarak yeniden birleştirin.
           </span>
         </form>
       )}
@@ -722,11 +731,11 @@ function PackCard({
   return (
     <div className="detail-card">
       <dl className="status-list">
-        <Row name="Pack">
+        <Row name="Paket">
           <span className="mono muted">{pack.id}</span>{" "}
           <span className="muted">v{pack.version}</span>
         </Row>
-        <Row name="Sufficiency">
+        <Row name="Yeterlilik">
           <span
             className="badge"
             data-tone={packSufficiencyTone(pack.sufficiency)}
@@ -735,7 +744,7 @@ function PackCard({
           </span>
         </Row>
         {detailEntries.length > 0 && (
-          <Row name="Why">
+          <Row name="Neden">
             {detailEntries
               .map(
                 ([key, value]) => `${key}: ${(value as unknown[]).join("; ")}`,
@@ -743,30 +752,30 @@ function PackCard({
               .join(" · ")}
           </Row>
         )}
-        <Row name="Assembler">
+        <Row name="Birleştirici">
           <span className="mono">
             {pack.assembler_name}/{pack.assembler_version}
           </span>
         </Row>
-        <Row name="Pinned idea">
+        <Row name="Sabitlenmiş fikir">
           {pack.idea_id !== null ? (
             <span className="mono muted">{pack.idea_id}</span>
           ) : (
-            "Not pinned"
+            "Sabitlenmemiş"
           )}
         </Row>
-        <Row name="Assembled">{formatUtcTimestamp(pack.created_at)}</Row>
+        <Row name="Birleştirildi">{formatUtcTimestamp(pack.created_at)}</Row>
       </dl>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
-              <th scope="col">Role</th>
-              <th scope="col">Cluster</th>
-              <th scope="col">Statement</th>
-              <th scope="col">Type</th>
-              <th scope="col">Verification</th>
-              <th scope="col">Source</th>
+              <th scope="col">Rol</th>
+              <th scope="col">Küme</th>
+              <th scope="col">İfade</th>
+              <th scope="col">Tür</th>
+              <th scope="col">Doğrulama</th>
+              <th scope="col">Kaynak</th>
             </tr>
           </thead>
           <tbody>
@@ -777,10 +786,10 @@ function PackCard({
                 <td title={item.research_evidence_id}>
                   {item.statement ?? "—"}
                 </td>
-                <td>{item.evidence_type ?? "Unknown"}</td>
-                <td>{item.verification_status ?? "Unknown"}</td>
+                <td>{item.evidence_type ?? "Bilinmiyor"}</td>
+                <td>{item.verification_status ?? "Bilinmiyor"}</td>
                 <td>
-                  {item.source_slug ?? "Unknown"}
+                  {item.source_slug ?? "Bilinmiyor"}
                   {item.trust_tier !== null ? ` (${item.trust_tier})` : ""}
                 </td>
               </tr>
@@ -798,11 +807,10 @@ function PackCard({
       <form action={reassemblePackAction} className="control-form">
         <input type="hidden" name="work_item_id" value={workItemId} />
         <input type="hidden" name="pack_id" value={pack.id} />
-        <button type="submit">Reassemble as new version</button>
+        <button type="submit">Yeni sürüm olarak yeniden birleştir</button>
         <span className="muted">
-          Produces a new immutable version reflecting current contradiction
-          resolutions; this version stays untouched and workflow does not
-          advance by itself.
+          Güncel çelişki çözümlerini yansıtan yeni ve değişmez bir sürüm üretir;
+          bu sürüm olduğu gibi kalır ve iş akışı kendi başına ilerlemez.
         </span>
       </form>
     </div>
@@ -827,15 +835,13 @@ function PackBuilder({
   if (selectedIdeaId === null) {
     return (
       <p className="muted">
-        Building a pack requires an effective selected idea first.
+        Paket oluşturmak için önce geçerli bir seçili fikir gerekir.
       </p>
     );
   }
   if (evidence.length === 0) {
     return (
-      <p className="muted">
-        No eligible research evidence exists for this opportunity yet.
-      </p>
+      <p className="muted">Bu fırsat için henüz uygun araştırma kanıtı yok.</p>
     );
   }
   return (
@@ -850,13 +856,13 @@ function PackBuilder({
         <table className="data-table">
           <thead>
             <tr>
-              <th scope="col">Use</th>
-              <th scope="col">Statement</th>
-              <th scope="col">Verification</th>
-              <th scope="col">Source</th>
-              <th scope="col">Role</th>
-              <th scope="col">Claim cluster</th>
-              <th scope="col">Note</th>
+              <th scope="col">Kullan</th>
+              <th scope="col">İfade</th>
+              <th scope="col">Doğrulama</th>
+              <th scope="col">Kaynak</th>
+              <th scope="col">Rol</th>
+              <th scope="col">İddia kümesi</th>
+              <th scope="col">Not</th>
             </tr>
           </thead>
           <tbody>
@@ -866,13 +872,13 @@ function PackBuilder({
                   <input
                     type="checkbox"
                     name={`select-${item.id}`}
-                    aria-label={`Select evidence ${item.id}`}
+                    aria-label={`${item.id} kanıtını seç`}
                   />
                 </td>
                 <td title={item.id}>{item.statement}</td>
                 <td>{item.verification_status}</td>
                 <td>
-                  {item.source_slug ?? "Unknown"}
+                  {item.source_slug ?? "Bilinmiyor"}
                   {item.trust_tier !== null ? ` (${item.trust_tier})` : ""}
                 </td>
                 <td>
@@ -895,8 +901,8 @@ function PackBuilder({
                     type="text"
                     name={`cluster-${item.id}`}
                     maxLength={100}
-                    placeholder="cluster"
-                    aria-label={`Claim cluster for ${item.id}`}
+                    placeholder="küme"
+                    aria-label={`${item.id} için iddia kümesi`}
                   />
                 </td>
                 <td>
@@ -904,8 +910,8 @@ function PackBuilder({
                     type="text"
                     name={`note-${item.id}`}
                     maxLength={1000}
-                    placeholder="optional"
-                    aria-label={`Display note for ${item.id}`}
+                    placeholder="isteğe bağlı"
+                    aria-label={`${item.id} için görüntüleme notu`}
                   />
                 </td>
               </tr>
@@ -913,10 +919,10 @@ function PackBuilder({
           </tbody>
         </table>
       </div>
-      <button type="submit">Build evidence pack from selection</button>
+      <button type="submit">Seçimden kanıt paketi oluştur</button>
       <span className="muted">
-        You select the evidence explicitly; nothing is chosen for you. The
-        worker assembles and evaluates sufficiency.
+        Kanıtı açıkça siz seçersiniz; sizin yerinize hiçbir şey seçilmez. Paketi
+        worker birleştirir ve yeterliliği değerlendirir.
       </span>
     </form>
   );
@@ -931,9 +937,9 @@ function EvidenceSection({
 }) {
   return (
     <section aria-labelledby="detail-evidence">
-      <h2 id="detail-evidence">Evidence packs</h2>
+      <h2 id="detail-evidence">Kanıt paketleri</h2>
       {detail.evidence_packs.length === 0 && (
-        <p className="empty-note">No evidence pack versions exist yet.</p>
+        <p className="empty-note">Henüz kanıt paketi sürümü yok.</p>
       )}
       {detail.evidence_packs.map((pack) => (
         <PackCard key={pack.id} pack={pack} workItemId={detail.work_item.id} />
@@ -941,7 +947,7 @@ function EvidenceSection({
       <TruncationNote
         shown={detail.evidence_packs.length}
         total={detail.total_evidence_packs}
-        noun="pack versions"
+        noun="paket sürümü"
       />
       <PackBuilder detail={detail} evidence={evidence} />
     </section>
@@ -952,42 +958,42 @@ function IntentCard({ analysis }: { analysis: IntentAnalysisView }) {
   return (
     <div className="detail-card">
       <dl className="status-list">
-        <Row name="Analysis">
+        <Row name="Analiz">
           <span className="mono muted">{analysis.id}</span>{" "}
           <span className="muted">v{analysis.version}</span>
         </Row>
-        <Row name="Primary intent">{analysis.primary_intent}</Row>
-        <Row name="Page purpose">{analysis.page_purpose}</Row>
-        <Row name="Likely format">{analysis.likely_format}</Row>
-        <Row name="Query concepts">
-          {analysis.query_concepts.join(", ") || "None recorded"}
+        <Row name="Birincil niyet">{analysis.primary_intent}</Row>
+        <Row name="Sayfa amacı">{analysis.page_purpose}</Row>
+        <Row name="Olası format">{analysis.likely_format}</Row>
+        <Row name="Sorgu kavramları">
+          {analysis.query_concepts.join(", ") || "Kayıt yok"}
         </Row>
-        <Row name="Known signals">
-          {analysis.known_signals.length === 0 && "None consumed"}
+        <Row name="Bilinen sinyaller">
+          {analysis.known_signals.length === 0 && "Hiçbiri kullanılmadı"}
           {analysis.known_signals.map((signal) => (
             <span key={signal.id} className="cell-secondary">
-              {signal.signal_type} · {signal.provider} · observed{" "}
+              {signal.signal_type} · {signal.provider} · gözlemlendi:{" "}
               {formatUtcTimestamp(signal.observed_at)}
               {signal.as_of !== null
-                ? ` (as of ${formatUtcTimestamp(signal.as_of)})`
+                ? ` (${formatUtcTimestamp(signal.as_of)} itibarıyla)`
                 : ""}
             </span>
           ))}
         </Row>
-        <Row name="Missing signals">
+        <Row name="Eksik sinyaller">
           {analysis.missing_signals.length > 0
             ? analysis.missing_signals.join(", ")
-            : "None"}
+            : "Yok"}
         </Row>
-        <Row name="Cannibalization">
+        <Row name="Kanibalizasyon">
           {cannibalizationLabel(analysis.cannibalization_status)}
         </Row>
-        <Row name="Engine">
+        <Row name="Motor">
           <span className="mono">
             {analysis.engine_name}/{analysis.engine_version}
           </span>
         </Row>
-        <Row name="Created">{formatUtcTimestamp(analysis.created_at)}</Row>
+        <Row name="Oluşturuldu">{formatUtcTimestamp(analysis.created_at)}</Row>
       </dl>
     </div>
   );
@@ -1005,9 +1011,9 @@ function SearchIntentSection({ detail }: { detail: WorkItemDetail }) {
     readyPack !== undefined;
   return (
     <section aria-labelledby="detail-intent">
-      <h2 id="detail-intent">Search intent</h2>
+      <h2 id="detail-intent">Arama niyeti</h2>
       {detail.intent_analyses.length === 0 && (
-        <p className="empty-note">No search-intent analysis exists yet.</p>
+        <p className="empty-note">Henüz arama niyeti analizi yok.</p>
       )}
       {detail.intent_analyses.map((analysis) => (
         <IntentCard key={analysis.id} analysis={analysis} />
@@ -1015,7 +1021,7 @@ function SearchIntentSection({ detail }: { detail: WorkItemDetail }) {
       <TruncationNote
         shown={detail.intent_analyses.length}
         total={detail.total_intent_analyses}
-        noun="analysis versions"
+        noun="analiz sürümü"
       />
       {canAnalyze && opportunity !== null && readyPack !== undefined && (
         <form action={analyzeSearchIntentAction} className="control-form">
@@ -1035,21 +1041,21 @@ function SearchIntentSection({ detail }: { detail: WorkItemDetail }) {
             type="text"
             name="signal_id"
             maxLength={36}
-            placeholder="search signal id (optional)"
-            aria-label="Exact search signal id"
+            placeholder="arama sinyali kimliği (isteğe bağlı)"
+            aria-label="Tam arama sinyali kimliği"
           />
           <input
             type="text"
             name="signal_id"
             maxLength={36}
-            placeholder="second signal id (optional)"
-            aria-label="Second exact search signal id"
+            placeholder="ikinci sinyal kimliği (isteğe bağlı)"
+            aria-label="İkinci tam arama sinyali kimliği"
           />
-          <button type="submit">Queue search-intent analysis</button>
+          <button type="submit">Arama niyeti analizini kuyruğa al</button>
           <span className="muted">
-            Pins the selected idea, the READY pack v{readyPack.version}, and
-            ONLY the exact signal observations you list — never an implicit
-            latest.
+            Seçili fikri, READY (hazır) paket v{readyPack.version} sürümünü ve
+            YALNIZCA listelediğiniz tam sinyal gözlemlerini sabitler — asla
+            örtük bir &quot;en son&quot; kullanılmaz.
           </span>
         </form>
       )}
@@ -1077,19 +1083,19 @@ function BriefCard({
             {brief.status}
           </span>
         </Row>
-        <Row name="Objective">{brief.content_objective}</Row>
-        <Row name="Intent summary">{brief.intent_summary}</Row>
-        <Row name="Original angle">{brief.original_angle}</Row>
-        <Row name="Required sections">
+        <Row name="Hedef">{brief.content_objective}</Row>
+        <Row name="Niyet özeti">{brief.intent_summary}</Row>
+        <Row name="Özgün açı">{brief.original_angle}</Row>
+        <Row name="Zorunlu bölümler">
           {brief.required_sections
             .map((section) => String(section["key"] ?? ""))
             .filter(Boolean)
             .join(", ")}
         </Row>
-        <Row name="Exclusions">
-          {brief.exclusions.length > 0 ? brief.exclusions.join("; ") : "None"}
+        <Row name="Hariç tutulanlar">
+          {brief.exclusions.length > 0 ? brief.exclusions.join("; ") : "Yok"}
         </Row>
-        <Row name="Uncertainty notes">
+        <Row name="Belirsizlik notları">
           {brief.uncertainty_notes.length > 0 ? (
             <ul className="plain-list">
               {brief.uncertainty_notes.map((note) => (
@@ -1097,18 +1103,18 @@ function BriefCard({
               ))}
             </ul>
           ) : (
-            "None"
+            "Yok"
           )}
         </Row>
-        <Row name="Structure guard">
-          {typeof guardOutcome === "string" ? guardOutcome : "Not reported"}
+        <Row name="Yapı koruması">
+          {typeof guardOutcome === "string" ? guardOutcome : "Raporlanmadı"}
         </Row>
-        <Row name="Pins">
-          idea <span className="mono muted">{brief.idea_id}</span> · pack{" "}
-          <span className="mono muted">{brief.evidence_pack_id}</span> · intent{" "}
+        <Row name="Sabitlemeler">
+          fikir <span className="mono muted">{brief.idea_id}</span> · paket{" "}
+          <span className="mono muted">{brief.evidence_pack_id}</span> · niyet{" "}
           <span className="mono muted">{brief.search_intent_analysis_id}</span>
         </Row>
-        <Row name="Engine">
+        <Row name="Motor">
           <span className="mono">
             {brief.engine_name}/{brief.engine_version}
           </span>
@@ -1119,10 +1125,10 @@ function BriefCard({
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Claim</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Text</th>
-                <th scope="col">Evidence links</th>
+                <th scope="col">İddia</th>
+                <th scope="col">Tür</th>
+                <th scope="col">Metin</th>
+                <th scope="col">Kanıt bağlantıları</th>
               </tr>
             </thead>
             <tbody>
@@ -1134,7 +1140,7 @@ function BriefCard({
                   <td className="mono muted">
                     {claim.evidence_ids.length > 0
                       ? claim.evidence_ids.join(", ")
-                      : "No evidence (non-factual kind)"}
+                      : "Kanıt yok (olgusal olmayan tür)"}
                   </td>
                 </tr>
               ))}
@@ -1157,9 +1163,9 @@ function BriefCard({
           action={acceptBriefAction}
           workItemId={workItemId}
           hidden={{ brief_id: brief.id }}
-          label="Accept for drafting"
-          placeholder="why the writing contract is complete"
-          helper='"Accept for drafting" releases the brief to the Phase-4 Writer. It does NOT publish content and is not publication approval.'
+          label="Taslak için kabul et"
+          placeholder="yazım sözleşmesi neden eksiksiz"
+          helper="&quot;Taslak için kabul et&quot;, brief'i Faz-4 Yazar'a bırakır. İçerik YAYINLAMAZ ve yayın onayı değildir."
         />
       )}
     </div>
@@ -1179,9 +1185,9 @@ function BriefsSection({ detail }: { detail: WorkItemDetail }) {
     latestAnalysis !== undefined;
   return (
     <section aria-labelledby="detail-briefs">
-      <h2 id="detail-briefs">Briefs & claims</h2>
+      <h2 id="detail-briefs">Brief&apos;ler ve iddialar</h2>
       {detail.briefs.length === 0 && (
-        <p className="empty-note">No brief versions exist yet.</p>
+        <p className="empty-note">Henüz brief sürümü yok.</p>
       )}
       {detail.briefs.map((brief) => (
         <BriefCard
@@ -1194,7 +1200,7 @@ function BriefsSection({ detail }: { detail: WorkItemDetail }) {
       <TruncationNote
         shown={detail.briefs.length}
         total={detail.total_briefs}
-        noun="brief versions"
+        noun="brief sürümü"
       />
       {canCompose &&
         readyPack !== undefined &&
@@ -1221,15 +1227,15 @@ function BriefsSection({ detail }: { detail: WorkItemDetail }) {
                 type="text"
                 name="supersede_reason"
                 maxLength={1000}
-                placeholder="supersede reason (existing draft)"
-                aria-label="Supersede reason"
+                placeholder="geçersiz kılma gerekçesi (mevcut taslak)"
+                aria-label="Geçersiz kılma gerekçesi"
               />
             )}
-            <button type="submit">Compose draft brief</button>
+            <button type="submit">Taslak brief oluştur</button>
             <span className="muted">
-              Produces a DRAFT from the pinned idea, READY pack v
-              {readyPack.version}, and analysis v{latestAnalysis.version}.
-              Accepting it for drafting is a separate decision.
+              Sabitlenmiş fikirden, READY (hazır) paket v{readyPack.version} ve
+              analiz v{latestAnalysis.version} sürümlerinden bir TASLAK üretir.
+              Taslak için kabul etmek ayrı bir karardır.
             </span>
           </form>
         )}
@@ -1254,28 +1260,28 @@ function DraftsSection({
   const canProduce = state === "drafting" && acceptedBrief !== undefined;
   return (
     <section aria-labelledby="detail-drafts">
-      <h2 id="detail-drafts">Writer drafts</h2>
+      <h2 id="detail-drafts">Yazar taslakları</h2>
       {drafts === null && (
         <p className="muted" role="note">
-          Draft versions could not be loaded right now.
+          Taslak sürümleri şu anda yüklenemedi.
         </p>
       )}
       {drafts !== null && rows.length === 0 && (
-        <p className="empty-note">No draft versions exist yet.</p>
+        <p className="empty-note">Henüz taslak sürümü yok.</p>
       )}
       {rows.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Version</th>
-                <th scope="col">Origin</th>
-                <th scope="col">Status</th>
-                <th scope="col">Title proposal</th>
-                <th scope="col">Coverage</th>
-                <th scope="col">Originality</th>
-                <th scope="col">Created</th>
-                <th scope="col">Detail</th>
+                <th scope="col">Sürüm</th>
+                <th scope="col">Köken</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Başlık önerisi</th>
+                <th scope="col">Kapsam</th>
+                <th scope="col">Özgünlük</th>
+                <th scope="col">Oluşturuldu</th>
+                <th scope="col">Detay</th>
               </tr>
             </thead>
             <tbody>
@@ -1283,7 +1289,7 @@ function DraftsSection({
                 <tr key={row.id}>
                   <td>v{row.version}</td>
                   <td>
-                    {row.origin === "operator" ? "operator" : "writer engine"}
+                    {row.origin === "operator" ? "operatör" : "yazar motoru"}
                   </td>
                   <td>
                     <span
@@ -1313,7 +1319,7 @@ function DraftsSection({
                   <td>{formatUtcTimestamp(row.created_at)}</td>
                   <td>
                     <Link href={`/editorial/${workItemId}/drafts/${row.id}`}>
-                      Open draft
+                      Taslağı aç
                     </Link>
                   </td>
                 </tr>
@@ -1332,22 +1338,22 @@ function DraftsSection({
             min={0}
             max={50}
             defaultValue={0}
-            aria-label="Retry number"
+            aria-label="Yeniden deneme numarası"
           />
           {hasActiveDraft && (
             <input
               type="text"
               name="supersede_reason"
               maxLength={1000}
-              placeholder="supersede reason (active draft exists)"
-              aria-label="Draft supersede reason"
+              placeholder="geçersiz kılma gerekçesi (etkin taslak var)"
+              aria-label="Taslak geçersiz kılma gerekçesi"
             />
           )}
-          <button type="submit">Generate writer draft</button>
+          <button type="submit">Yazar taslağı üret</button>
           <span className="muted">
-            Queues generation from accepted brief v{acceptedBrief.version}.
-            Regeneration is the same command with the next retry number and a
-            reason.
+            Kabul edilmiş brief v{acceptedBrief.version} sürümünden üretimi
+            kuyruğa alır. Yeniden üretim, bir sonraki yeniden deneme numarası ve
+            bir gerekçeyle aynı komuttur.
           </span>
         </form>
       )}
@@ -1359,37 +1365,37 @@ function DraftsSection({
             type="text"
             name="title_proposal"
             maxLength={200}
-            placeholder="title proposal (optional)"
-            aria-label="Draft title proposal"
+            placeholder="başlık önerisi (isteğe bağlı)"
+            aria-label="Taslak başlık önerisi"
           />
           <textarea
             name="sections_json"
             required
             rows={6}
-            placeholder='writer-draft-body/1 sections as JSON, e.g. [{"key":"giris","heading":"...","blocks":[...]}]'
-            aria-label="Draft sections JSON"
+            placeholder='writer-draft-body/1 bölümleri JSON olarak, örn. [{"key":"giris","heading":"...","blocks":[...]}]'
+            aria-label="Taslak bölümleri JSON"
           />
           <input
             type="text"
             name="reason"
             required
             maxLength={1000}
-            placeholder="submission reason"
-            aria-label="Draft submission reason"
+            placeholder="gönderim gerekçesi"
+            aria-label="Taslak gönderim gerekçesi"
           />
           {hasActiveDraft && (
             <input
               type="text"
               name="supersede_reason"
               maxLength={1000}
-              placeholder="supersede reason (active draft exists)"
-              aria-label="Manual draft supersede reason"
+              placeholder="geçersiz kılma gerekçesi (etkin taslak var)"
+              aria-label="Manuel taslak geçersiz kılma gerekçesi"
             />
           )}
-          <button type="submit">Submit operator draft</button>
+          <button type="submit">Operatör taslağını gönder</button>
           <span className="muted">
-            Human-authored draft through the SAME gates as the writer engine; a
-            valid draft moves the item to editing.
+            İnsan yazımı taslak, yazar motoruyla AYNI kapılardan geçer; geçerli
+            bir taslak öğeyi düzenleme aşamasına taşır.
           </span>
         </form>
       )}
@@ -1398,9 +1404,9 @@ function DraftsSection({
           action={requestReworkAction}
           workItemId={workItemId}
           hidden={{}}
-          label="Request rework"
-          placeholder="what must the writer stage change?"
-          helper="Records changes-requested with the writer stage responsible; the active draft is pinned."
+          label="Yeniden çalışma iste"
+          placeholder="yazar aşaması neyi değiştirmeli?"
+          helper="Yazar aşaması sorumlu olacak şekilde değişiklik isteğini kaydeder; etkin taslak sabitlenir."
         />
       )}
       {state === "changes_requested" && (
@@ -1408,9 +1414,9 @@ function DraftsSection({
           action={resolveChangesRequestedAction}
           workItemId={workItemId}
           hidden={{}}
-          label="Route rework"
-          placeholder="route to the recorded responsible state"
-          helper="Routes to the durable recorded responsible state — no target can be chosen here."
+          label="Yeniden çalışmayı yönlendir"
+          placeholder="kayıtlı sorumlu duruma yönlendir"
+          helper="Kalıcı olarak kaydedilmiş sorumlu duruma yönlendirir — burada hedef seçilemez."
         />
       )}
     </section>
@@ -1430,31 +1436,31 @@ function ReviewsSection({
   const activeReview = rows.find((row) => row.status === "active");
   return (
     <section aria-labelledby="detail-reviews">
-      <h2 id="detail-reviews">Editor reviews</h2>
+      <h2 id="detail-reviews">Editör değerlendirmeleri</h2>
       <p className="muted">
-        Findings are policy signals, never evidence. The verdict is computed
-        deterministically; a human advances the workflow.
+        Bulgular politika sinyalidir, asla kanıt değildir. Hüküm deterministik
+        olarak hesaplanır; iş akışını bir insan ilerletir.
       </p>
       {reviews === null && (
         <p className="muted" role="note">
-          Review versions could not be loaded right now.
+          Değerlendirme sürümleri şu anda yüklenemedi.
         </p>
       )}
       {reviews !== null && rows.length === 0 && (
-        <p className="empty-note">No editor review versions exist yet.</p>
+        <p className="empty-note">Henüz editör değerlendirmesi sürümü yok.</p>
       )}
       {rows.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Version</th>
-                <th scope="col">Verdict</th>
-                <th scope="col">Status</th>
-                <th scope="col">Findings (blocking / major / minor)</th>
-                <th scope="col">Envelope recheck</th>
-                <th scope="col">Created</th>
-                <th scope="col">Detail</th>
+                <th scope="col">Sürüm</th>
+                <th scope="col">Hüküm</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Bulgular (engelleyici / büyük / küçük)</th>
+                <th scope="col">Zarf yeniden kontrolü</th>
+                <th scope="col">Oluşturuldu</th>
+                <th scope="col">Detay</th>
               </tr>
             </thead>
             <tbody>
@@ -1492,16 +1498,16 @@ function ReviewsSection({
                       }
                     >
                       {row.writer_envelope_recomputed === null
-                        ? "UNKNOWN"
+                        ? "BİLİNMİYOR"
                         : row.writer_envelope_recomputed
-                          ? "recomputed"
-                          : "not recomputed"}
+                          ? "yeniden hesaplandı"
+                          : "yeniden hesaplanmadı"}
                     </span>
                   </td>
                   <td>{formatUtcTimestamp(row.created_at)}</td>
                   <td>
                     <Link href={`/editorial/${workItemId}/reviews/${row.id}`}>
-                      Open review
+                      Değerlendirmeyi aç
                     </Link>
                   </td>
                 </tr>
@@ -1519,21 +1525,21 @@ function ReviewsSection({
             min={0}
             max={50}
             defaultValue={0}
-            aria-label="Review retry number"
+            aria-label="Değerlendirme yeniden deneme numarası"
           />
           {activeReview !== undefined && (
             <input
               type="text"
               name="supersede_reason"
               maxLength={1000}
-              placeholder="supersede reason (active review exists)"
-              aria-label="Review supersede reason"
+              placeholder="geçersiz kılma gerekçesi (etkin değerlendirme var)"
+              aria-label="Değerlendirme geçersiz kılma gerekçesi"
             />
           )}
-          <button type="submit">Generate editor review</button>
+          <button type="submit">Editör değerlendirmesi üret</button>
           <span className="muted">
-            Queues the model-assisted review; the verdict is computed by the
-            deterministic policy, never by the model.
+            Model destekli değerlendirmeyi kuyruğa alır; hüküm deterministik
+            politika tarafından hesaplanır, asla model tarafından değil.
           </span>
         </form>
       )}
@@ -1542,12 +1548,12 @@ function ReviewsSection({
           action={acceptReviewAction}
           workItemId={workItemId}
           hidden={{}}
-          label="Accept review"
-          placeholder="why this draft may proceed to QA"
+          label="Değerlendirmeyi kabul et"
+          placeholder="bu taslak neden QA'ya ilerleyebilir"
           helper={
             activeReview.verdict === "pass"
-              ? "Advances to QA review with the pass review pinned. Not a publication decision."
-              : "The active review verdict is 'revise'; the backend will refuse until a pass review covers the active draft."
+              ? "Geçen değerlendirme sabitlenerek QA incelemesine ilerletir. Bir yayın kararı değildir."
+              : "Etkin değerlendirmenin hükmü 'revise'; etkin taslağı kapsayan bir 'pass' değerlendirme olana kadar arka uç reddedecektir."
           }
         />
       )}
@@ -1596,31 +1602,31 @@ function QaSection({
   const waivers = qaReports?.waivers ?? [];
   return (
     <section aria-labelledby="detail-qa">
-      <h2 id="detail-qa">QA reports</h2>
+      <h2 id="detail-qa">QA raporları</h2>
       <p className="muted">
-        Deterministic hard gates over the exact pinned package. The absence of a
-        result is never a pass; a ready report advances the item to the human
-        decision automatically.
+        Tam sabitlenmiş paket üzerinde deterministik katı kapılar. Sonucun
+        yokluğu asla geçer sayılmaz; hazır bir rapor öğeyi otomatik olarak insan
+        kararına ilerletir.
       </p>
       {qaReports === null && (
         <p className="muted" role="note">
-          QA reports could not be loaded right now.
+          QA raporları şu anda yüklenemedi.
         </p>
       )}
       {qaReports !== null && rows.length === 0 && (
-        <p className="empty-note">No QA report versions exist yet.</p>
+        <p className="empty-note">Henüz QA raporu sürümü yok.</p>
       )}
       {rows.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Version</th>
-                <th scope="col">Outcome</th>
-                <th scope="col">Status</th>
-                <th scope="col">Gates</th>
-                <th scope="col">Created</th>
-                <th scope="col">Detail</th>
+                <th scope="col">Sürüm</th>
+                <th scope="col">Sonuç</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Kapılar</th>
+                <th scope="col">Oluşturuldu</th>
+                <th scope="col">Detay</th>
               </tr>
             </thead>
             <tbody>
@@ -1647,7 +1653,7 @@ function QaSection({
                   </td>
                   <td>
                     {QA_GATE_ORDER.map((gate) => {
-                      const result = row.gate_summary[gate] ?? "UNKNOWN";
+                      const result = row.gate_summary[gate] ?? "BİLİNMİYOR";
                       return (
                         <span
                           key={gate}
@@ -1665,7 +1671,7 @@ function QaSection({
                     <Link
                       href={`/editorial/${workItemId}/qa-reports/${row.id}`}
                     >
-                      Open report
+                      Raporu aç
                     </Link>
                   </td>
                 </tr>
@@ -1676,7 +1682,7 @@ function QaSection({
       )}
       {waivers.length > 0 && (
         <p className="muted" role="note">
-          Audited waivers:{" "}
+          Denetlenen vazgeçmeler:{" "}
           {waivers
             .map((waiver) => `${waiver.gate_key} — ${waiver.reason}`)
             .join(" · ")}
@@ -1686,9 +1692,10 @@ function QaSection({
         <div className="control-stack">
           <form action={runQaAction} className="control-form">
             <input type="hidden" name="work_item_id" value={workItemId} />
-            <button type="submit">Run QA gates</button>
+            <button type="submit">QA kapılarını çalıştır</button>
             <span className="muted">
-              Deterministic re-run; identical results reuse the report.
+              Deterministik yeniden çalıştırma; özdeş sonuçlar mevcut raporu
+              yeniden kullanır.
             </span>
           </form>
           <form action={waiveQaGateAction} className="control-form">
@@ -1699,13 +1706,13 @@ function QaSection({
               name="reason"
               required
               maxLength={1000}
-              placeholder="why the media requirement is deliberately deferred"
-              aria-label="Waive media gate reason"
+              placeholder="medya gereksinimi neden bilinçli olarak erteleniyor"
+              aria-label="Medya kapısından vazgeçme gerekçesi"
             />
-            <button type="submit">Waive media gate</button>
+            <button type="submit">Medya kapısını atla</button>
             <span className="muted">
-              WARNING: an audited human waiver — the media needs stay visible
-              and gates are NOT re-run automatically.
+              UYARI: denetlenen bir insan vazgeçmesi — medya ihtiyaçları görünür
+              kalır ve kapılar otomatik olarak yeniden ÇALIŞTIRILMAZ.
             </span>
           </form>
           <form action={requestReworkAction} className="control-form">
@@ -1713,33 +1720,33 @@ function QaSection({
             <select
               name="responsible_state"
               defaultValue="drafting"
-              aria-label="Responsible state"
+              aria-label="Sorumlu durum"
             >
-              <option value="drafting">writer stage (drafting)</option>
-              <option value="editing">editor stage (editing)</option>
+              <option value="drafting">yazar aşaması (drafting)</option>
+              <option value="editing">editör aşaması (editing)</option>
             </select>
             <input
               type="text"
               name="reason"
               required
               maxLength={1000}
-              placeholder="what must change and who is responsible"
-              aria-label="QA rework reason"
+              placeholder="ne değişmeli ve kim sorumlu"
+              aria-label="QA yeniden çalışma gerekçesi"
             />
-            <button type="submit">Request rework</button>
+            <button type="submit">Yeniden çalışma iste</button>
             <span className="muted">
-              Routes via the recorded responsible state; the choice is bounded,
-              never arbitrary.
+              Kayıtlı sorumlu durum üzerinden yönlendirir; seçim sınırlıdır,
+              asla keyfi değildir.
             </span>
           </form>
         </div>
       )}
       {state === "awaiting_human_review" && (
         <p role="note">
-          <strong>Human decision pending.</strong> The full package (draft,
-          editor review, QA report) is pinned in the workflow history. The
-          decision itself is recorded in the Human decisions section below by an
-          authenticated reviewer.
+          <strong>İnsan kararı bekleniyor.</strong> Paketin tamamı (taslak,
+          editör değerlendirmesi, QA raporu) iş akışı geçmişinde sabitlenmiştir.
+          Kararın kendisi, aşağıdaki İnsan kararları bölümünde kimliği
+          doğrulanmış bir değerlendirici tarafından kaydedilir.
         </p>
       )}
     </section>
@@ -1775,13 +1782,13 @@ function MediaSatisfactionCell({
         </span>{" "}
         {asset.media_type} · {asset.byte_size} bytes
       </p>
-      <p className="muted">Alt: {asset.alt_text}</p>
-      <p className="muted">License: {asset.license_note}</p>
+      <p className="muted">Alt metin: {asset.alt_text}</p>
+      <p className="muted">Lisans: {asset.license_note}</p>
       {asset.source_attribution !== null && (
-        <p className="muted">Attribution: {asset.source_attribution}</p>
+        <p className="muted">Atıf: {asset.source_attribution}</p>
       )}
       <p className="muted">
-        Bound by {satisfaction.satisfied_by.display_name} —{" "}
+        Bağlayan: {satisfaction.satisfied_by.display_name} —{" "}
         {satisfaction.reason}
       </p>
     </div>
@@ -1799,31 +1806,31 @@ function MediaSection({
   const commandsOpen = MEDIA_COMMAND_STATES.has(detail.work_item.current_state);
   return (
     <section aria-labelledby="detail-media">
-      <h2 id="detail-media">Media</h2>
+      <h2 id="detail-media">Medya</h2>
       <p className="muted">
-        A need is satisfied ONLY by an explicit human binding of one durable
-        asset. Generation and upload alone satisfy nothing.
+        Bir ihtiyaç YALNIZCA bir kalıcı varlığın açık bir insan bağlamasıyla
+        karşılanır. Üretim ve yükleme tek başına hiçbir şeyi karşılamaz.
       </p>
       {media === null && (
-        <p className="empty-note">The media coverage cannot be loaded.</p>
+        <p className="empty-note">Medya kapsamı yüklenemiyor.</p>
       )}
       {media !== null && media.total_needs === 0 && (
         <p className="empty-note">
-          The accepted brief defines no media needs (or no accepted brief exists
-          yet).
+          Kabul edilmiş brief hiçbir medya ihtiyacı tanımlamıyor (ya da henüz
+          kabul edilmiş brief yok).
         </p>
       )}
       {media !== null && media.total_needs > 0 && (
         <>
           <p>
-            Coverage: {media.satisfied_needs} / {media.total_needs} needs
-            satisfied.
+            Kapsam: {media.satisfied_needs} / {media.total_needs} ihtiyaç
+            karşılandı.
           </p>
           {!commandsOpen && (
             <p role="note">
-              Media commands are closed in{" "}
-              <strong>{detail.work_item.current_state}</strong>: the package is
-              frozen while under terminal review.
+              Medya komutları <strong>{detail.work_item.current_state}</strong>{" "}
+              durumunda kapalıdır: paket, nihai inceleme sürecinde
+              dondurulmuştur.
             </p>
           )}
           <div className="table-scroll">
@@ -1831,8 +1838,8 @@ function MediaSection({
               <thead>
                 <tr>
                   <th scope="col">#</th>
-                  <th scope="col">Need</th>
-                  <th scope="col">Coverage</th>
+                  <th scope="col">İhtiyaç</th>
+                  <th scope="col">Kapsam</th>
                 </tr>
               </thead>
               <tbody>
@@ -1843,7 +1850,7 @@ function MediaSection({
                       <strong>{need.role}</strong>
                       <p className="muted">{need.purpose}</p>
                       {need.constraints !== null && (
-                        <p className="muted">Constraints: {need.constraints}</p>
+                        <p className="muted">Kısıtlar: {need.constraints}</p>
                       )}
                     </td>
                     <td>
@@ -1853,7 +1860,7 @@ function MediaSection({
                         />
                       ) : (
                         <span className="badge" data-tone="warning">
-                          Unsatisfied
+                          Karşılanmadı
                         </span>
                       )}
                       {commandsOpen && need.satisfaction === null && (
@@ -1877,33 +1884,33 @@ function MediaSection({
                               name="file"
                               required
                               accept="image/png,image/jpeg,image/webp"
-                              aria-label={`Upload file for need ${need.need_index}`}
+                              aria-label={`İhtiyaç ${need.need_index} için dosya yükle`}
                             />
                             <input
                               type="text"
                               name="alt_text"
                               required
                               maxLength={1000}
-                              placeholder="alt text (required)"
-                              aria-label={`Alt text for need ${need.need_index}`}
+                              placeholder="alt metin (zorunlu)"
+                              aria-label={`İhtiyaç ${need.need_index} için alt metin`}
                             />
                             <input
                               type="text"
                               name="license_note"
                               required
                               maxLength={1000}
-                              placeholder="license note (required)"
-                              aria-label={`License note for need ${need.need_index}`}
+                              placeholder="lisans notu (zorunlu)"
+                              aria-label={`İhtiyaç ${need.need_index} için lisans notu`}
                             />
                             <input
                               type="text"
                               name="reason"
                               required
                               maxLength={1000}
-                              placeholder="why this asset satisfies the need"
-                              aria-label={`Binding reason for need ${need.need_index}`}
+                              placeholder="bu varlık ihtiyacı neden karşılıyor"
+                              aria-label={`İhtiyaç ${need.need_index} bağlaması için gerekçe`}
                             />
-                            <button type="submit">Upload & bind</button>
+                            <button type="submit">Yükle ve bağla</button>
                           </form>
                           <form
                             action={bindMediaAssetAction}
@@ -1924,18 +1931,18 @@ function MediaSection({
                               name="media_asset_id"
                               required
                               className="mono"
-                              placeholder="existing media asset id"
-                              aria-label={`Asset id for need ${need.need_index}`}
+                              placeholder="mevcut medya varlığı kimliği"
+                              aria-label={`İhtiyaç ${need.need_index} için varlık kimliği`}
                             />
                             <input
                               type="text"
                               name="reason"
                               required
                               maxLength={1000}
-                              placeholder="why this asset satisfies the need"
-                              aria-label={`Bind reason for need ${need.need_index}`}
+                              placeholder="bu varlık ihtiyacı neden karşılıyor"
+                              aria-label={`İhtiyaç ${need.need_index} için bağlama gerekçesi`}
                             />
-                            <button type="submit">Bind existing asset</button>
+                            <button type="submit">Mevcut varlığı bağla</button>
                           </form>
                           <form
                             action={generateMediaImageAction}
@@ -1951,10 +1958,10 @@ function MediaSection({
                               name="need_index"
                               value={need.need_index}
                             />
-                            <button type="submit">Generate image</button>
+                            <button type="submit">Görsel üret</button>
                             <span className="muted">
-                              Produces a candidate asset with AI provenance; you
-                              still bind it explicitly.
+                              Yapay zeka kökenli bir aday varlık üretir;
+                              bağlamayı yine açıkça siz yaparsınız.
                             </span>
                           </form>
                         </div>
@@ -1979,10 +1986,10 @@ function MediaSection({
                             name="reason"
                             required
                             maxLength={1000}
-                            placeholder="why the binding no longer stands"
-                            aria-label={`Unbind reason for need ${need.need_index}`}
+                            placeholder="bağlama neden artık geçerli değil"
+                            aria-label={`İhtiyaç ${need.need_index} için bağlamayı kaldırma gerekçesi`}
                           />
-                          <button type="submit">Unbind</button>
+                          <button type="submit">Bağlamayı kaldır</button>
                         </form>
                       )}
                     </td>
@@ -1995,7 +2002,7 @@ function MediaSection({
       )}
       {media !== null && media.history.length > media.satisfied_needs && (
         <p className="muted" role="note">
-          Binding history:{" "}
+          Bağlama geçmişi:{" "}
           {media.history
             .map(
               (row) =>
@@ -2003,7 +2010,7 @@ function MediaSection({
             )
             .join(" · ")}
           {media.history_truncated &&
-            ` · … older bindings not shown (${media.total_history} total)`}
+            ` · … daha eski bağlamalar gösterilmiyor (toplam ${media.total_history})`}
         </p>
       )}
     </section>
@@ -2021,27 +2028,25 @@ function PublicationSection({
   const state = detail.work_item.current_state;
   return (
     <section aria-labelledby="detail-publication">
-      <h2 id="detail-publication">Publication</h2>
+      <h2 id="detail-publication">Yayın</h2>
       <p className="muted">
-        ContentOS publishes exactly what was approved, or nothing: immutable
-        hashed packages behind the current-approval guard, dispatched only
-        through the governed Publishing API transport.
+        ContentOS tam olarak onaylananı yayınlar, yoksa hiçbir şey yayınlamaz:
+        güncel onay korumasının arkasındaki değişmez, hash&apos;lenmiş paketler
+        yalnızca yönetimli Publishing API taşıması üzerinden gönderilir.
       </p>
       {publication === null && (
-        <p className="empty-note">The publication state cannot be loaded.</p>
+        <p className="empty-note">Yayın durumu yüklenemiyor.</p>
       )}
       {publication !== null && (
         <>
           {publication.packages.length === 0 && (
-            <p className="empty-note">No publication package exists yet.</p>
+            <p className="empty-note">Henüz yayın paketi yok.</p>
           )}
           {publication.latest_package_approval_current === false && (
             <p role="note">
-              <strong>
-                The latest package no longer matches a current approval.
-              </strong>{" "}
-              Re-assembly (and possibly re-approval) is required before
-              publication can proceed.
+              <strong>En son paket artık güncel bir onayla eşleşmiyor.</strong>{" "}
+              Yayın ilerleyebilmeden önce yeniden birleştirme (ve muhtemelen
+              yeniden onay) gerekir.
             </p>
           )}
           {publication.packages.length > 0 && (
@@ -2049,10 +2054,10 @@ function PublicationSection({
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">Version</th>
-                    <th scope="col">Package</th>
-                    <th scope="col">Assembled by</th>
-                    <th scope="col">Attempts</th>
+                    <th scope="col">Sürüm</th>
+                    <th scope="col">Paket</th>
+                    <th scope="col">Birleştiren</th>
+                    <th scope="col">Denemeler</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2062,10 +2067,10 @@ function PublicationSection({
                       <td>
                         <span className="mono">{row.id}</span>
                         <p className="muted">
-                          {row.section_count} sections · {row.manifest_needs}{" "}
-                          media bindings
+                          {row.section_count} bölüm · {row.manifest_needs} medya
+                          bağlaması
                           {row.waived_unmet_indexes.length > 0
-                            ? ` · waived unmet needs: ${row.waived_unmet_indexes.join(", ")}`
+                            ? ` · vazgeçilen karşılanmamış ihtiyaçlar: ${row.waived_unmet_indexes.join(", ")}`
                             : ""}
                         </p>
                         <p className="mono muted">
@@ -2076,12 +2081,12 @@ function PublicationSection({
                       <td>{row.assembled_by.display_name}</td>
                       <td>
                         {row.attempts.length === 0 && (
-                          <span className="muted">No dispatches yet.</span>
+                          <span className="muted">Henüz gönderim yok.</span>
                         )}
                         {row.attempts_truncated && (
                           <p className="muted">
-                            Showing {row.attempts.length} of{" "}
-                            {row.total_attempts} attempts.
+                            {row.total_attempts} denemeden {row.attempts.length}{" "}
+                            tanesi gösteriliyor.
                           </p>
                         )}
                         {row.attempts.map((attempt) => (
@@ -2113,7 +2118,7 @@ function PublicationSection({
             <TruncationNote
               shown={publication.packages.length}
               total={publication.total_packages}
-              noun="publication packages"
+              noun="yayın paketi"
             />
           )}
         </>
@@ -2125,10 +2130,10 @@ function PublicationSection({
             className="control-form"
           >
             <input type="hidden" name="work_item_id" value={workItemId} />
-            <button type="submit">Assemble publication package</button>
+            <button type="submit">Yayın paketini birleştir</button>
             <span className="muted">
-              Deterministic projection of the approved artifacts; identical
-              content converges on the existing package.
+              Onaylanan artefaktların deterministik projeksiyonu; özdeş içerik
+              mevcut pakette birleşir.
             </span>
           </form>
           {publication !== null && publication.packages.length > 0 && (
@@ -2144,13 +2149,13 @@ function PublicationSection({
                 name="reason"
                 required
                 maxLength={1000}
-                placeholder="why this package goes to the publication plan"
-                aria-label="Scheduling reason"
+                placeholder="bu paket yayın planına neden giriyor"
+                aria-label="Zamanlama gerekçesi"
               />
-              <button type="submit">Schedule publication</button>
+              <button type="submit">Yayını zamanla</button>
               <span className="muted">
-                Schedules package v{publication.packages[0]!.version}; nothing
-                is published until the governed dispatch runs.
+                Paket v{publication.packages[0]!.version} sürümünü zamanlar;
+                yönetimli gönderim çalışana kadar hiçbir şey yayınlanmaz.
               </span>
             </form>
           )}
@@ -2159,10 +2164,10 @@ function PublicationSection({
       {(state === "scheduled" || state === "publishing") && (
         <form action={publishWorkItemAction} className="control-form">
           <input type="hidden" name="work_item_id" value={workItemId} />
-          <button type="submit">Publish now</button>
+          <button type="submit">Şimdi yayınla</button>
           <span className="muted">
-            Queues the governed dispatch; the worker re-checks the approval and
-            a stale one expires instead of publishing.
+            Yönetimli gönderimi kuyruğa alır; worker onayı yeniden kontrol eder
+            ve bayat bir onay yayınlanmak yerine süresi dolmuş sayılır.
           </span>
         </form>
       )}
@@ -2174,13 +2179,13 @@ function PublicationSection({
             name="reason"
             required
             maxLength={1000}
-            placeholder="route the expired approval back for review"
-            aria-label="Expiry resolution reason"
+            placeholder="süresi dolan onayı incelemeye geri yönlendir"
+            aria-label="Süre dolumu çözüm gerekçesi"
           />
-          <button type="submit">Resolve expired approval</button>
+          <button type="submit">Süresi dolan onayı çöz</button>
           <span className="muted">
-            The target is DERIVED: back to human review while the QA report
-            still covers the draft, else back to QA.
+            Hedef TÜRETİLİR: QA raporu taslağı hâlâ kapsıyorsa insan
+            incelemesine, aksi halde QA&apos;ya geri döner.
           </span>
         </form>
       )}
@@ -2202,44 +2207,45 @@ function DecisionsSection({
   const status = decisions?.approval_status ?? null;
   return (
     <section aria-labelledby="detail-decisions">
-      <h2 id="detail-decisions">Human decisions</h2>
+      <h2 id="detail-decisions">İnsan kararları</h2>
       <p className="muted">
-        Append-only record of named human decisions. Every decision pins the
-        exact package (draft, editor review, QA report) by id and content hash.
+        İsimlendirilmiş insan kararlarının yalnızca-ekleme kaydı. Her karar, tam
+        paketi (taslak, editör değerlendirmesi, QA raporu) kimlik ve içerik
+        hash&apos;i ile sabitler.
       </p>
       {decisions === null && (
-        <p className="empty-note">The decision record cannot be loaded.</p>
+        <p className="empty-note">Karar kaydı yüklenemiyor.</p>
       )}
       {decisions !== null && (
         <>
           {status !== null && status.approved && (
             <p role="note">
-              <strong>Approval on record</strong>
+              <strong>Kayıtlı onay</strong>
               {": "}
               <span
                 className="badge"
                 data-tone={status.current ? "positive" : "warning"}
               >
-                {status.current ? "current" : "stale"}
+                {status.current ? "güncel" : "bayat"}
               </span>{" "}
               {status.current
-                ? "The active draft still carries the approved content hash."
-                : "The active draft no longer matches the approved content hash — the approval does not cover the current content."}
+                ? "Etkin taslak, onaylanan içerik hash'ini hâlâ taşıyor."
+                : "Etkin taslak, onaylanan içerik hash'iyle artık eşleşmiyor — onay mevcut içeriği kapsamıyor."}
             </p>
           )}
           {decisions.decisions.length === 0 && (
-            <p className="empty-note">No human decisions are recorded.</p>
+            <p className="empty-note">Kayıtlı insan kararı yok.</p>
           )}
           {decisions.decisions.length > 0 && (
             <div className="table-scroll">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">When</th>
-                    <th scope="col">Decision</th>
-                    <th scope="col">Reviewer</th>
-                    <th scope="col">Reason</th>
-                    <th scope="col">Pinned package</th>
+                    <th scope="col">Ne zaman</th>
+                    <th scope="col">Karar</th>
+                    <th scope="col">Değerlendirici</th>
+                    <th scope="col">Gerekçe</th>
+                    <th scope="col">Sabitlenmiş paket</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2278,15 +2284,15 @@ function DecisionsSection({
           <TruncationNote
             shown={decisions.decisions.length}
             total={decisions.total}
-            noun="decisions"
+            noun="karar"
           />
         </>
       )}
       {(state === "awaiting_human_review" || state === "approved") &&
         !isReviewer && (
           <p role="note">
-            You are signed in without the reviewer role. Decisions can only be
-            recorded by an authorized reviewer.
+            Değerlendirici rolü olmadan oturum açtınız. Kararlar yalnızca
+            yetkili bir değerlendirici tarafından kaydedilebilir.
           </p>
         )}
       {state === "awaiting_human_review" && isReviewer && (
@@ -2298,12 +2304,12 @@ function DecisionsSection({
               name="reason"
               required
               maxLength={1000}
-              placeholder="why this package is approved"
-              aria-label="Approval reason"
+              placeholder="bu paket neden onaylanıyor"
+              aria-label="Onay gerekçesi"
             />
-            <button type="submit">Approve package</button>
+            <button type="submit">Paketi onayla</button>
             <span className="muted">
-              Recorded under your name and bound to the active content hash.
+              Sizin adınıza kaydedilir ve etkin içerik hash&apos;ine bağlanır.
             </span>
           </form>
           <form action={requestChangesDecisionAction} className="control-form">
@@ -2311,24 +2317,24 @@ function DecisionsSection({
             <select
               name="responsible_state"
               defaultValue="drafting"
-              aria-label="Decision responsible state"
+              aria-label="Karar sorumlu durumu"
             >
-              <option value="drafting">writer stage (drafting)</option>
-              <option value="editing">editor stage (editing)</option>
-              <option value="qa_review">qa stage (qa_review)</option>
+              <option value="drafting">yazar aşaması (drafting)</option>
+              <option value="editing">editör aşaması (editing)</option>
+              <option value="qa_review">QA aşaması (qa_review)</option>
             </select>
             <input
               type="text"
               name="reason"
               required
               maxLength={1000}
-              placeholder="what must change and who is responsible"
-              aria-label="Requested changes reason"
+              placeholder="ne değişmeli ve kim sorumlu"
+              aria-label="İstenen değişiklikler gerekçesi"
             />
-            <button type="submit">Request changes</button>
+            <button type="submit">Değişiklik iste</button>
             <span className="muted">
-              Routes via the recorded responsible state; the choice is bounded,
-              never arbitrary.
+              Kayıtlı sorumlu durum üzerinden yönlendirir; seçim sınırlıdır,
+              asla keyfi değildir.
             </span>
           </form>
           <form action={rejectPackageAction} className="control-form">
@@ -2338,12 +2344,12 @@ function DecisionsSection({
               name="reason"
               required
               maxLength={1000}
-              placeholder="why the package is rejected outright"
-              aria-label="Rejection reason"
+              placeholder="paket neden doğrudan reddediliyor"
+              aria-label="Ret gerekçesi"
             />
-            <button type="submit">Reject package</button>
+            <button type="submit">Paketi reddet</button>
             <span className="muted">
-              WARNING: an editorial rejection of the package, on the record.
+              UYARI: paketin kayıt altına alınan editoryal reddi.
             </span>
           </form>
         </div>
@@ -2354,24 +2360,24 @@ function DecisionsSection({
           <select
             name="responsible_state"
             defaultValue="drafting"
-            aria-label="Revocation responsible state"
+            aria-label="Geri çekme sorumlu durumu"
           >
-            <option value="drafting">writer stage (drafting)</option>
-            <option value="editing">editor stage (editing)</option>
-            <option value="qa_review">qa stage (qa_review)</option>
+            <option value="drafting">yazar aşaması (drafting)</option>
+            <option value="editing">editör aşaması (editing)</option>
+            <option value="qa_review">QA aşaması (qa_review)</option>
           </select>
           <input
             type="text"
             name="reason"
             required
             maxLength={1000}
-            placeholder="why the approval no longer stands"
-            aria-label="Revocation reason"
+            placeholder="onay neden artık geçerli değil"
+            aria-label="Geri çekme gerekçesi"
           />
-          <button type="submit">Revoke approval</button>
+          <button type="submit">Onayı geri çek</button>
           <span className="muted">
-            WARNING: the approval record stays; a revocation event is appended
-            and the item routes back for rework.
+            UYARI: onay kaydı korunur; bir geri çekme olayı eklenir ve öğe
+            yeniden çalışma için geri yönlendirilir.
           </span>
         </form>
       )}
@@ -2382,27 +2388,27 @@ function DecisionsSection({
 function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
   return (
     <section aria-labelledby="detail-attempts">
-      <h2 id="detail-attempts">AI attempts</h2>
+      <h2 id="detail-attempts">Yapay zeka denemeleri</h2>
       <p className="muted">
-        Safe persisted metadata only. Prompts and raw model output are never
-        stored and never shown.
+        Yalnızca güvenli, kalıcı üstveriler. İstemler ve ham model çıktısı asla
+        saklanmaz ve asla gösterilmez.
       </p>
       {attempts.length === 0 && (
-        <p className="empty-note">No AI attempts are linked to this item.</p>
+        <p className="empty-note">Bu öğeye bağlı yapay zeka denemesi yok.</p>
       )}
       {attempts.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">Purpose</th>
-                <th scope="col">Provider / model</th>
-                <th scope="col">Schema</th>
-                <th scope="col">Template</th>
-                <th scope="col">Status</th>
-                <th scope="col">Retry</th>
-                <th scope="col">Usage</th>
-                <th scope="col">When</th>
+                <th scope="col">Amaç</th>
+                <th scope="col">Sağlayıcı / model</th>
+                <th scope="col">Şema</th>
+                <th scope="col">Şablon</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Yeniden deneme</th>
+                <th scope="col">Kullanım</th>
+                <th scope="col">Ne zaman</th>
               </tr>
             </thead>
             <tbody>
@@ -2435,7 +2441,7 @@ function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
                       ? Object.entries(attempt.usage)
                           .map(([key, value]) => `${key}: ${String(value)}`)
                           .join(" · ")
-                      : "Not reported"}
+                      : "Raporlanmadı"}
                   </td>
                   <td>{formatUtcTimestamp(attempt.created_at)}</td>
                 </tr>
@@ -2451,16 +2457,16 @@ function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
 function WorkflowHistorySection({ detail }: { detail: WorkItemDetail }) {
   return (
     <section aria-labelledby="detail-history">
-      <h2 id="detail-history">Workflow history</h2>
+      <h2 id="detail-history">İş akışı geçmişi</h2>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
-              <th scope="col">When</th>
-              <th scope="col">Transition</th>
-              <th scope="col">Actor</th>
-              <th scope="col">Reason</th>
-              <th scope="col">Artifacts</th>
+              <th scope="col">Ne zaman</th>
+              <th scope="col">Geçiş</th>
+              <th scope="col">Aktör</th>
+              <th scope="col">Gerekçe</th>
+              <th scope="col">Artefaktlar</th>
             </tr>
           </thead>
           <tbody>
@@ -2468,13 +2474,13 @@ function WorkflowHistorySection({ detail }: { detail: WorkItemDetail }) {
               <tr key={event.id}>
                 <td>{formatUtcTimestamp(event.occurred_at)}</td>
                 <td>
-                  {event.from_state ?? "created"} → {event.to_state}
+                  {event.from_state ?? "oluşturuldu"} → {event.to_state}
                 </td>
                 <td>
                   {event.actor_display_name !== null
                     ? `${event.actor_origin} · ${event.actor_display_name}`
                     : event.actor_origin === "operator"
-                      ? "operator · UNKNOWN"
+                      ? "operator · BİLİNMİYOR"
                       : event.actor_origin}
                 </td>
                 <td>{event.reason}</td>
@@ -2491,7 +2497,7 @@ function WorkflowHistorySection({ detail }: { detail: WorkItemDetail }) {
       <TruncationNote
         shown={detail.workflow_events.length}
         total={detail.total_workflow_events}
-        noun="workflow events"
+        noun="iş akışı olayı"
       />
     </section>
   );
@@ -2514,16 +2520,16 @@ export default async function EditorialDetailPage({
   if (result.kind === "unreachable") {
     return (
       <section className="panel" aria-labelledby="editorial-detail-title">
-        <h1 id="editorial-detail-title">Editorial work item</h1>
-        <p role="status">The backend API cannot be reached right now.</p>
+        <h1 id="editorial-detail-title">Editoryal iş öğesi</h1>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       </section>
     );
   }
   if (result.kind === "malformed") {
     return (
       <section className="panel" aria-labelledby="editorial-detail-title">
-        <h1 id="editorial-detail-title">Editorial work item</h1>
-        <p role="status">The backend API returned unexpected data.</p>
+        <h1 id="editorial-detail-title">Editoryal iş öğesi</h1>
+        <p role="status">Arka uç API&apos;si beklenmedik veri döndürdü.</p>
       </section>
     );
   }
@@ -2566,9 +2572,9 @@ export default async function EditorialDetailPage({
       className="panel panel-wide"
       aria-labelledby="editorial-detail-title"
     >
-      <h1 id="editorial-detail-title">Editorial work item</h1>
+      <h1 id="editorial-detail-title">Editoryal iş öğesi</h1>
       <p className="muted">
-        <Link href="/editorial">← Back to Editorial Work Queue</Link>
+        <Link href="/editorial">← Editoryal İş Kuyruğu&apos;na dön</Link>
       </p>
       <ControlNotice
         notice={firstParam(query.notice)}

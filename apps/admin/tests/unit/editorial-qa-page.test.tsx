@@ -43,19 +43,23 @@ describe("QA report detail page", () => {
 
     await renderPage();
     for (const heading of [
-      "Report version",
-      "Hard gates",
-      "Audited waivers",
-      "Supersession audit",
+      "Rapor sürümü",
+      "Katı kapılar",
+      "Denetlenen vazgeçmeler",
+      "Geçersiz kılma denetimi",
     ]) {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     }
     expect(screen.getByText("not_ready")).toBeTruthy();
-    expect(screen.getByText(/computed deterministically by/)).toBeTruthy();
+    expect(
+      screen.getByText(/tarafından deterministik olarak hesaplandı/),
+    ).toBeTruthy();
     // The truthful media gate is visible and never softened.
     expect(screen.getByText("unsatisfied")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "draft" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "editor review" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "taslak" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "editör değerlendirmesi" }),
+    ).toBeTruthy();
   });
 
   it("renders UNKNOWN for a malformed gate record, never a pass", async () => {
@@ -68,7 +72,7 @@ describe("QA report detail page", () => {
       requestId: null,
     });
     await renderPage();
-    expect(screen.getByText("UNKNOWN")).toBeTruthy();
+    expect(screen.getByText("BİLİNMİYOR")).toBeTruthy();
   });
 
   it("keeps waivers visible with their reasons", async () => {

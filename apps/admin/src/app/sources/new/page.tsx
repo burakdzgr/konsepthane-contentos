@@ -16,11 +16,10 @@ export default async function NewSourcePage({
   const params = await searchParams;
   return (
     <section className="panel" aria-labelledby="new-source-title">
-      <h1 id="new-source-title">Register source</h1>
+      <h1 id="new-source-title">Kaynak kaydet</h1>
       <p className="muted">
-        A source is a governed research origin. Registering a source does not
-        automatically crawl it: discovery and fetching are separate explicit
-        actions.
+        Kaynak, yönetilen bir araştırma kökenidir. Kaynak kaydetmek onu otomatik
+        olarak taramaz: keşif ve getirme ayrı, açıkça başlatılan işlemlerdir.
       </p>
       <ControlNotice
         notice={undefined}
@@ -40,14 +39,14 @@ export default async function NewSourcePage({
           />
         </label>
         <label>
-          Name
+          Ad
           <input type="text" name="name" required maxLength={200} />
         </label>
         <label>
-          Kind
+          Tür
           <select name="kind" required defaultValue="">
             <option value="" disabled>
-              Choose a kind…
+              Tür seç…
             </option>
             {REGISTRABLE_SOURCE_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -57,7 +56,7 @@ export default async function NewSourcePage({
           </select>
         </label>
         <label>
-          Base URL
+          Temel URL
           <input
             type="url"
             name="base_url"
@@ -67,10 +66,10 @@ export default async function NewSourcePage({
           />
         </label>
         <label>
-          Trust tier
+          Güven kademesi
           <select name="trust_tier" required defaultValue="">
             <option value="" disabled>
-              Choose a tier…
+              Kademe seç…
             </option>
             {TRUST_TIERS.map((tier) => (
               <option key={tier} value={tier}>
@@ -80,7 +79,7 @@ export default async function NewSourcePage({
           </select>
         </label>
         <label>
-          Locale
+          Yerel ayar
           <input
             type="text"
             name="locale"
@@ -89,22 +88,22 @@ export default async function NewSourcePage({
           />
         </label>
         <label>
-          Market
+          Pazar
           <input type="text" name="market" defaultValue="TR" maxLength={2} />
         </label>
         <label>
-          Terms notes
+          Kullanım şartları notları
           <textarea
             name="terms_notes"
             rows={3}
             maxLength={4000}
-            placeholder="Terms-of-use / licensing observations for this source"
+            placeholder="Bu kaynak için kullanım şartları / lisans gözlemleri"
           />
         </label>
-        <button type="submit">Register source</button>
+        <button type="submit">Kaynak kaydet</button>
       </form>
       <p className="muted">
-        <Link href="/sources">← Back to Sources</Link>
+        <Link href="/sources">← Kaynaklara dön</Link>
       </p>
     </section>
   );

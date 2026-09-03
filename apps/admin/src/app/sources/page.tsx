@@ -28,11 +28,10 @@ import {
 
 const SOURCE_NOTICES: Record<string, string> = {
   "source-registered":
-    "Source registered. Registering a source does not automatically crawl it.",
-  "source-existing":
-    "An identical source already existed; nothing was changed.",
-  "lifecycle-updated": "Source lifecycle updated.",
-  "discovery-queued": "Discovery queued.",
+    "Kaynak kaydedildi. Kaynak kaydetmek onu otomatik olarak taramaz.",
+  "source-existing": "Aynı kaynak zaten mevcuttu; hiçbir şey değiştirilmedi.",
+  "lifecycle-updated": "Kaynak durumu güncellendi.",
+  "discovery-queued": "Keşif kuyruğa alındı.",
 };
 
 // Operational registry data must reflect the moment of the request.
@@ -70,15 +69,16 @@ function pageHref(filters: SourceFilterState, offset: number): string {
 
 function itemCounts(source: SourceListItem): string {
   const parts: string[] = [];
-  if (source.discovered_count > 0) parts.push(`${source.discovered_count} new`);
+  if (source.discovered_count > 0)
+    parts.push(`${source.discovered_count} yeni`);
   if (source.accepted_count > 0)
-    parts.push(`${source.accepted_count} accepted`);
-  if (source.fetched_count > 0) parts.push(`${source.fetched_count} fetched`);
+    parts.push(`${source.accepted_count} kabul edildi`);
+  if (source.fetched_count > 0) parts.push(`${source.fetched_count} getirildi`);
   if (source.fetch_failed_count > 0) {
-    parts.push(`${source.fetch_failed_count} failed`);
+    parts.push(`${source.fetch_failed_count} başarısız`);
   }
   if (source.rejected_count > 0)
-    parts.push(`${source.rejected_count} rejected`);
+    parts.push(`${source.rejected_count} reddedildi`);
   return parts.join(" · ");
 }
 
@@ -86,9 +86,9 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
   return (
     <form className="filter-form" method="get" action="/sources">
       <label>
-        State
+        Durum
         <select name="state" defaultValue={filters.state ?? ""}>
-          <option value="">Any</option>
+          <option value="">Tümü</option>
           {SOURCE_LIFECYCLE_STATES.map((state) => (
             <option key={state} value={state}>
               {state}
@@ -97,9 +97,9 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
         </select>
       </label>
       <label>
-        Kind
+        Tür
         <select name="kind" defaultValue={filters.kind ?? ""}>
-          <option value="">Any</option>
+          <option value="">Tümü</option>
           {SOURCE_KINDS.map((kind) => (
             <option key={kind} value={kind}>
               {kind}
@@ -108,9 +108,9 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
         </select>
       </label>
       <label>
-        Strategy
+        Strateji
         <select name="strategy" defaultValue={filters.strategy ?? ""}>
-          <option value="">Any</option>
+          <option value="">Tümü</option>
           {DISCOVERY_STRATEGIES.map((strategy) => (
             <option key={strategy} value={strategy}>
               {strategy}
@@ -119,16 +119,16 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
         </select>
       </label>
       <label>
-        Search
+        Ara
         <input
           type="text"
           name="q"
           defaultValue={filters.q ?? ""}
           maxLength={100}
-          placeholder="slug or name"
+          placeholder="slug veya ad"
         />
       </label>
-      <button type="submit">Apply</button>
+      <button type="submit">Uygula</button>
     </form>
   );
 }
@@ -142,10 +142,10 @@ function SourceControls({ source }: { source: SourceListItem }) {
           name="new_state"
           required
           defaultValue=""
-          aria-label={`New lifecycle state for ${source.slug}`}
+          aria-label={`${source.slug} için yeni yaşam döngüsü durumu`}
         >
           <option value="" disabled>
-            New state…
+            Yeni durum…
           </option>
           {allowedLifecycleTargets(source.lifecycle_state).map((state) => (
             <option key={state} value={state}>
@@ -158,15 +158,15 @@ function SourceControls({ source }: { source: SourceListItem }) {
           name="reason"
           required
           maxLength={1000}
-          placeholder="reason"
-          aria-label={`Reason for changing ${source.slug}`}
+          placeholder="gerekçe"
+          aria-label={`${source.slug} değişikliği için gerekçe`}
         />
-        <button type="submit">Apply state</button>
+        <button type="submit">Durumu uygula</button>
       </form>
       {isDiscoveryEligible(source) && (
         <form action={runSourceDiscoveryAction} className="control-form">
           <input type="hidden" name="source_id" value={source.id} />
-          <button type="submit">Run discovery</button>
+          <button type="submit">Keşfi başlat</button>
         </form>
       )}
     </div>
@@ -191,10 +191,10 @@ export default async function SourcesPage({
 
   return (
     <section className="panel" aria-labelledby="sources-title">
-      <h1 id="sources-title">Sources</h1>
+      <h1 id="sources-title">Kaynaklar</h1>
       <p className="muted">
-        Governed research origins and their discovery-item counts.{" "}
-        <Link href="/sources/new">Register source</Link>
+        Yönetilen araştırma kaynakları ve keşif öğesi sayıları.{" "}
+        <Link href="/sources/new">Kaynak kaydet</Link>
       </p>
       <ControlNotice
         notice={firstParam(params.notice)}
@@ -203,14 +203,14 @@ export default async function SourcesPage({
       />
       <FilterForm filters={filters} />
       {result.kind === "unreachable" && (
-        <p role="status">The backend API cannot be reached right now.</p>
+        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       )}
       {result.kind === "malformed" && (
-        <p role="status">The backend API returned unexpected data.</p>
+        <p role="status">Arka uç API&apos;si beklenmeyen veri döndürdü.</p>
       )}
       {result.kind === "ok" && result.data.items.length === 0 && (
         <p className="empty-note" role="status">
-          No sources match the current view.
+          Geçerli görünümle eşleşen kaynak yok.
         </p>
       )}
       {result.kind === "ok" && result.data.items.length > 0 && (
@@ -219,15 +219,15 @@ export default async function SourcesPage({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">Source</th>
-                  <th scope="col">Kind / Strategy</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Trust</th>
-                  <th scope="col">Locale</th>
-                  <th scope="col">Discovery items</th>
-                  <th scope="col">Base URL</th>
-                  <th scope="col">Updated</th>
-                  <th scope="col">Controls</th>
+                  <th scope="col">Kaynak</th>
+                  <th scope="col">Tür / Strateji</th>
+                  <th scope="col">Durum</th>
+                  <th scope="col">Güven</th>
+                  <th scope="col">Yerel ayar</th>
+                  <th scope="col">Keşif öğeleri</th>
+                  <th scope="col">Temel URL</th>
+                  <th scope="col">Güncellendi</th>
+                  <th scope="col">Kontroller</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,7 +262,7 @@ export default async function SourcesPage({
                     </td>
                     <td>
                       <Link href={`/research?source=${source.id}`}>
-                        {source.total_discovery_items} items
+                        {source.total_discovery_items} öğe
                       </Link>
                       {source.total_discovery_items > 0 && (
                         <span className="muted cell-secondary">
@@ -282,10 +282,10 @@ export default async function SourcesPage({
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="Sources pagination">
+          <nav className="pagination" aria-label="Kaynaklar sayfalama">
             <span className="muted">
-              Showing {filters.offset + 1}–
-              {filters.offset + result.data.items.length} of {result.data.total}
+              {filters.offset + 1}–{filters.offset + result.data.items.length} /{" "}
+              {result.data.total} gösteriliyor
             </span>
             {filters.offset > 0 && (
               <Link
@@ -294,12 +294,12 @@ export default async function SourcesPage({
                   Math.max(filters.offset - PAGE_SIZE, 0),
                 )}
               >
-                Previous
+                Önceki
               </Link>
             )}
             {filters.offset + result.data.items.length < result.data.total && (
               <Link href={pageHref(filters, filters.offset + PAGE_SIZE)}>
-                Next
+                Sonraki
               </Link>
             )}
           </nav>
