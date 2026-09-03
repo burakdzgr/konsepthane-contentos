@@ -3251,6 +3251,30 @@ access protection belongs to future deployment infrastructure.
   the fake transport; the LIVE integration stays blocked on the three
   open operator inputs. Docs-only; no runtime changed.
 
+- PRODUCTION TOKEN WIRED + E2E RERUN (2026-09-03): the operator issued
+  the real 64-char service token (same value both sides — verified by
+  hash comparison, value never logged) and set
+  `CONTENTOS_AUTHOR_EMAIL=admin@konsepthane.net` (ACTIVE user; MEMBER
+  profile → organisation byline). The token had landed in the TRACKED
+  `.env.example`; it was moved into the gitignored `.env` and the
+  example scrubbed to placeholders BEFORE any commit (the secret never
+  entered git history). `CONTENTOS_PUBLISHING_API_URL` determined:
+  `http://localhost:4000/internal/contentos` for host runs,
+  `http://host.docker.internal:4000/internal/contentos` for the
+  ContentOS containers (set in `.env`; the compose backend-environment
+  whitelist now passes both publishing vars). Konsepthane api
+  recreated with the new env (anon 401; tokenized probe authenticates
+  → 422 invalid_package on the empty body, per contract); the
+  ContentOS backend image rebuilt and the full compose stack brought
+  up — the worker container carries url+key and authenticates through
+  host.docker.internal. THE E2E RERAN WITH THE PRODUCTION TOKEN:
+  → `guide:4927543d-0ca6-4ccd-be80-881c644c19c8`, public page live at
+  `/tr/rehber/evde-balon-temali-dogum-gunu-plani-2` (the slug
+  collision fallback engaging exactly as designed), wire-level
+  idempotent replay returning the same ref. Publishing is now
+  OPERATIONAL on the local/staging deployment; production internet
+  deployment only needs the same env values on the deployed hosts.
+
 ## Next immediate task
 
 PRODUCTION-READINESS BACKLOG BURNDOWN (authorized under the autonomous
