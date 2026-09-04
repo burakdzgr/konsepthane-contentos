@@ -914,7 +914,12 @@ function SystemHealth({ summary }: { summary: DashboardSummary }) {
       "İş kuyruğu",
       summary.queue.depth === null ? "ölçülemedi" : String(summary.queue.depth),
     ],
-    ["AI servisleri", `${summary.ai.attempts_today} deneme`],
+    [
+      "AI servisleri",
+      summary.ai.text_provider_configured
+        ? `${summary.ai.attempts_today} deneme`
+        : "Yapılandırılmamış (OpenAI anahtarı yok)",
+    ],
     ["Yayın paketleri", String(summary.publishing.packages_total)],
   ];
   return (

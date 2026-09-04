@@ -57,6 +57,38 @@ that state). The rule now lives in ONE place:
   fresh evaluation. Existing v1 evaluations stay durable until the next
   `evaluate_opportunity` run.
 
+### AI provider configuration is visible and fail-fast (2026-09-04)
+
+- Root cause found in operation: "Fikir adayları üret" did nothing because
+  `CONTENTOS_OPENAI_API_KEY` / `CONTENTOS_OPENAI_MODEL` were unset AND
+  `compose.yaml` never passed them into the containers; the worker raised
+  `InvalidProviderIdentityError` with no durable attempt row, so the admin
+  showed nothing.
+- `compose.yaml` now passes the five `CONTENTOS_OPENAI_*` variables through
+  (empty = unset). `Settings.openai_text_provider_configured` /
+  `openai_image_provider_configured` are the single truth.
+- API: every AI-backed command route (generate-ideas, analyze-intent,
+  compose-brief, writer draft, editor review, media image) calls
+  `_require_ai_provider` BEFORE enqueueing and answers 503 with the stable
+  message marker `ai_provider_unconfigured:` — nothing is queued.
+- Dashboard `ai` summary carries `text_provider_configured` /
+  `image_provider_configured`; Kontrol Merkezi shows "Yapılandırılmamış",
+  the work-item detail's next-step card shows a red alert when the step
+  needs AI, and the admin maps the 503 marker to the `ai-unconfigured`
+  notice with the exact env vars to set.
+
+### Work-item detail: "Şimdi ne yapmalı" + folded sections (2026-09-04)
+
+- `apps/admin/src/app/editorial/[id]/next-step.ts` derives ONE next step
+  from durable facts (workflow state + latest score / ideas / selection /
+  pack sufficiency / intent / brief status / draft / review verdict / QA
+  outcome / media needs / packages / reviewer role): title, explanation,
+  `actionable`, and the `sectionId` holding the matching command. Never
+  invents a state; mid-transition says "sistem geçiriyor, yenileyin".
+- The detail page renders that card first, then every section inside a
+  `<details class="detail-fold">`: only the next step's section is open
+  and rendered first; the rest stay folded (headings kept for a11y/tests).
+
 ### Inbox filter, bulk decisions, Turkish status vocabulary (2026-09-04)
 
 - `/firsatlar` groups the 50-row listing by the backend's own facts

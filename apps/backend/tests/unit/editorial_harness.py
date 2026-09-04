@@ -88,6 +88,11 @@ def api_settings() -> Settings:
         api_docs_enabled=False,
         database_url="postgresql+psycopg://contentos:api-secret@localhost:5432/contentos_api",
         redis_broker_url="redis://:api-secret@localhost:6379/0",
+        # AI commands refuse to enqueue without a configured provider; the
+        # fake dispatcher never calls it, but the guard reads the settings.
+        openai_api_key="test-openai-key",
+        openai_model="test-model",
+        openai_image_model="test-image-model",
     )
 
 

@@ -465,6 +465,35 @@ def _dispatcher(request: Request) -> Any:
     return request.app.state.editorial_control_dispatcher
 
 
+AI_PROVIDER_UNCONFIGURED_CODE = "ai_provider_unconfigured"
+
+
+def _require_ai_provider(request: Request, *, image: bool = False) -> None:
+    """Fail fast BEFORE enqueueing an AI task the worker could only drop with
+    an unrecorded provider-identity error. 503 with a stable marker the
+    admin maps to an actionable notice; nothing is queued, nothing changes."""
+    settings = request.app.state.settings
+    configured = (
+        settings.openai_image_provider_configured
+        if image
+        else settings.openai_text_provider_configured
+    )
+    if configured:
+        return
+    needed = (
+        "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL"
+        if image
+        else "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL"
+    )
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"{AI_PROVIDER_UNCONFIGURED_CODE}: {needed} tanımlı değil; yapay zeka "
+            "görevi kuyruğa alınmadı"
+        ),
+    )
+
+
 def _current_request_id() -> str | None:
     candidate = get_request_id()
     return candidate if is_valid_request_id(candidate) else None
@@ -706,6 +735,7 @@ def generate_idea_candidates(
     and nothing here selects a generated idea."""
     if OpportunityRepository(session).get_by_id(opportunity_id) is None:
         raise HTTPException(status_code=404, detail=f"no opportunity with id {opportunity_id}")
+    _require_ai_provider(request)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
@@ -777,6 +807,7 @@ def analyze_search_intent(
             status_code=409,
             detail=f"search-intent analysis requires SEO_RESEARCH (current: {state})",
         )
+    _require_ai_provider(request)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
@@ -996,6 +1027,7 @@ def compose_content_brief(
         raise HTTPException(
             status_code=404, detail=f"no editorial work item with id {work_item_id}"
         )
+    _require_ai_provider(request)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
@@ -1066,6 +1098,7 @@ def generate_writer_draft(
     reuses the durable attempt/draft for a repeated identity."""
     if BriefRepository(session).get_brief(brief_id) is None:
         raise HTTPException(status_code=404, detail=f"no content brief with id {brief_id}")
+    _require_ai_provider(request)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
@@ -1204,6 +1237,7 @@ def generate_editor_review(
         raise HTTPException(
             status_code=404, detail=f"no editorial work item with id {work_item_id}"
         )
+    _require_ai_provider(request)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     _enqueue_or_503(
@@ -1530,6 +1564,7 @@ def generate_media_image(
         raise HTTPException(status_code=409, detail=str(error)) from None
     except MediaInputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
+    _require_ai_provider(request, image=True)
     dispatcher = _dispatcher(request)
     request_id = _current_request_id()
     requested_by = _current_user(request)

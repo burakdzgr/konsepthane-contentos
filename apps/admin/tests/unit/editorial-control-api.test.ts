@@ -18,6 +18,7 @@ import {
   analyzeSearchIntent,
   buildEvidencePack,
   commissionOpportunity,
+  generateIdeaCandidates,
   composeContentBrief,
   promoteResearchDocument,
   rejectOpportunity,
@@ -219,6 +220,20 @@ describe("direct commands", () => {
       reason: "konu stratejik",
       override_gate: true,
     });
+  });
+
+  it("maps the unconfigured-AI 503 to its own kind", async () => {
+    stubFetch(async () =>
+      jsonResponse(503, {
+        error: {
+          code: "unavailable",
+          message:
+            "ai_provider_unconfigured: CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL tanımlı değil",
+        },
+      }),
+    );
+    const result = await generateIdeaCandidates(OPPORTUNITY_ID, {});
+    expect(result).toEqual({ kind: "ai_unconfigured" });
   });
 
   it("maps a commissioning gate failure to conflict", async () => {

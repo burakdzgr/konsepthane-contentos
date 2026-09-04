@@ -18,6 +18,10 @@ vi.mock("@/lib/editorial-api", async () => {
   };
 });
 
+vi.mock("@/lib/dashboard-api", () => ({
+  fetchDashboardSummary: vi.fn(async () => ({ kind: "unreachable" })),
+}));
+
 vi.mock("@/lib/auth-api", () => ({
   fetchCurrentUser: vi.fn(),
 }));
@@ -203,6 +207,42 @@ describe("Editorial detail page", () => {
     expect(screen.queryByRole("button", { name: /yayınla/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /onayla/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /yayına al/i })).toBeNull();
+  });
+
+  it("warns when the next step needs an unconfigured AI provider", async () => {
+    const { fetchDashboardSummary } = await import("@/lib/dashboard-api");
+    vi.mocked(fetchDashboardSummary).mockResolvedValueOnce({
+      kind: "ok",
+      data: {
+        ai: {
+          text_provider_configured: false,
+          image_provider_configured: false,
+        },
+      } as never,
+      requestId: null,
+    });
+    const base = workItemDetail();
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: { ...base.work_item, current_state: "evidence_building" },
+        ideas: [],
+        total_ideas: 0,
+        effective_selected_idea_id: null,
+        evidence_packs: [],
+        total_evidence_packs: 0,
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("heading", { name: "Fikir adayları üret" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "CONTENTOS_OPENAI_API_KEY",
+    );
   });
 
   it("offers commissioning with score context only while decidable", async () => {

@@ -66,6 +66,10 @@ function errorCode(result: ControlResult<unknown>): string {
       return "not-found";
     case "queue_failed":
       return "queue-failed";
+    case "ai_unconfigured":
+      return "ai-unconfigured";
+    case "ai_unconfigured":
+      return "ai-unconfigured";
     case "unreachable":
       return "unreachable";
     default:

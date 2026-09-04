@@ -79,6 +79,14 @@ class AiSummaryView(_FrozenModel):
     failures_today: int
     daily_budget: int | None
     remaining_budget: int | None
+    # Configuration truth: without these the worker cannot run ANY AI
+    # task, so the admin must say so before an operator clicks.
+    text_provider_configured: bool
+    image_provider_configured: bool
+    # Configuration truth: without these the worker cannot run ANY AI
+    # task, so the admin must say so before an operator clicks.
+    text_provider_configured: bool
+    image_provider_configured: bool
 
 
 class PublishingSummaryView(_FrozenModel):
@@ -315,7 +323,13 @@ def _research_summary(session: Session) -> ResearchSummaryView:
     return ResearchSummaryView(active_sources=active_sources, discovery_states=states)
 
 
-def _ai_summary(session: Session, daily_budget: int | None) -> AiSummaryView:
+def _ai_summary(
+    session: Session,
+    daily_budget: int | None,
+    *,
+    text_provider_configured: bool,
+    image_provider_configured: bool,
+) -> AiSummaryView:
     used = attempts_today(session)
     since = _day_start_for(session)
     failures = int(
@@ -335,6 +349,8 @@ def _ai_summary(session: Session, daily_budget: int | None) -> AiSummaryView:
         failures_today=failures,
         daily_budget=daily_budget,
         remaining_budget=remaining,
+        text_provider_configured=text_provider_configured,
+        image_provider_configured=image_provider_configured,
     )
 
 
@@ -441,6 +457,8 @@ def load_summary(
     *,
     daily_budget: int | None,
     queue_depth: int | None,
+    text_provider_configured: bool = False,
+    image_provider_configured: bool = False,
 ) -> DashboardSummary:
     states = _work_item_state_counts(session)
     return DashboardSummary(
@@ -450,7 +468,12 @@ def load_summary(
         active_intake_runs=_active_intake_runs(session),
         attention=_attention_summary(session, states),
         research=_research_summary(session),
-        ai=_ai_summary(session, daily_budget),
+        ai=_ai_summary(
+            session,
+            daily_budget,
+            text_provider_configured=text_provider_configured,
+            image_provider_configured=image_provider_configured,
+        ),
         publishing=_publishing_summary(session),
         media=_media_summary(session),
         queue=QueueSummaryView(depth=queue_depth),

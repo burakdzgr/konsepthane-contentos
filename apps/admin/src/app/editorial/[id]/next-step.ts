@@ -21,6 +21,8 @@ export type NextStep = {
   // true when the operator must act; false when the machine is working or
   // the item is terminal.
   actionable: boolean;
+  // The step's command needs a configured AI provider of this kind.
+  needsAi?: "text" | "image";
 };
 
 export type NextStepInput = {
@@ -59,8 +61,9 @@ export function nextStep(input: NextStepInput): NextStep {
       key: "blocked",
       title: "Engeli çöz",
       detail:
-        detail.work_item.blocked_reason ??
-        "İş öğesi engellendi; engeli çözün ya da öğeyi reddedin.",
+        detail.work_item.blocked_reason !== null
+          ? `Engel nedeni: ${detail.work_item.blocked_reason}. Engeli çözün ya da öğeyi reddedin.`
+          : "İş öğesi engellendi; engeli çözün ya da öğeyi reddedin.",
       sectionId: "detail-workflow",
       actionable: true,
     };
@@ -70,8 +73,9 @@ export function nextStep(input: NextStepInput): NextStep {
       key: "rejected",
       title: "Reddedildi",
       detail:
-        detail.work_item.rejected_reason ??
-        "Bu iş öğesi reddedildi; başka bir adım yok.",
+        detail.work_item.rejected_reason !== null
+          ? `Ret gerekçesi: ${detail.work_item.rejected_reason}. Başka bir adım yok.`
+          : "Bu iş öğesi reddedildi; başka bir adım yok.",
       sectionId: "detail-workflow",
       actionable: false,
     };
@@ -148,6 +152,7 @@ export function nextStep(input: NextStepInput): NextStep {
     if (detail.ideas.length === 0) {
       return {
         key: "generate-ideas",
+        needsAi: "text",
         title: "Fikir adayları üret",
         detail:
           "Görevlendirilen fırsat için henüz fikir yok. Aday sayısını seçip üretimi kuyruğa alın; sonuç geldiğinde birini seçeceksiniz.",
@@ -210,9 +215,9 @@ export function nextStep(input: NextStepInput): NextStep {
     if (detail.intent_analyses.length === 0) {
       return {
         key: "intent",
+        needsAi: "text",
         title: "Arama niyeti analizini kuyruğa al",
-        detail:
-          "Analiz tamamlanınca sistem Brif hazırlığına geçirir.",
+        detail: "Analiz tamamlanınca sistem Brif hazırlığına geçirir.",
         sectionId: "detail-intent",
         actionable: true,
       };
@@ -232,6 +237,7 @@ export function nextStep(input: NextStepInput): NextStep {
     if (brief === null) {
       return {
         key: "brief",
+        needsAi: "text",
         title: "Taslak brief oluştur",
         detail: "Kanıt ve niyet analizinden brief oluşturun.",
         sectionId: "detail-briefs",
@@ -242,8 +248,7 @@ export function nextStep(input: NextStepInput): NextStep {
       return {
         key: "accept-brief",
         title: "Brifi taslak için kabul et",
-        detail:
-          "Brief hazır. Kabul edince iş öğesi Taslak yazımına geçer.",
+        detail: "Brief hazır. Kabul edince iş öğesi Taslak yazımına geçer.",
         sectionId: "detail-briefs",
         actionable: true,
       };
@@ -272,6 +277,7 @@ export function nextStep(input: NextStepInput): NextStep {
     if (!active) {
       return {
         key: "draft",
+        needsAi: "text",
         title: "Yazar taslağı üret",
         detail:
           "Kabul edilmiş brief'ten taslak üretin ya da operatör taslağı gönderin.",
@@ -289,10 +295,13 @@ export function nextStep(input: NextStepInput): NextStep {
   }
 
   if (state === "editing") {
-    const review = input.reviews?.reviews.find((row) => row.status === "active");
+    const review = input.reviews?.reviews.find(
+      (row) => row.status === "active",
+    );
     if (review === undefined) {
       return {
         key: "review",
+        needsAi: "text",
         title: "Editör değerlendirmesi üret",
         detail: "Etkin taslak için editör değerlendirmesi üretin.",
         sectionId: "detail-reviews",
@@ -319,7 +328,9 @@ export function nextStep(input: NextStepInput): NextStep {
   }
 
   if (state === "qa_review") {
-    const report = input.qaReports?.reports.find((row) => row.status === "active");
+    const report = input.qaReports?.reports.find(
+      (row) => row.status === "active",
+    );
     if (report === undefined) {
       return {
         key: "qa",
@@ -335,7 +346,10 @@ export function nextStep(input: NextStepInput): NextStep {
         media !== null && media.satisfied_needs < media.total_needs;
       return {
         key: "qa-not-ready",
-        title: mediaOpen ? "Görsel ihtiyaçlarını karşıla" : "QA kapıları geçmedi",
+        needsAi: mediaOpen ? "image" : undefined,
+        title: mediaOpen
+          ? "Görsel ihtiyaçlarını karşıla"
+          : "QA kapıları geçmedi",
         detail: mediaOpen
           ? `${media.total_needs - media.satisfied_needs} görsel ihtiyacı açık. Görsel yükleyin ya da üretin, sonra QA kapılarını yeniden çalıştırın.`
           : "Rapor Hazır değil dedi. Bulguları inceleyip yeniden çalışma isteyin ya da uygun kapıyı gerekçeyle atlayın.",
@@ -365,8 +379,7 @@ export function nextStep(input: NextStepInput): NextStep {
       : {
           key: "reviewer-needed",
           title: "İnceleyici kararı bekleniyor",
-          detail:
-            "Bu adım inceleyici rolü gerektirir; hesabınızda bu rol yok.",
+          detail: "Bu adım inceleyici rolü gerektirir; hesabınızda bu rol yok.",
           sectionId: "detail-decisions",
           actionable: false,
         };

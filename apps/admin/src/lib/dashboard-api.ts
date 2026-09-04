@@ -73,6 +73,8 @@ const summarySchema = z.object({
     failures_today: z.number().int(),
     daily_budget: z.number().int().nullable(),
     remaining_budget: z.number().int().nullable(),
+    text_provider_configured: z.boolean(),
+    image_provider_configured: z.boolean(),
   }),
   publishing: z.object({
     packages_total: z.number().int(),

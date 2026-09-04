@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { fetchCurrentUser } from "@/lib/auth-api";
+import { fetchDashboardSummary } from "@/lib/dashboard-api";
 import {
   RESOLVED_CONTRADICTION_STATUSES,
   fetchEligibleEvidence,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/editorial-display";
 import { formatUtcTimestamp } from "@/lib/format";
 import { trLabel, trList } from "@/lib/tr-labels";
+import { nextStep, type NextStep } from "./next-step";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
 import {
@@ -213,6 +215,77 @@ function ReasonForm({
       <button type="submit">{label}</button>
       {helper !== undefined && <span className="muted">{helper}</span>}
     </form>
+  );
+}
+
+// The operator's single answer to "şimdi ne yapmalı": one step, one
+// section. Everything else on the page folds away until asked for.
+type AiConfiguration = {
+  text_provider_configured: boolean;
+  image_provider_configured: boolean;
+} | null;
+
+function aiBlocked(step: NextStep, ai: AiConfiguration): string | null {
+  if (step.needsAi === undefined || ai === null) {
+    return null;
+  }
+  const configured =
+    step.needsAi === "image"
+      ? ai.image_provider_configured
+      : ai.text_provider_configured;
+  if (configured) {
+    return null;
+  }
+  return step.needsAi === "image"
+    ? "Bu adım yapay zeka görsel sağlayıcısı gerektiriyor ve yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın."
+    : "Bu adım yapay zeka sağlayıcısı gerektiriyor ve yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın. Buton çalışmayacak.";
+}
+
+function NextStepCard({ step, ai }: { step: NextStep; ai: AiConfiguration }) {
+  const blocked = aiBlocked(step, ai);
+  return (
+    <section
+      className="next-step"
+      data-actionable={step.actionable ? "true" : "false"}
+      aria-labelledby="detail-next-step"
+    >
+      <p className="eyebrow">Şimdi ne yapmalı</p>
+      <h2 id="detail-next-step">{step.title}</h2>
+      <p>{step.detail}</p>
+      {blocked !== null && (
+        <p className="notice" data-tone="bad" role="alert">
+          {blocked}
+        </p>
+      )}
+      <a href={`#${step.sectionId}`} className="next-step-jump">
+        {step.actionable ? "Adıma git ↓" : "Ayrıntıya git ↓"}
+      </a>
+    </section>
+  );
+}
+
+// A folded detail section: closed by default, open only for the section
+// the next step points at. The section keeps its own <h2> (screen readers
+// and tests see it); the summary repeats the title for the visual fold.
+function Fold({
+  id,
+  title,
+  open,
+  children,
+}: {
+  id: string;
+  title: string;
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="detail-fold" open={open} data-fold={id}>
+      <summary>
+        {title}
+        {open && <span className="badge">şimdi</span>}
+      </summary>
+      {children}
+    </details>
   );
 }
 
@@ -2587,6 +2660,9 @@ export default async function EditorialDetailPage({
   const publication =
     publicationResult.kind === "ok" ? publicationResult.data : null;
   const currentUserResult = await fetchCurrentUser();
+  const summaryResult = await fetchDashboardSummary();
+  const aiConfiguration: AiConfiguration =
+    summaryResult.kind === "ok" ? summaryResult.data.ai : null;
   const isReviewer =
     currentUserResult.kind === "ok" &&
     currentUserResult.data.roles.includes("reviewer");
@@ -2605,6 +2681,103 @@ export default async function EditorialDetailPage({
     }
   }
 
+  const step = nextStep({
+    detail,
+    drafts,
+    reviews,
+    qaReports,
+    decisions,
+    media,
+    publication,
+    isReviewer,
+  });
+  // Section registry: the next step's section renders first and open; the
+  // rest stay folded. Titles mirror each section's own <h2>.
+  const sections: Array<{ id: string; title: string; node: React.ReactNode }> =
+    [
+      {
+        id: "detail-workflow",
+        title: "İş akışı",
+        node: <WorkflowSection detail={detail} />,
+      },
+      {
+        id: "detail-opportunity",
+        title: "Fırsat ve skor",
+        node: <OpportunitySection detail={detail} />,
+      },
+      {
+        id: "detail-inputs",
+        title: "Araştırma girdileri",
+        node: <ResearchInputsSection detail={detail} />,
+      },
+      {
+        id: "detail-ideas",
+        title: "Fikirler",
+        node: <IdeasSection detail={detail} />,
+      },
+      {
+        id: "detail-evidence",
+        title: "Kanıt paketleri",
+        node: <EvidenceSection detail={detail} evidence={eligibleEvidence} />,
+      },
+      {
+        id: "detail-intent",
+        title: "Arama niyeti",
+        node: <SearchIntentSection detail={detail} />,
+      },
+      {
+        id: "detail-briefs",
+        title: "Brief'ler",
+        node: <BriefsSection detail={detail} />,
+      },
+      {
+        id: "detail-drafts",
+        title: "Taslaklar",
+        node: <DraftsSection detail={detail} drafts={drafts} />,
+      },
+      {
+        id: "detail-reviews",
+        title: "Editör değerlendirmeleri",
+        node: <ReviewsSection detail={detail} reviews={reviews} />,
+      },
+      {
+        id: "detail-qa",
+        title: "QA raporları",
+        node: <QaSection detail={detail} qaReports={qaReports} />,
+      },
+      {
+        id: "detail-media",
+        title: "Medya",
+        node: <MediaSection detail={detail} media={media} />,
+      },
+      {
+        id: "detail-decisions",
+        title: "İnsan kararları",
+        node: (
+          <DecisionsSection
+            detail={detail}
+            decisions={decisions}
+            isReviewer={isReviewer}
+          />
+        ),
+      },
+      {
+        id: "detail-publication",
+        title: "Yayın",
+        node: <PublicationSection detail={detail} publication={publication} />,
+      },
+      {
+        id: "detail-attempts",
+        title: "Yapay zeka denemeleri",
+        node: <AiAttemptsSection attempts={detail.ai_attempts} />,
+      },
+      {
+        id: "detail-history",
+        title: "İş akışı geçmişi",
+        node: <WorkflowHistorySection detail={detail} />,
+      },
+    ];
+
   return (
     <section
       className="panel panel-wide"
@@ -2619,25 +2792,22 @@ export default async function EditorialDetailPage({
         error={firstParam(query.error)}
         noticeMessages={DETAIL_NOTICES}
       />
-      <WorkflowSection detail={detail} />
-      <OpportunitySection detail={detail} />
-      <ResearchInputsSection detail={detail} />
-      <IdeasSection detail={detail} />
-      <EvidenceSection detail={detail} evidence={eligibleEvidence} />
-      <SearchIntentSection detail={detail} />
-      <BriefsSection detail={detail} />
-      <DraftsSection detail={detail} drafts={drafts} />
-      <ReviewsSection detail={detail} reviews={reviews} />
-      <QaSection detail={detail} qaReports={qaReports} />
-      <MediaSection detail={detail} media={media} />
-      <DecisionsSection
-        detail={detail}
-        decisions={decisions}
-        isReviewer={isReviewer}
-      />
-      <PublicationSection detail={detail} publication={publication} />
-      <AiAttemptsSection attempts={detail.ai_attempts} />
-      <WorkflowHistorySection detail={detail} />
+      <NextStepCard step={step} ai={aiConfiguration} />
+      {[...sections]
+        .sort(
+          (a, b) =>
+            Number(b.id === step.sectionId) - Number(a.id === step.sectionId),
+        )
+        .map((entry) => (
+          <Fold
+            key={entry.id}
+            id={entry.id}
+            title={entry.title}
+            open={entry.id === step.sectionId}
+          >
+            {entry.node}
+          </Fold>
+        ))}
     </section>
   );
 }

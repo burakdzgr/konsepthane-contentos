@@ -91,6 +91,8 @@ function summary(overrides: Partial<DashboardSummary> = {}): DashboardSummary {
       },
     },
     ai: {
+      text_provider_configured: true,
+      image_provider_configured: true,
       attempts_today: 12,
       failures_today: 1,
       daily_budget: 500,

@@ -7,6 +7,8 @@ export const CONTROL_ERROR_MESSAGES: Record<string, string> = {
   invalid: "Gönderilen değerler geçerli değil.",
   "not-found": "Kayıt bulunamadı.",
   "queue-failed": "Görev kuyruğa alınamadı. Hiçbir şey değiştirilmedi.",
+  "ai-unconfigured":
+    "Yapay zeka sağlayıcısı yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın. Görev kuyruğa alınmadı.",
   unreachable: "Backend API'ye şu anda erişilemiyor.",
   malformed: "Backend API beklenmedik veri döndürdü.",
 };

@@ -30,6 +30,9 @@ export type ControlResult<T> =
   | { kind: "invalid" }
   | { kind: "not_found" }
   | { kind: "queue_failed" }
+  // The backend refused an AI command because no provider is configured
+  // (503 with the ai_provider_unconfigured marker); nothing was queued.
+  | { kind: "ai_unconfigured" }
   | { kind: "unreachable" }
   | { kind: "malformed" };
 
@@ -203,9 +206,28 @@ type ControlFailure =
   | { kind: "not_found" }
   | { kind: "conflict" }
   | { kind: "invalid" }
-  | { kind: "queue_failed" };
+  | { kind: "queue_failed" }
+  | { kind: "ai_unconfigured" };
 
-function failureKind(response: FetchedResponse): ControlFailure | null {
+const AI_UNCONFIGURED_MARKER = "ai_provider_unconfigured";
+
+async function isAiUnconfigured(response: FetchedResponse): Promise<boolean> {
+  try {
+    const body = (await response.json()) as {
+      error?: { message?: unknown };
+    };
+    return (
+      typeof body?.error?.message === "string" &&
+      body.error.message.startsWith(AI_UNCONFIGURED_MARKER)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function failureKind(
+  response: FetchedResponse,
+): Promise<ControlFailure | null> {
   if (response.status === 404) {
     return { kind: "not_found" };
   }
@@ -216,7 +238,9 @@ function failureKind(response: FetchedResponse): ControlFailure | null {
     return { kind: "invalid" };
   }
   if (response.status === 503) {
-    return { kind: "queue_failed" };
+    return (await isAiUnconfigured(response))
+      ? { kind: "ai_unconfigured" }
+      : { kind: "queue_failed" };
   }
   return null;
 }
@@ -230,7 +254,7 @@ async function postControl<T>(
   if (response === null) {
     return { kind: "unreachable" };
   }
-  const failure = failureKind(response);
+  const failure = await failureKind(response);
   if (failure !== null) {
     return failure;
   }
@@ -723,7 +747,7 @@ export async function uploadMediaAsset(
   if (response === null) {
     return { kind: "unreachable" };
   }
-  const failure = failureKind(response);
+  const failure = await failureKind(response);
   if (failure !== null) {
     return failure;
   }

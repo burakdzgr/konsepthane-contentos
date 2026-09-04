@@ -1115,3 +1115,26 @@ class TestQaCommands:
             {"reason": "kendi kendine dönemez", "responsible_state": "editing"},
         )
         assert response.status_code == 409
+
+
+class TestAiProviderGuard:
+    """An AI command with no configured provider is refused at the API (503
+    with a stable marker) instead of the worker dropping the task silently."""
+
+    def test_generate_ideas_refuses_without_provider(self, harness: Harness) -> None:
+        with harness.session() as session:
+            context = Context()
+            seed_commissioned(session, context)
+        settings = harness.app.state.settings
+        harness.app.state.settings = settings.model_copy(update={"openai_api_key": None})
+        try:
+            response = harness.post(
+                f"/internal/editorial/opportunities/{context.opportunity_id}/generate-ideas",
+                json_body={},
+            )
+        finally:
+            harness.app.state.settings = settings
+        assert response.status_code == 503
+        message = response.json()["error"]["message"]
+        assert message.startswith("ai_provider_unconfigured:")
+        assert "CONTENTOS_OPENAI_API_KEY" in message

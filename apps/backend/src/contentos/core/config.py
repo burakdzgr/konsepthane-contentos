@@ -78,6 +78,25 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
     openai_image_model: str | None = Field(default=None, min_length=1)
     openai_image_timeout_seconds: float = Field(default=120.0, ge=1.0, le=600.0)
+
+    @property
+    def openai_text_provider_configured(self) -> bool:
+        """Both values the OpenAI text adapter refuses to construct without."""
+        return self.openai_api_key is not None and self.openai_model is not None
+
+    @property
+    def openai_image_provider_configured(self) -> bool:
+        return self.openai_api_key is not None and self.openai_image_model is not None
+
+    @property
+    def openai_text_provider_configured(self) -> bool:
+        """Both values the OpenAI text adapter refuses to construct without."""
+        return self.openai_api_key is not None and self.openai_model is not None
+
+    @property
+    def openai_image_provider_configured(self) -> bool:
+        return self.openai_api_key is not None and self.openai_image_model is not None
+
     # Autonomous intake orchestration bounds (per-run and per-source).
     # Every limit is a hard cap the orchestrator can only stay under;
     # remaining candidates persist durably for a later run.
