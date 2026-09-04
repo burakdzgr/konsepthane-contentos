@@ -1,6 +1,7 @@
-// Badge semantics for the editorial screens. Every badge keeps its explicit
-// backend value as visible text; tone only supports the meaning. UNKNOWN and
-// absent values must never be toned as good or bad — they stay neutral.
+// Badge semantics for the editorial screens. Tones are keyed by the backend
+// value; the visible text is the Turkish label from `tr-labels.ts` (the
+// operator never reads wire vocabulary). Tone only supports the meaning —
+// UNKNOWN and absent values must never be toned as good or bad.
 
 import type { BadgeTone } from "@/lib/pipeline-display";
 

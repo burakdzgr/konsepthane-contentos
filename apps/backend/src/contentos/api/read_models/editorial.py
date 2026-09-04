@@ -97,6 +97,7 @@ from contentos.opportunities.models import (
     OpportunityScore,
     OpportunityScoreComponent,
 )
+from contentos.opportunities.service import commissioning_admits
 from contentos.research.enums import EvidenceType, ExtractionMethod, VerificationStatus
 from contentos.research.models import ResearchEvidence
 from contentos.search_intent.enums import CannibalizationStatus
@@ -155,6 +156,10 @@ class WorkQueueRow(_FrozenModel):
     score_evaluated_at: datetime | None
     score_engine_name: str | None
     score_engine_version: str | None
+    commission_eligible: bool
+    # ADR 0010: scored but not commissionable — the named operator may
+    # still commission with override_gate + reason. Never true unscored.
+    commission_override_possible: bool
     inspiration_evaluation_id: uuid.UUID | None
     inspiration_band: InspirationBand | None
     search_opportunity: SearchOpportunityBand | None
@@ -220,6 +225,10 @@ class WorkflowEventView(_FrozenModel):
 class OpportunityView(_FrozenModel):
     id: uuid.UUID
     disposition: OpportunityDisposition
+    # The domain's own commissioning gate (commissioning_admits) evaluated
+    # over the effective score, so the UI never offers a refused command.
+    commission_eligible: bool
+    commission_override_possible: bool
     disposition_reason: str | None
     disposition_by: OpportunityActor | None
     disposition_at: datetime | None
@@ -645,6 +654,22 @@ def _latest_brief_subquery() -> Any:
     return select(ranked).where(ranked.c.rn == 1).subquery()
 
 
+def _override_possible(
+    disposition: OpportunityDisposition | None,
+    state: WorkflowState,
+    eligibility: ScoreEligibility | None,
+) -> bool:
+    """Gate refused by default but admits with the ADR 0010 override."""
+    return not commissioning_admits(
+        disposition=disposition, work_item_state=state, score_eligibility=eligibility
+    ) and commissioning_admits(
+        disposition=disposition,
+        work_item_state=state,
+        score_eligibility=eligibility,
+        override_gate=True,
+    )
+
+
 def list_work_items(
     session: Session,
     *,
@@ -824,6 +849,16 @@ def list_work_items(
                 score_evaluated_at=score_evaluated_at,
                 score_engine_name=score_engine_name,
                 score_engine_version=score_engine_version,
+                commission_eligible=commissioning_admits(
+                    disposition=opportunity.disposition if opportunity else None,
+                    work_item_state=item.current_state,
+                    score_eligibility=score_eligibility,
+                ),
+                commission_override_possible=_override_possible(
+                    opportunity.disposition if opportunity else None,
+                    item.current_state,
+                    score_eligibility,
+                ),
                 inspiration_evaluation_id=inspiration_evaluation_id,
                 inspiration_band=inspiration_band,
                 search_opportunity=search_opportunity,
@@ -976,6 +1011,16 @@ def get_work_item_detail(session: Session, work_item_id: uuid.UUID) -> WorkItemD
             OpportunityView(
                 id=opportunity.id,
                 disposition=opportunity.disposition,
+                commission_eligible=commissioning_admits(
+                    disposition=opportunity.disposition,
+                    work_item_state=item.current_state,
+                    score_eligibility=scores[0].eligibility if scores else None,
+                ),
+                commission_override_possible=_override_possible(
+                    opportunity.disposition,
+                    item.current_state,
+                    scores[0].eligibility if scores else None,
+                ),
                 disposition_reason=opportunity.disposition_reason,
                 disposition_by=opportunity.disposition_by,
                 disposition_at=opportunity.disposition_at,

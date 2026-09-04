@@ -49,7 +49,10 @@ from contentos.opportunities.models import (
     OpportunityResearchInput,
 )
 from contentos.opportunities.repository import OpportunityRepository
-from contentos.opportunities.service import OpportunityCommissioningService
+from contentos.opportunities.service import (
+    OpportunityCommissioningService,
+    commissioning_admits,
+)
 from contentos.queue.celery import create_celery_app
 from contentos.research.enums import EvidenceType, ExtractionMethod
 from contentos.research.service import ResearchEvidenceService
@@ -1367,3 +1370,128 @@ class TestQaGatesTask:
             kwargs={"work_item_id": str(accepted.context.work_item_id)}
         )
         assert outcome.state == "FAILURE"
+
+
+class TestCommissioningPredicate:
+    """`commissioning_admits` is the single rule behind the command AND the
+    read models' `commission_eligible`; every refusal branch is closed."""
+
+    def test_admits_only_open_idea_scoring_commissionable(self) -> None:
+        assert commissioning_admits(
+            disposition=OpportunityDisposition.OPEN,
+            work_item_state=WorkflowState.IDEA_SCORING,
+            score_eligibility=ScoreEligibility.COMMISSIONABLE,
+        )
+
+    @pytest.mark.parametrize(
+        ("disposition", "state", "eligibility"),
+        [
+            (
+                OpportunityDisposition.COMMISSIONED,
+                WorkflowState.IDEA_SCORING,
+                ScoreEligibility.COMMISSIONABLE,
+            ),
+            (
+                OpportunityDisposition.REJECTED,
+                WorkflowState.IDEA_SCORING,
+                ScoreEligibility.COMMISSIONABLE,
+            ),
+            (None, WorkflowState.IDEA_SCORING, ScoreEligibility.COMMISSIONABLE),
+            (
+                OpportunityDisposition.OPEN,
+                WorkflowState.EVIDENCE_BUILDING,
+                ScoreEligibility.COMMISSIONABLE,
+            ),
+            (OpportunityDisposition.OPEN, WorkflowState.BLOCKED, ScoreEligibility.COMMISSIONABLE),
+            (
+                OpportunityDisposition.OPEN,
+                WorkflowState.IDEA_SCORING,
+                ScoreEligibility.NOT_COMMISSIONABLE,
+            ),
+            (
+                OpportunityDisposition.OPEN,
+                WorkflowState.IDEA_SCORING,
+                ScoreEligibility.NEEDS_OPERATOR_REVIEW,
+            ),
+            (OpportunityDisposition.OPEN, WorkflowState.IDEA_SCORING, None),
+        ],
+    )
+    def test_every_other_combination_fails_closed(
+        self,
+        disposition: OpportunityDisposition | None,
+        state: WorkflowState,
+        eligibility: ScoreEligibility | None,
+    ) -> None:
+        assert not commissioning_admits(
+            disposition=disposition, work_item_state=state, score_eligibility=eligibility
+        )
+
+
+class TestCommissioningOverride:
+    """ADR 0010: the named operator may commission over a weak source-base
+    score with a reason; the overridden verdict is recorded on the
+    transition; an unscored opportunity still fails closed."""
+
+    def test_override_lifts_only_the_eligibility_rule(self) -> None:
+        for eligibility in (
+            ScoreEligibility.NOT_COMMISSIONABLE,
+            ScoreEligibility.NEEDS_OPERATOR_REVIEW,
+            ScoreEligibility.COMMISSIONABLE,
+        ):
+            assert commissioning_admits(
+                disposition=OpportunityDisposition.OPEN,
+                work_item_state=WorkflowState.IDEA_SCORING,
+                score_eligibility=eligibility,
+                override_gate=True,
+            )
+        assert not commissioning_admits(
+            disposition=OpportunityDisposition.OPEN,
+            work_item_state=WorkflowState.IDEA_SCORING,
+            score_eligibility=None,
+            override_gate=True,
+        )
+        assert not commissioning_admits(
+            disposition=OpportunityDisposition.REJECTED,
+            work_item_state=WorkflowState.IDEA_SCORING,
+            score_eligibility=ScoreEligibility.NOT_COMMISSIONABLE,
+            override_gate=True,
+        )
+        assert not commissioning_admits(
+            disposition=OpportunityDisposition.OPEN,
+            work_item_state=WorkflowState.EVIDENCE_BUILDING,
+            score_eligibility=ScoreEligibility.NOT_COMMISSIONABLE,
+            override_gate=True,
+        )
+
+    def test_named_override_commissions_over_a_weak_source_base(self, harness: Harness) -> None:
+        pipeline = Pipeline(harness)
+        pipeline.promote()
+        with harness.session() as session:
+            with pytest.raises(CommissioningGateError, match="no durable"):
+                OpportunityCommissioningService(session).commission_opportunity(
+                    pipeline.opportunity_id, reason="skor yok ama üret", override_gate=True
+                )
+        pipeline.score(ScoreEligibility.NOT_COMMISSIONABLE)
+        with harness.session() as session:
+            result = OpportunityCommissioningService(session).commission_opportunity(
+                pipeline.opportunity_id,
+                reason="konu stratejik; kaynak tabanı zayıf olsa da üretilecek",
+                override_gate=True,
+            )
+            session.commit()
+            assert result.commissioned is True
+        assert pipeline.state() is WorkflowState.EVIDENCE_BUILDING
+        entry = pipeline.events()[-1]
+        assert entry.artifact_refs["commissioning_gate_override"] == "true"
+        assert entry.artifact_refs["overridden_score_eligibility"] == "not_commissionable"
+        assert entry.artifact_refs["opportunity_score_id"]
+        # A gate that passed leaves no override marker behind.
+        clean = Pipeline(harness)
+        clean.promote()
+        clean.score(ScoreEligibility.COMMISSIONABLE)
+        with harness.session() as session:
+            OpportunityCommissioningService(session).commission_opportunity(
+                clean.opportunity_id, reason="güçlü", override_gate=True
+            )
+            session.commit()
+        assert "commissioning_gate_override" not in clean.events()[-1].artifact_refs

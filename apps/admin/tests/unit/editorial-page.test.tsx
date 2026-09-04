@@ -41,13 +41,13 @@ describe("Editorial work queue page", () => {
     expect(
       screen.getByRole("heading", { name: "Editoryal İş Kuyruğu" }),
     ).toBeTruthy();
-    expect(badge("briefing")).toBeTruthy();
-    expect(badge("strong / commissionable")).toBeTruthy();
+    expect(badge("Brif hazırlığı")).toBeTruthy();
+    expect(badge("Güçlü / Görevlendirilebilir")).toBeTruthy();
     expect(screen.getByText("1 eksik sinyal")).toBeTruthy();
     expect(screen.getByText("Balon temalı plan")).toBeTruthy();
-    expect(screen.getByText("özgünlük: passed")).toBeTruthy();
-    expect(badge("v1 ready")).toBeTruthy();
-    expect(badge("v1 draft")).toBeTruthy();
+    expect(screen.getByText("özgünlük: Geçti")).toBeTruthy();
+    expect(badge("v1 Hazır")).toBeTruthy();
+    expect(badge("v1 Taslak")).toBeTruthy();
     const link = screen.getByRole("link", {
       name: "Evde doğum günü partisi rehberi",
     });
@@ -107,7 +107,7 @@ describe("Editorial work queue page", () => {
 
     await renderPage();
 
-    expect(badge("blocked")).toBeTruthy();
+    expect(badge("Engellendi")).toBeTruthy();
     expect(
       screen.getByText("kanıt paketi yetersiz: eksikler var"),
     ).toBeTruthy();

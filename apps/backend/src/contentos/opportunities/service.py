@@ -37,13 +37,18 @@ from contentos.opportunities.errors import (
     CommissioningConflictError,
     CommissioningGateError,
     InvalidPromotionInputError,
+    OpportunityError,
     OpportunityNotFoundError,
     PromotionConflictError,
     PromotionNotEligibleError,
     PromotionRootNotFoundError,
     RejectionConflictError,
 )
-from contentos.opportunities.models import EditorialOpportunity, OpportunityResearchInput
+from contentos.opportunities.models import (
+    EditorialOpportunity,
+    OpportunityResearchInput,
+    OpportunityScore,
+)
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.sources.models import Source
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState, WorkItemOrigin
@@ -366,6 +371,68 @@ class CommissionResult:
     commissioned: bool
 
 
+def commissioning_admits(
+    *,
+    disposition: OpportunityDisposition | None,
+    work_item_state: WorkflowState | None,
+    score_eligibility: ScoreEligibility | None,
+    override_gate: bool = False,
+) -> bool:
+    """The ONE commissioning gate predicate (design §18, ADR 0010).
+
+    Shared by the commissioning command and every read model that decides
+    whether to offer the commissioning affordance, so an operator is never
+    shown a button the domain will refuse. Pure: no session, no I/O.
+
+    Default (no override): admits only an OPEN opportunity whose work item
+    sits in IDEA_SCORING and whose EFFECTIVE durable score is
+    COMMISSIONABLE. NOT_COMMISSIONABLE and NEEDS_OPERATOR_REVIEW fail closed.
+
+    `override_gate` (ADR 0010): a NAMED operator may commission over a
+    NOT_COMMISSIONABLE / NEEDS_OPERATOR_REVIEW score with a required reason,
+    because engine v1 measures the SOURCE BASE (recency, source count,
+    trust, evidence), never topic value — the human is the topic judge. The
+    override is recorded durably on the transition. No score is STILL never
+    a pass, override or not: nothing may be commissioned unevaluated.
+    """
+    if disposition is not OpportunityDisposition.OPEN:
+        return False
+    if work_item_state is not WorkflowState.IDEA_SCORING:
+        return False
+    if score_eligibility is None:
+        return False
+    return override_gate or score_eligibility is ScoreEligibility.COMMISSIONABLE
+
+
+def _explain_gate_refusal(
+    opportunity: EditorialOpportunity, work_item: Any, score: OpportunityScore | None
+) -> OpportunityError:
+    """Name the FIRST sub-rule of `commissioning_admits` that failed.
+
+    Only reached when the predicate refused, so exactly one branch applies;
+    the typed error distinguishes a durable-history contradiction
+    (conflict) from a failed score gate."""
+    if opportunity.disposition is not OpportunityDisposition.OPEN:
+        return CommissioningConflictError(
+            f"a {opportunity.disposition.value!r} opportunity cannot be commissioned"
+        )
+    if work_item.current_state is not WorkflowState.IDEA_SCORING:
+        return CommissioningConflictError(
+            "commissioning requires the work item to be in IDEA_SCORING "
+            f"(current: {work_item.current_state.value})"
+        )
+    if score is None:
+        return CommissioningGateError(
+            "no durable opportunity score exists; absence of a score is never a pass"
+        )
+    return CommissioningGateError(
+        "the effective score's eligibility is "
+        f"{score.eligibility.value!r}; only COMMISSIONABLE commissions by "
+        "default — a named operator may pass override_gate with a reason "
+        "(ADR 0010)"
+    )
+
+
 class OpportunityCommissioningService:
     """The explicit HUMAN commissioning command (design §18).
 
@@ -375,11 +442,11 @@ class OpportunityCommissioningService:
     domain command under the private single-operator boundary.
 
     Gate rule (reported): only a durable effective score with eligibility
-    COMMISSIONABLE commissions. No score is never a pass;
-    NOT_COMMISSIONABLE fails closed; NEEDS_OPERATOR_REVIEW also fails
-    closed because the accepted design authorizes no commissioning
-    override for it — re-scoring or a future explicit override command is
-    the path, never an invented one here.
+    COMMISSIONABLE commissions by default. No score is never a pass.
+    NOT_COMMISSIONABLE and NEEDS_OPERATOR_REVIEW fail closed UNLESS the
+    named operator passes `override_gate=True` with a reason (ADR 0010);
+    the override and the overridden verdict are then recorded on the
+    EVIDENCE_BUILDING entry event's artifact_refs.
 
     The service flushes; the caller commits (a workflow failure or caller
     rollback leaves the opportunity OPEN — no half-commissioned state).
@@ -396,6 +463,7 @@ class OpportunityCommissioningService:
         *,
         reason: str,
         request_id: str | None = None,
+        override_gate: bool = False,
     ) -> CommissionResult:
         cleaned_reason = _validate_required_text("reason", reason, MAX_OVERRIDE_REASON_LENGTH)
         if request_id is not None and not is_valid_request_id(request_id):
@@ -415,28 +483,16 @@ class OpportunityCommissioningService:
 
         if opportunity.disposition is OpportunityDisposition.COMMISSIONED:
             return self._resolve_idempotent(opportunity, work_item)
-        if opportunity.disposition is not OpportunityDisposition.OPEN:
-            raise CommissioningConflictError(
-                f"a {opportunity.disposition.value!r} opportunity cannot be commissioned"
-            )
-        if work_item.current_state is not WorkflowState.IDEA_SCORING:
-            raise CommissioningConflictError(
-                "commissioning requires the work item to be in IDEA_SCORING "
-                f"(current: {work_item.current_state.value})"
-            )
-
         score = self._repository.get_effective_score(opportunity.id)
-        if score is None:
-            raise CommissioningGateError(
-                "no durable opportunity score exists; absence of a score is never a pass"
-            )
-        if score.eligibility is not ScoreEligibility.COMMISSIONABLE:
-            raise CommissioningGateError(
-                "the effective score's eligibility is "
-                f"{score.eligibility.value!r}; only COMMISSIONABLE may be "
-                "commissioned (NEEDS_OPERATOR_REVIEW fails closed — no "
-                "override exists)"
-            )
+        if not commissioning_admits(
+            disposition=opportunity.disposition,
+            work_item_state=work_item.current_state,
+            score_eligibility=score.eligibility if score is not None else None,
+            override_gate=override_gate,
+        ):
+            raise _explain_gate_refusal(opportunity, work_item, score)
+        assert score is not None  # the predicate never admits an unscored opportunity
+        overridden = override_gate and score.eligibility is not ScoreEligibility.COMMISSIONABLE
 
         now = datetime.now(UTC)
         opportunity.disposition = OpportunityDisposition.COMMISSIONED
@@ -451,6 +507,17 @@ class OpportunityCommissioningService:
             artifact_refs={
                 "opportunity_id": str(opportunity.id),
                 "opportunity_score_id": str(score.id),
+                # ADR 0010: the gate verdict the human overrode stays visible
+                # forever next to the decision; absent when the gate passed.
+                **(
+                    {
+                        "commissioning_gate_override": "true",
+                        "overridden_score_eligibility": score.eligibility.value,
+                        "overridden_score_band": score.overall_band.value,
+                    }
+                    if overridden
+                    else {}
+                ),
             },
             request_id=request_id,
         )

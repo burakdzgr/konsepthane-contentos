@@ -7,6 +7,7 @@ import {
   type WorkQueueRow,
 } from "@/lib/editorial-api";
 import { formatUtcTimestamp } from "@/lib/format";
+import { trLabel } from "@/lib/tr-labels";
 import {
   briefStatusTone,
   packSufficiencyTone,
@@ -72,7 +73,7 @@ function FilterForm({ filters }: { filters: QueueFilterState }) {
           <option value="">Tümü</option>
           {QUEUE_FILTER_STATES.map((value) => (
             <option key={value} value={value}>
-              {value}
+              {trLabel(value)}
             </option>
           ))}
         </select>
@@ -83,7 +84,7 @@ function FilterForm({ filters }: { filters: QueueFilterState }) {
           <option value="">Tümü</option>
           {OPPORTUNITY_DISPOSITIONS.map((value) => (
             <option key={value} value={value}>
-              {value}
+              {trLabel(value)}
             </option>
           ))}
         </select>
@@ -113,7 +114,7 @@ function ScoreCell({ row }: { row: WorkQueueRow }) {
         className="badge"
         data-tone={scoreEligibilityTone(row.score_eligibility)}
       >
-        {row.score_band} / {row.score_eligibility}
+        {trLabel(row.score_band)} / {trLabel(row.score_eligibility)}
       </span>
       {row.score_missing_signals.length > 0 && (
         <span className="muted cell-secondary">
@@ -132,7 +133,7 @@ function IdeaCell({ row }: { row: WorkQueueRow }) {
     <span>
       {row.selected_idea_title}
       <span className="muted cell-secondary">
-        özgünlük: {row.selected_idea_originality ?? "bilinmiyor"}
+        özgünlük: {trLabel(row.selected_idea_originality)}
       </span>
     </span>
   );
@@ -147,7 +148,7 @@ function PackCell({ row }: { row: WorkQueueRow }) {
       className="badge"
       data-tone={packSufficiencyTone(row.latest_pack_sufficiency)}
     >
-      v{row.latest_pack_version} {row.latest_pack_sufficiency}
+      v{row.latest_pack_version} {trLabel(row.latest_pack_sufficiency)}
     </span>
   );
 }
@@ -161,7 +162,7 @@ function BriefCell({ row }: { row: WorkQueueRow }) {
       className="badge"
       data-tone={briefStatusTone(row.latest_brief_status)}
     >
-      v{row.latest_brief_version} {row.latest_brief_status}
+      v{row.latest_brief_version} {trLabel(row.latest_brief_status)}
     </span>
   );
 }
@@ -291,7 +292,7 @@ export default async function EditorialPage({
                         className="badge"
                         data-tone={workflowStateTone(row.current_state)}
                       >
-                        {row.current_state}
+                        {trLabel(row.current_state)}
                       </span>
                       {row.blocked_reason !== null && (
                         <span className="muted cell-secondary">
@@ -304,7 +305,7 @@ export default async function EditorialPage({
                         </span>
                       )}
                     </td>
-                    <td>{row.disposition ?? "—"}</td>
+                    <td>{trLabel(row.disposition)}</td>
                     <td>
                       <ScoreCell row={row} />
                     </td>

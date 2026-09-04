@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { trLabel } from "@/lib/tr-labels";
+
 import {
   DISCOVERY_LIFECYCLE_STATES,
   DISCOVERY_METHODS,
@@ -93,7 +95,7 @@ function EnumSelect({
         <option value="">Tümü</option>
         {values.map((value) => (
           <option key={value} value={value}>
-            {value}
+            {trLabel(value)}
           </option>
         ))}
       </select>
@@ -171,7 +173,7 @@ function FetchCell({ item }: { item: PipelineListItem }) {
   }
   return (
     <span className="badge" data-tone={fetchOutcomeTone(item.fetch_outcome)}>
-      {item.fetch_outcome}
+      {trLabel(item.fetch_outcome)}
       {item.status_code !== null ? ` ${item.status_code}` : ""}
     </span>
   );
@@ -186,9 +188,9 @@ function NormalizeCell({ item }: { item: PipelineListItem }) {
       className="badge"
       data-tone={normalizationStatusTone(item.normalization_status)}
     >
-      {item.normalization_status}
+      {trLabel(item.normalization_status)}
       {item.normalization_failure_code !== null
-        ? ` (${item.normalization_failure_code})`
+        ? ` (${trLabel(item.normalization_failure_code)})`
         : ""}
     </span>
   );
@@ -203,7 +205,7 @@ function DuplicateCell({ item }: { item: PipelineListItem }) {
       className="badge"
       data-tone={duplicateOutcomeTone(item.duplicate_outcome)}
     >
-      {item.duplicate_outcome}
+      {trLabel(item.duplicate_outcome)}
     </span>
   );
 }
@@ -278,7 +280,7 @@ export default async function ResearchPage({
                         className="badge"
                         data-tone={discoveryStateTone(item.lifecycle_state)}
                       >
-                        {item.lifecycle_state}
+                        {trLabel(item.lifecycle_state)}
                       </span>
                       {item.rejection_reason !== null && (
                         <span className="muted cell-secondary">

@@ -36,9 +36,9 @@ class ScoringConflictError(OpportunityError):
 class CommissioningGateError(OpportunityError):
     """An explicit commissioning gate failed; the opportunity stays OPEN.
 
-    No durable score, a NOT_COMMISSIONABLE effective score, or a
-    NEEDS_OPERATOR_REVIEW score (the accepted design authorizes no
-    commissioning override for it, so it fails closed)."""
+    No durable score (never overridable), or a NOT_COMMISSIONABLE /
+    NEEDS_OPERATOR_REVIEW effective score without the named operator's
+    explicit, reasoned gate override (ADR 0010)."""
 
 
 class CommissioningConflictError(OpportunityError):

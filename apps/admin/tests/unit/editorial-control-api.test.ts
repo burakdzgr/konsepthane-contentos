@@ -201,6 +201,26 @@ describe("direct commands", () => {
     expect(requestOf(fetchMock).body).toEqual({ reason: "güçlü skor" });
   });
 
+  it("sends the ADR 0010 override flag only when explicitly requested", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "commissioned",
+        opportunity_id: OPPORTUNITY_ID,
+        disposition: "commissioned",
+        work_item_id: WORK_ITEM_ID,
+        work_item_state: "evidence_building",
+        opportunity_score_id: null,
+      }),
+    );
+    await commissionOpportunity(OPPORTUNITY_ID, "konu stratejik", {
+      overrideGate: true,
+    });
+    expect(requestOf(fetchMock).body).toEqual({
+      reason: "konu stratejik",
+      override_gate: true,
+    });
+  });
+
   it("maps a commissioning gate failure to conflict", async () => {
     stubFetch(async () => jsonResponse(409, { error: {} }));
     const result = await commissionOpportunity(OPPORTUNITY_ID, "yine de");

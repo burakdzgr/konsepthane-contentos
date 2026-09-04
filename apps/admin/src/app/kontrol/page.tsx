@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { trLabel } from "@/lib/tr-labels";
+
 import {
   fetchDashboardActivity,
   fetchDashboardAgents,
@@ -442,7 +444,7 @@ function ActivityFeed({
       {!hasRunEvents && dashboardEntries !== null && (
         <ul className="console-feed">
           {dashboardEntries.slice(0, 12).map((entry, index) => (
-            <li key={`${entry.kind}-${index}`}>
+            <li key={`${trLabel(entry.kind)}-${index}`}>
               <time>{shortTime(entry.occurred_at)}</time>
               <span className="console-event-icon">
                 <AppIcon name="activity" size={13} />
@@ -455,9 +457,9 @@ function ActivityFeed({
                     {activityText(entry)}
                   </Link>
                 )}
-                <small>{entry.kind.toLocaleUpperCase("tr-TR")}</small>
+                <small>{trLabel(entry.kind).toLocaleUpperCase("tr-TR")}</small>
               </span>
-              <span className="console-event-badge">{entry.kind}</span>
+              <span className="console-event-badge">{trLabel(entry.kind)}</span>
             </li>
           ))}
         </ul>

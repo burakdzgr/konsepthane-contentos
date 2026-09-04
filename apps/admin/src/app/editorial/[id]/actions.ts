@@ -114,8 +114,16 @@ export async function commissionOpportunityAction(
   if (!reason) {
     redirect(detailPath(workItemId, "error=invalid"));
   }
-  const result = await commissionOpportunity(opportunityId, reason);
-  finish(workItemId, result, "commissioned");
+  // ADR 0010: the override is an explicit form field, never implied.
+  const overrideGate = field(formData, "override_gate") === "true";
+  const result = await commissionOpportunity(opportunityId, reason, {
+    overrideGate,
+  });
+  finish(
+    workItemId,
+    result,
+    overrideGate ? "commissioned-override" : "commissioned",
+  );
 }
 
 export async function rejectOpportunityAction(

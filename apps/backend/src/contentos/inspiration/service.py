@@ -19,7 +19,12 @@ from contentos.inspiration.enums import (
 )
 from contentos.inspiration.models import InspirationEvaluation, InspirationSignal
 from contentos.normalization.models import NormalizedDocument
-from contentos.opportunities.enums import ComponentAvailability, ScoreBand, ScoreComponent
+from contentos.opportunities.enums import (
+    ComponentAvailability,
+    ScoreBand,
+    ScoreComponent,
+    ScoreEligibility,
+)
 from contentos.opportunities.models import EditorialOpportunity, OpportunityScoreComponent
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.research.models import ResearchEvidence
@@ -27,7 +32,7 @@ from contentos.strategy.service import StrategyContext, StrategyService, normali
 from contentos.workflow.models import EditorialWorkItem
 
 ENGINE_NAME = "inspiration-quality"
-ENGINE_VERSION = "1"
+ENGINE_VERSION = "4"
 SIGNAL_EXTRACTOR = "normalized-structure-signals"
 SIGNAL_EXTRACTOR_VERSION = "1"
 MAX_SIGNALS_PER_DOCUMENT = 12
@@ -46,13 +51,26 @@ def recommendation_for(
     inspiration: InspirationBand,
     has_evidence: bool,
     has_strategy_match: bool,
+    commissionable: bool,
     base_ineligible: bool = False,
 ) -> OpportunityRecommendation:
+    """Explainable editorial recommendation over the durable signals.
+
+    `commissionable` is the effective base score's eligibility — the ONLY
+    thing the commissioning gate honours (commissioning_admits). PRODUCE is
+    never recommended for a score the domain would refuse to commission;
+    such an opportunity is routed to HUMAN_REVIEW so the inbox never shows
+    an "İÇERİK ÜRET" verdict next to a decision the backend rejects."""
     if search is SearchOpportunityBand.STRONG and inspiration is InspirationBand.LOW:
         return OpportunityRecommendation.CONTINUE_RESEARCH
     if base_ineligible and inspiration is InspirationBand.LOW:
         return OpportunityRecommendation.ELIMINATE
-    if inspiration is InspirationBand.HIGH and has_evidence and has_strategy_match:
+    if (
+        inspiration is InspirationBand.HIGH
+        and has_evidence
+        and has_strategy_match
+        and commissionable
+    ):
         return OpportunityRecommendation.PRODUCE
     if inspiration is InspirationBand.LOW or not has_evidence:
         return OpportunityRecommendation.CONTINUE_RESEARCH
@@ -140,11 +158,16 @@ class InspirationIntelligenceService:
             else 0
         )
         effective_score = self._opportunities.get_effective_score(opportunity.id)
+        commissionable = (
+            effective_score is not None
+            and effective_score.eligibility is ScoreEligibility.COMMISSIONABLE
+        )
         recommendation = recommendation_for(
             search=search,
             inspiration=inspiration,
             has_evidence=evidence_count > 0,
             has_strategy_match=bool(strategy.keywords or strategy.clusters),
+            commissionable=commissionable,
             base_ineligible=effective_score is not None
             and effective_score.overall_band is ScoreBand.INELIGIBLE,
         )
@@ -161,6 +184,9 @@ class InspirationIntelligenceService:
             "strategy": strategy.projection(),
             "search_opportunity": search.value,
             "evidence_count": evidence_count,
+            "score_eligibility": (
+                effective_score.eligibility.value if effective_score is not None else None
+            ),
             "engine": ENGINE_NAME,
             "engine_version": ENGINE_VERSION,
         }
@@ -185,7 +211,14 @@ class InspirationIntelligenceService:
             search_opportunity=search,
             trend_state=TrendState.UNKNOWN,
             recommendation=recommendation,
-            rationale=_rationale(recommendation, inspiration, search, evidence_count, strategy),
+            rationale=_rationale(
+                recommendation,
+                inspiration,
+                search,
+                evidence_count,
+                strategy,
+                commissionable=commissionable,
+            ),
             factors=factors,
             strategy_context=strategy.projection(),
             missing_signals=missing,
@@ -330,12 +363,26 @@ def _overall_band(factors: dict[str, Any]) -> InspirationBand:
     return InspirationBand.LOW
 
 
+# Operator-facing rationale is Turkish end to end; enum values never leak.
+_TR_BAND = {
+    "high": "yüksek",
+    "medium": "orta",
+    "low": "düşük",
+    "strong": "güçlü",
+    "moderate": "orta",
+    "weak": "zayıf",
+    "unknown": "bilinmiyor",
+}
+
+
 def _rationale(
     recommendation: OpportunityRecommendation,
     inspiration: InspirationBand,
     search: SearchOpportunityBand,
     evidence_count: int,
     strategy: StrategyContext,
+    *,
+    commissionable: bool,
 ) -> str:
     if recommendation is OpportunityRecommendation.CONTINUE_RESEARCH:
         return "Konu umut veriyor olabilir; mevcut fikir sinyalleri veya kanıt seti henüz içerik üretimi için yeterince güçlü değil."
@@ -343,4 +390,15 @@ def _rationale(
         return f"İlham değeri yüksek, {evidence_count} kanıt kaydı var ve {len(strategy.keywords)} stratejik konu eşleşti."
     if recommendation is OpportunityRecommendation.ELIMINATE:
         return "Hem temel uygunluk hem de ilham değeri zayıf; editoryal kaynak ayırmak önerilmiyor."
-    return f"İlham değeri {inspiration.value}; arama fırsatı {search.value}. Nihai değerlendirme operatörde."
+    if not commissionable:
+        return (
+            f"İlham değeri {_TR_BAND[inspiration.value]}; arama fırsatı {_TR_BAND[search.value]}. "
+            "Kaynak tabanı (güncellik, kaynak sayısı, kaynak güveni, kanıt) henüz "
+            "görevlendirilebilir değil; bu konunun değeri değil kaynak kalitesidir. "
+            "Yeni araştırma girdisi ve yeniden değerlendirme olmadan üretim onayı "
+            "verilemez."
+        )
+    return (
+        f"İlham değeri {_TR_BAND[inspiration.value]}; arama fırsatı {_TR_BAND[search.value]}. "
+        "Nihai değerlendirme operatörde."
+    )

@@ -44,6 +44,7 @@ import {
   workflowStateTone,
 } from "@/lib/editorial-display";
 import { formatUtcTimestamp } from "@/lib/format";
+import { trLabel, trList } from "@/lib/tr-labels";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
 import {
@@ -92,6 +93,8 @@ const DETAIL_NOTICES: Record<string, string> = {
   "evaluation-queued":
     "Puanlama kuyruğa alındı. Yeni değerlendirmeyi görmek için sayfayı yenileyin.",
   commissioned: "Fırsat görevlendirildi. Fikir çalışması başlayabilir.",
+  "commissioned-override":
+    "Fırsat, kaynak tabanı kapısı gerekçeyle aşılarak görevlendirildi; aşım karar geçmişine kaydedildi.",
   "opportunity-rejected": "Fırsat, gerekçenizle birlikte reddedildi.",
   "ideas-queued":
     "Fikir üretimi kuyruğa alındı. Adaylar worker tamamladığında görünür.",
@@ -224,14 +227,14 @@ function WorkflowSection({ detail }: { detail: WorkItemDetail }) {
             className="badge"
             data-tone={workflowStateTone(item.current_state)}
           >
-            {item.current_state}
+            {trLabel(item.current_state)}
           </span>{" "}
           <span className="muted">
             {formatUtcTimestamp(item.current_state_entered_at)} tarihinden beri
           </span>
         </Row>
         <Row name="Çalışma başlığı">{item.title_working_label}</Row>
-        <Row name="Köken">{item.origin}</Row>
+        <Row name="Köken">{trLabel(item.origin)}</Row>
         <Row name="Yerel ayar / pazar">
           {item.locale} / {item.market}
         </Row>
@@ -287,9 +290,20 @@ function ScoreCard({ score }: { score: ScoreView }) {
             className="badge"
             data-tone={scoreEligibilityTone(score.eligibility)}
           >
-            {score.overall_band} / {score.eligibility}
+            {trLabel(score.overall_band)} / {trLabel(score.eligibility)}
           </span>{" "}
-          {score.effective && <strong>(geçerli)</strong>}
+          {score.effective && (
+            <strong title="Görevlendirme kapısının baktığı, en son kaydedilmiş skor">
+              (yürürlükteki skor)
+            </strong>
+          )}
+        </Row>
+        <Row name="Ne ölçüyor">
+          <span className="muted">
+            Kaynak tabanının kalitesi: güncellik, kaynak sayısı, kaynak güveni,
+            kanıt miktarı ve kopya örtüşmesi. Konunun değerini değil; arama
+            talebi, rekabet ve hedef kitle uyumu henüz ölçülmüyor.
+          </span>
         </Row>
         <Row name="Genel değer">
           {score.overall_value !== null ? score.overall_value : "Bilinmiyor"}
@@ -299,16 +313,8 @@ function ScoreCard({ score }: { score: ScoreView }) {
             {score.engine_name}/{score.engine_version}
           </span>
         </Row>
-        <Row name="Eksik sinyaller">
-          {score.missing_signals.length > 0
-            ? score.missing_signals.join(", ")
-            : "Kayıt yok"}
-        </Row>
-        <Row name="Risk bayrakları">
-          {score.risk_flags.length > 0
-            ? score.risk_flags.join(", ")
-            : "Kayıt yok"}
-        </Row>
+        <Row name="Eksik sinyaller">{trList(score.missing_signals)}</Row>
+        <Row name="Risk bayrakları">{trList(score.risk_flags)}</Row>
         <Row name="Değerlendirildi">
           {formatUtcTimestamp(score.evaluated_at)}
         </Row>
@@ -327,14 +333,14 @@ function ScoreCard({ score }: { score: ScoreView }) {
           <tbody>
             {score.components.map((component) => (
               <tr key={component.component}>
-                <td>{component.component}</td>
+                <td>{trLabel(component.component)}</td>
                 <td>
                   {component.availability === "unknown" ? (
                     <span className="badge" data-tone="neutral">
                       Bilinmiyor
                     </span>
                   ) : (
-                    component.availability
+                    trLabel(component.availability)
                   )}
                 </td>
                 <td>
@@ -374,7 +380,7 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
       <h2 id="detail-opportunity">Fırsat ve skor</h2>
       <dl className="status-list">
         <Row name="Fırsat durumu">
-          {opportunity.disposition}
+          {trLabel(opportunity.disposition)}
           {opportunity.disposition_reason !== null &&
             ` — ${opportunity.disposition_reason}`}
         </Row>
@@ -415,21 +421,49 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
         </form>
         {canDecide && (
           <>
-            <ReasonForm
-              action={commissionOpportunityAction}
-              workItemId={workItemId}
-              hidden={{ opportunity_id: opportunity.id }}
-              label="Görevlendir"
-              placeholder="bu fırsat neden değerlendirmeye değer"
-              helper={
-                effective !== undefined
-                  ? `Geçerli skor: ${effective.overall_band} / ${effective.eligibility}` +
+            {opportunity.commission_eligible ? (
+              <ReasonForm
+                action={commissionOpportunityAction}
+                workItemId={workItemId}
+                hidden={{ opportunity_id: opportunity.id }}
+                label="Görevlendir"
+                placeholder="bu fırsat neden değerlendirmeye değer"
+                helper={
+                  effective !== undefined
+                    ? `Yürürlükteki skor: ${trLabel(effective.overall_band)} / ${trLabel(effective.eligibility)}` +
+                      (effective.missing_signals.length > 0
+                        ? `; eksik: ${trList(effective.missing_signals)}`
+                        : "")
+                    : "Yürürlükteki skor görevlendirilebilir."
+                }
+              />
+            ) : (
+              // Same rule as the backend gate (commission_eligible): never
+              // offer a command the domain will refuse with 409.
+              <p className="muted" role="note">
+                {effective !== undefined
+                  ? `Görevlendirme kapalı: yürürlükteki skor ${trLabel(effective.overall_band)} / ${trLabel(effective.eligibility)}` +
                     (effective.missing_signals.length > 0
-                      ? `; eksik: ${effective.missing_signals.join(", ")}`
-                      : "")
-                  : "Henüz kalıcı bir skor yok — arka uç reddedecektir."
-              }
-            />
+                      ? `; eksik: ${trList(effective.missing_signals)}`
+                      : "") +
+                    ". Bu skor kaynak tabanını ölçer, konunun değerini değil; aşağıdaki gerekçeli aşımla yine de görevlendirebilirsiniz."
+                  : "Görevlendirme kapalı: henüz kalıcı bir skor yok. Skor olmadan görevlendirme yapılamaz."}
+              </p>
+            )}
+            {!opportunity.commission_eligible &&
+              opportunity.commission_override_possible && (
+                <ReasonForm
+                  action={commissionOpportunityAction}
+                  workItemId={workItemId}
+                  hidden={{
+                    opportunity_id: opportunity.id,
+                    override_gate: "true",
+                  }}
+                  label="Yine de görevlendir"
+                  placeholder="konu neden buna değer (kapı aşımı gerekçesi)"
+                  helper="Kaynak tabanı kapısını gerekçeyle aşar (ADR 0010); aşım ve aşılan skor karar geçmişine kaydedilir."
+                />
+              )}
             <ReasonForm
               action={rejectOpportunityAction}
               workItemId={workItemId}
@@ -472,13 +506,13 @@ function ResearchInputsSection({ detail }: { detail: WorkItemDetail }) {
                   <td title={input.normalized_document_id}>
                     {input.document_title ?? "Başlıksız"}
                   </td>
-                  <td>{input.role}</td>
-                  <td>{input.duplicate_outcome ?? "Bilinmiyor"}</td>
+                  <td>{trLabel(input.role)}</td>
+                  <td>{trLabel(input.duplicate_outcome)}</td>
                   <td>{input.source_slug ?? "Bilinmiyor"}</td>
-                  <td>{input.trust_tier ?? "Bilinmiyor"}</td>
+                  <td>{trLabel(input.trust_tier)}</td>
                   <td>{formatUtcTimestamp(input.external_published_at)}</td>
                   <td>{formatUtcTimestamp(input.fetched_at)}</td>
-                  <td>{input.added_by}</td>
+                  <td>{trLabel(input.added_by)}</td>
                 </tr>
               ))}
             </tbody>
@@ -510,14 +544,14 @@ function IdeaCard({
         <Row name="Hedef kitle">{idea.audience}</Row>
         <Row name="Değer">{idea.value_proposition}</Row>
         <Row name="Tür / köken">
-          {idea.content_type} · {idea.origin}
+          {trLabel(idea.content_type)} · {trLabel(idea.origin)}
         </Row>
         <Row name="Özgünlük">
           <span
             className="badge"
             data-tone={originalityTone(idea.originality_status)}
           >
-            {idea.originality_status}
+            {trLabel(idea.originality_status)}
           </span>
         </Row>
         {idea.exclusions.length > 0 && (
@@ -649,7 +683,7 @@ function ContradictionCard({
       <dl className="status-list">
         <Row name="İddia">{contradiction.claim_key}</Row>
         <Row name="Nitelik">{contradiction.nature}</Row>
-        <Row name="Önem">{contradiction.severity}</Row>
+        <Row name="Önem">{trLabel(contradiction.severity)}</Row>
         <Row name="Taraflar">
           A: {contradiction.evidence_side_a.join(", ")} · B:{" "}
           {contradiction.evidence_side_b.join(", ")}
@@ -661,7 +695,7 @@ function ContradictionCard({
               contradiction.resolution_status,
             )}
           >
-            {contradiction.resolution_status}
+            {trLabel(contradiction.resolution_status)}
           </span>
           {contradiction.resolution_reason !== null &&
             ` — ${contradiction.resolution_reason}`}
@@ -740,7 +774,7 @@ function PackCard({
             className="badge"
             data-tone={packSufficiencyTone(pack.sufficiency)}
           >
-            {pack.sufficiency}
+            {trLabel(pack.sufficiency)}
           </span>
         </Row>
         {detailEntries.length > 0 && (
@@ -781,7 +815,7 @@ function PackCard({
           <tbody>
             {pack.items.map((item) => (
               <tr key={item.id}>
-                <td>{item.role}</td>
+                <td>{trLabel(item.role)}</td>
                 <td>{item.claim_cluster}</td>
                 <td title={item.research_evidence_id}>
                   {item.statement ?? "—"}
@@ -876,7 +910,7 @@ function PackBuilder({
                   />
                 </td>
                 <td title={item.id}>{item.statement}</td>
-                <td>{item.verification_status}</td>
+                <td>{trLabel(item.verification_status)}</td>
                 <td>
                   {item.source_slug ?? "Bilinmiyor"}
                   {item.trust_tier !== null ? ` (${item.trust_tier})` : ""}
@@ -972,7 +1006,7 @@ function IntentCard({ analysis }: { analysis: IntentAnalysisView }) {
           {analysis.known_signals.length === 0 && "Hiçbiri kullanılmadı"}
           {analysis.known_signals.map((signal) => (
             <span key={signal.id} className="cell-secondary">
-              {signal.signal_type} · {signal.provider} · gözlemlendi:{" "}
+              {trLabel(signal.signal_type)} · {signal.provider} · gözlemlendi:{" "}
               {formatUtcTimestamp(signal.observed_at)}
               {signal.as_of !== null
                 ? ` (${formatUtcTimestamp(signal.as_of)} itibarıyla)`
@@ -1080,7 +1114,7 @@ function BriefCard({
           <span className="mono muted">{brief.id}</span>{" "}
           <span className="muted">v{brief.version}</span>{" "}
           <span className="badge" data-tone={briefStatusTone(brief.status)}>
-            {brief.status}
+            {trLabel(brief.status)}
           </span>
         </Row>
         <Row name="Hedef">{brief.content_objective}</Row>
@@ -1152,8 +1186,9 @@ function BriefCard({
         <ul className="plain-list">
           {brief.status_events.map((event) => (
             <li key={event.id}>
-              {formatUtcTimestamp(event.occurred_at)}: {event.from_status} →{" "}
-              {event.to_status} ({event.actor_origin}) — {event.reason}
+              {formatUtcTimestamp(event.occurred_at)}:{" "}
+              {trLabel(event.from_status)} → {trLabel(event.to_status)} (
+              {trLabel(event.actor_origin)}) — {event.reason}
             </li>
           ))}
         </ul>
@@ -1296,7 +1331,7 @@ function DraftsSection({
                       className="badge"
                       data-tone={draftStatusTone(row.status)}
                     >
-                      {row.status}
+                      {trLabel(row.status)}
                     </span>
                   </td>
                   <td>{row.title_proposal ?? "—"}</td>
@@ -1472,7 +1507,7 @@ function ReviewsSection({
                       className="badge"
                       data-tone={reviewVerdictTone(row.verdict)}
                     >
-                      {row.verdict}
+                      {trLabel(row.verdict)}
                     </span>
                   </td>
                   <td>
@@ -1480,7 +1515,7 @@ function ReviewsSection({
                       className="badge"
                       data-tone={draftStatusTone(row.status)}
                     >
-                      {row.status}
+                      {trLabel(row.status)}
                     </span>
                   </td>
                   <td>
@@ -1640,7 +1675,7 @@ function QaSection({
                         row.outcome === "ready_for_human_review" ? "ok" : "warn"
                       }
                     >
-                      {row.outcome}
+                      {trLabel(row.outcome)}
                     </span>
                   </td>
                   <td>
@@ -1648,7 +1683,7 @@ function QaSection({
                       className="badge"
                       data-tone={draftStatusTone(row.status)}
                     >
-                      {row.status}
+                      {trLabel(row.status)}
                     </span>
                   </td>
                   <td>
@@ -1778,7 +1813,7 @@ function MediaSatisfactionCell({
       />
       <p>
         <span className="badge" data-tone="neutral">
-          {asset.origin}
+          {trLabel(asset.origin)}
         </span>{" "}
         {asset.media_type} · {asset.byte_size} bytes
       </p>
@@ -2006,7 +2041,7 @@ function MediaSection({
           {media.history
             .map(
               (row) =>
-                `#${row.need_index} ${row.status} — ${row.satisfied_by.display_name}: ${row.reason}`,
+                `#${row.need_index} ${trLabel(row.status)} — ${row.satisfied_by.display_name}: ${row.reason}`,
             )
             .join(" · ")}
           {media.history_truncated &&
@@ -2100,7 +2135,7 @@ function PublicationSection({
                                   : "negative"
                               }
                             >
-                              {attempt.status}
+                              {trLabel(attempt.status)}
                             </span>{" "}
                             {attempt.remote_publication_ref !== null
                               ? `ref=${attempt.remote_publication_ref}`
@@ -2263,7 +2298,7 @@ function DecisionsSection({
                                 : "negative"
                           }
                         >
-                          {decision.decision}
+                          {trLabel(decision.decision)}
                         </span>
                       </td>
                       <td>{decision.reviewer.display_name}</td>
@@ -2414,7 +2449,7 @@ function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
             <tbody>
               {attempts.map((attempt) => (
                 <tr key={attempt.id}>
-                  <td>{attempt.purpose}</td>
+                  <td>{trLabel(attempt.purpose)}</td>
                   <td className="mono">
                     {attempt.provider}/{attempt.model_name}
                   </td>
@@ -2429,7 +2464,7 @@ function AiAttemptsSection({ attempts }: { attempts: AiAttemptView[] }) {
                       className="badge"
                       data-tone={generationStatusTone(attempt.status)}
                     >
-                      {attempt.status}
+                      {trLabel(attempt.status)}
                     </span>
                     {attempt.error_class !== null
                       ? ` (${attempt.error_class})`
@@ -2474,11 +2509,14 @@ function WorkflowHistorySection({ detail }: { detail: WorkItemDetail }) {
               <tr key={event.id}>
                 <td>{formatUtcTimestamp(event.occurred_at)}</td>
                 <td>
-                  {event.from_state ?? "oluşturuldu"} → {event.to_state}
+                  {event.from_state === null
+                    ? "oluşturuldu"
+                    : trLabel(event.from_state)}{" "}
+                  → {trLabel(event.to_state)}
                 </td>
                 <td>
                   {event.actor_display_name !== null
-                    ? `${event.actor_origin} · ${event.actor_display_name}`
+                    ? `${trLabel(event.actor_origin)} · ${event.actor_display_name}`
                     : event.actor_origin === "operator"
                       ? "operator · BİLİNMİYOR"
                       : event.actor_origin}

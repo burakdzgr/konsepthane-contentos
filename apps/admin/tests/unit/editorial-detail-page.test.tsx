@@ -158,17 +158,17 @@ describe("Editorial detail page", () => {
     }
 
     // Score explainability: band + eligibility + UNKNOWN stays Bilinmiyor.
-    expect(screen.getByText("strong / commissionable")).toBeTruthy();
-    expect(screen.getByText("(geçerli)")).toBeTruthy();
+    expect(screen.getByText("Güçlü / Görevlendirilebilir")).toBeTruthy();
+    expect(screen.getByText("(yürürlükteki skor)")).toBeTruthy();
     expect(screen.getAllByText("Bilinmiyor").length).toBeGreaterThan(0);
     expect(screen.getByText("Gözlemlenmedi")).toBeTruthy();
 
     // Idea selection state + generation provenance.
     expect(screen.getByText("(seçili)")).toBeTruthy();
-    expect(screen.getAllByText("passed").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Geçti").length).toBeGreaterThan(0);
 
     // Pack members + unresolved contradiction stays visible.
-    expect(screen.getByText("unresolved")).toBeTruthy();
+    expect(screen.getByText("Çözülmedi")).toBeTruthy();
     expect(
       screen.getByText("Kaynaklar hazırlık süresinde uyuşmuyor."),
     ).toBeTruthy();
@@ -216,6 +216,7 @@ describe("Editorial detail page", () => {
         opportunity: {
           ...workItemDetail().opportunity!,
           disposition: "open",
+          commission_eligible: true,
           disposition_reason: null,
         },
         ideas: [],
@@ -237,7 +238,57 @@ describe("Editorial detail page", () => {
 
     expect(screen.getByRole("button", { name: "Görevlendir" })).toBeTruthy();
     expect(
-      screen.getByText(/Geçerli skor: strong \/ commissionable/),
+      screen.getByText(/Yürürlükteki skor: Güçlü \/ Görevlendirilebilir/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fırsatı reddet" })).toBeTruthy();
+  });
+
+  it("withholds commissioning when the effective score fails the gate", async () => {
+    const base = workItemDetail();
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({
+        work_item: { ...base.work_item, current_state: "idea_scoring" },
+        opportunity: {
+          ...base.opportunity!,
+          disposition: "open",
+          commission_eligible: false,
+          commission_override_possible: true,
+          disposition_reason: null,
+        },
+        scores: [
+          {
+            ...base.scores[0]!,
+            overall_band: "weak",
+            eligibility: "not_commissionable",
+          },
+        ],
+        ideas: [],
+        evidence_packs: [],
+        intent_analyses: [],
+        briefs: [],
+        total_briefs: 0,
+        total_ideas: 0,
+        total_evidence_packs: 0,
+        total_intent_analyses: 0,
+        effective_selected_idea_id: null,
+        selection_events: [],
+        total_selection_events: 0,
+      }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: "Görevlendir" })).toBeNull();
+    // ADR 0010: the explicit override form is offered instead.
+    expect(
+      screen.getByRole("button", { name: "Yine de görevlendir" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Görevlendirme kapalı: yürürlükteki skor Zayıf \/ Görevlendirilemez/,
+      ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Fırsatı reddet" })).toBeTruthy();
   });
@@ -440,7 +491,7 @@ describe("Editorial detail page", () => {
     expect(
       screen.getByRole("button", { name: "Değerlendirmeyi kabul et" }),
     ).toBeTruthy();
-    expect(screen.getByText("revise")).toBeTruthy();
+    expect(screen.getByText("Düzelt")).toBeTruthy();
     expect(screen.getByText(/arka uç reddedecektir/)).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Değerlendirmeyi aç" }),
@@ -490,7 +541,7 @@ describe("Editorial detail page", () => {
       screen.getByRole("button", { name: "Yeniden çalışma iste" }),
     ).toBeTruthy();
     expect(screen.getByText(/media_needs: unsatisfied/)).toBeTruthy();
-    expect(screen.getByText("not_ready")).toBeTruthy();
+    expect(screen.getByText("Hazır değil")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Raporu aç" })).toBeTruthy();
   });
 
@@ -665,7 +716,7 @@ describe("Editorial detail page", () => {
     });
 
     await renderPage();
-    expect(screen.getByText("approval_revoked")).toBeTruthy();
+    expect(screen.getByText("Onay geri alındı")).toBeTruthy();
     expect(screen.getByText("kaynak güncellendi")).toBeTruthy();
     expect(
       screen.getByText(new RegExp(`revokes=${decisionView().id}`)),
@@ -682,7 +733,7 @@ describe("Editorial detail page", () => {
     await renderPage();
     // Fixture: the operator event carries a resolved name; a hypothetical
     // pre-governance operator event without one must render UNKNOWN.
-    expect(screen.getByText("operator · Smoke Reviewer")).toBeTruthy();
+    expect(screen.getByText("Operatör · Smoke Reviewer")).toBeTruthy();
 
     detailMock.mockResolvedValue({
       kind: "ok",
@@ -854,7 +905,7 @@ describe("Editorial detail page", () => {
 
     await renderPage();
     expect(screen.getByRole("button", { name: "Şimdi yayınla" })).toBeTruthy();
-    expect(screen.getByText("rejected_by_api")).toBeTruthy();
+    expect(screen.getByText("API reddetti")).toBeTruthy();
     expect(screen.getByText(/publishing_api_rejected_422/)).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Yayın paketini birleştir" }),

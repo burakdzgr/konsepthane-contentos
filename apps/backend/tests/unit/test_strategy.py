@@ -97,6 +97,7 @@ def test_high_search_low_inspiration_continues_research() -> None:
         inspiration=InspirationBand.LOW,
         has_evidence=True,
         has_strategy_match=True,
+        commissionable=True,
     )
     assert result is OpportunityRecommendation.CONTINUE_RESEARCH
 
@@ -107,6 +108,7 @@ def test_high_quality_with_evidence_and_strategy_is_ready_for_human_decision() -
         inspiration=InspirationBand.HIGH,
         has_evidence=True,
         has_strategy_match=True,
+        commissionable=True,
     )
     assert result is OpportunityRecommendation.PRODUCE
 
@@ -117,5 +119,20 @@ def test_unknown_search_is_not_coerced_to_weak() -> None:
         inspiration=InspirationBand.MEDIUM,
         has_evidence=True,
         has_strategy_match=False,
+        commissionable=True,
+    )
+    assert result is OpportunityRecommendation.HUMAN_REVIEW
+
+
+def test_produce_is_never_recommended_for_a_score_the_gate_would_refuse() -> None:
+    """The inbox verdict and the commissioning gate share one rule: a
+    NOT_COMMISSIONABLE / NEEDS_OPERATOR_REVIEW base score can never carry
+    an "İÇERİK ÜRET" verdict, because the backend would refuse it with 409."""
+    result = recommendation_for(
+        search=SearchOpportunityBand.UNKNOWN,
+        inspiration=InspirationBand.HIGH,
+        has_evidence=True,
+        has_strategy_match=True,
+        commissionable=False,
     )
     assert result is OpportunityRecommendation.HUMAN_REVIEW

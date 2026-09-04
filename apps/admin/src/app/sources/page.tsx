@@ -7,6 +7,7 @@ import {
   fetchResearchSources,
   type SourceListItem,
 } from "@/lib/research-api";
+import { trLabel } from "@/lib/tr-labels";
 import { formatUtcTimestamp } from "@/lib/format";
 import {
   allowedLifecycleTargets,
@@ -90,7 +91,7 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
           <option value="">Tümü</option>
           {SOURCE_LIFECYCLE_STATES.map((state) => (
             <option key={state} value={state}>
-              {state}
+              {trLabel(state)}
             </option>
           ))}
         </select>
@@ -101,7 +102,7 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
           <option value="">Tümü</option>
           {SOURCE_KINDS.map((kind) => (
             <option key={kind} value={kind}>
-              {kind}
+              {trLabel(kind)}
             </option>
           ))}
         </select>
@@ -112,7 +113,7 @@ function FilterForm({ filters }: { filters: SourceFilterState }) {
           <option value="">Tümü</option>
           {DISCOVERY_STRATEGIES.map((strategy) => (
             <option key={strategy} value={strategy}>
-              {strategy}
+              {trLabel(strategy)}
             </option>
           ))}
         </select>
@@ -154,7 +155,7 @@ function SourceControls({
           </option>
           {allowedLifecycleTargets(source.lifecycle_state).map((state) => (
             <option key={state} value={state}>
-              {state}
+              {trLabel(state)}
             </option>
           ))}
         </select>
@@ -261,7 +262,8 @@ export default async function SourcesPage({
                       </span>
                     </td>
                     <td>
-                      {source.kind} / {source.discovery_strategy}
+                      {trLabel(source.kind)} /{" "}
+                      {trLabel(source.discovery_strategy)}
                     </td>
                     <td>
                       <span
@@ -274,10 +276,10 @@ export default async function SourcesPage({
                               : "warn"
                         }
                       >
-                        {source.lifecycle_state}
+                        {trLabel(source.lifecycle_state)}
                       </span>
                     </td>
-                    <td>{source.trust_tier}</td>
+                    <td>{trLabel(source.trust_tier)}</td>
                     <td>
                       {source.locale} / {source.market}
                     </td>

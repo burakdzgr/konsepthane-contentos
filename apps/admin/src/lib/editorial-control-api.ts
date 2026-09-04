@@ -289,14 +289,20 @@ export function evaluateOpportunity(
   );
 }
 
+// ADR 0010: `overrideGate` is the named operator's explicit decision to
+// commission over a weak source-base score; the backend still refuses an
+// unscored opportunity and records the override on the transition.
 export function commissionOpportunity(
   opportunityId: string,
   reason: string,
+  options: { overrideGate?: boolean } = {},
 ): Promise<ControlResult<CommissionResult>> {
   return guarded(opportunityId, () =>
     postControl(
       `/internal/editorial/opportunities/${encodeURIComponent(opportunityId)}/commission`,
-      { reason },
+      options.overrideGate === true
+        ? { reason, override_gate: true }
+        : { reason },
       commissionResponseSchema,
     ),
   );

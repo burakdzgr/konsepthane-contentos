@@ -56,7 +56,7 @@ describe("Research detail page", () => {
 
     expect(screen.getAllByText("Örnek Kaynak").length).toBeGreaterThan(0);
     expect(screen.getByText("Uzun Başlık")).toBeTruthy();
-    expect(screen.getByText("success")).toBeTruthy();
+    expect(screen.getAllByText("Başarılı").length).toBeGreaterThan(0);
     expect(screen.getByText("2048 B")).toBeTruthy();
     expect(screen.getByText("html-basic/1")).toBeTruthy();
     expect(screen.getByText("İstanbul Rehberi")).toBeTruthy();

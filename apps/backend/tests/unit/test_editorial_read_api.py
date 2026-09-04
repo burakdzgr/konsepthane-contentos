@@ -7,6 +7,7 @@ import pytest
 from editorial_harness import Context, Harness, seed_full, seed_scored
 from sqlalchemy import func, select
 
+from contentos.opportunities.enums import ScoreEligibility
 from contentos.workflow.models import EditorialWorkflowEvent
 
 FORBIDDEN_STRINGS = (
@@ -50,6 +51,8 @@ class TestWorkQueue:
         assert row["disposition"] == "commissioned"
         assert row["score_id"] == str(context.score_id)
         assert row["score_eligibility"] == "commissionable"
+        # Already commissioned: the domain gate refuses, so the row says so.
+        assert row["commission_eligible"] is False
         assert row["score_engine_name"]
         assert isinstance(row["score_missing_signals"], list)
         assert row["selected_idea_id"] == str(context.selected_idea_id)
@@ -72,6 +75,38 @@ class TestWorkQueue:
         assert row["latest_analysis_id"] is None
         assert row["latest_brief_id"] is None
         assert row["disposition"] == "open"
+        # OPEN + IDEA_SCORING + COMMISSIONABLE effective score: the ONE rule
+        # the commissioning command honours, projected for the inbox.
+        assert row["commission_eligible"] is True
+        assert row["commission_override_possible"] is False
+
+    def test_commission_eligibility_mirrors_the_domain_gate(self, harness: Harness) -> None:
+        """A card must never offer commissioning the backend will 409."""
+        with harness.session() as session:
+            context = Context()
+            seed_scored(session, context, ScoreEligibility.NOT_COMMISSIONABLE)
+        [row] = harness.get("/internal/editorial/work-items").json()["items"]
+        assert row["disposition"] == "open"
+        assert row["current_state"] == "idea_scoring"
+        assert row["score_eligibility"] == "not_commissionable"
+        assert row["commission_eligible"] is False
+        # ADR 0010: scored but refused -> the named override is offered.
+        assert row["commission_override_possible"] is True
+        detail = harness.get(f"/internal/editorial/work-items/{context.work_item_id}").json()
+        assert detail["opportunity"]["commission_eligible"] is False
+        assert detail["opportunity"]["commission_override_possible"] is True
+        assert detail["scores"][0]["effective"] is True
+        response = harness.post(
+            f"/internal/editorial/opportunities/{context.opportunity_id}/commission",
+            json_body={"reason": "kart onay gösterdi"},
+        )
+        assert response.status_code == 409
+        overridden = harness.post(
+            f"/internal/editorial/opportunities/{context.opportunity_id}/commission",
+            json_body={"reason": "konu stratejik, yine de üret", "override_gate": True},
+        )
+        assert overridden.status_code == 200
+        assert overridden.json()["status"] == "commissioned"
 
     def test_state_filter_and_pagination(self, harness: Harness) -> None:
         with harness.session() as session:
@@ -134,6 +169,7 @@ class TestWorkItemDetail:
         assert event_ids == sorted(event_ids, reverse=True)
         to_states = [event["to_state"] for event in reversed(events)]
         assert to_states == ["idea_scoring", "evidence_building", "seo_research", "briefing"]
+        assert detail["opportunity"]["commission_eligible"] is False
         commissioning = next(e for e in events if e["to_state"] == "evidence_building")
         assert commissioning["actor_origin"] == "operator"
         assert commissioning["artifact_refs"]["opportunity_score_id"] == str(context.score_id)

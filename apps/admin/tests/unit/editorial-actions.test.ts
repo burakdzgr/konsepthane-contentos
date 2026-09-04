@@ -170,7 +170,9 @@ describe("commissionOpportunityAction", () => {
       ),
       `/editorial/${WORK_ITEM_ID}?notice=commissioned`,
     );
-    expect(commissionMock).toHaveBeenCalledWith(OPPORTUNITY_ID, "güçlü skor");
+    expect(commissionMock).toHaveBeenCalledWith(OPPORTUNITY_ID, "güçlü skor", {
+      overrideGate: false,
+    });
   });
 
   it("refuses an empty reason without calling the backend", async () => {

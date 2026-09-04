@@ -49,10 +49,10 @@ describe("Research Pipeline page", () => {
     expect(
       screen.getByRole("heading", { name: "Araştırma Hattı" }),
     ).toBeTruthy();
-    expect(badge("fetched")).toBeTruthy();
-    expect(badge("success 200")).toBeTruthy();
-    expect(badge("succeeded")).toBeTruthy();
-    expect(badge("unique")).toBeTruthy();
+    expect(badge("Getirildi")).toBeTruthy();
+    expect(badge("Başarılı 200")).toBeTruthy();
+    expect(badge("Başarılı")).toBeTruthy();
+    expect(badge("Benzersiz")).toBeTruthy();
     expect(badge("2")).toBeTruthy();
     expect(screen.getByText("2026-09-01 12:30 UTC")).toBeTruthy();
 
@@ -102,9 +102,9 @@ describe("Research Pipeline page", () => {
 
     await renderPage();
 
-    expect(badge("rejected")).toBeTruthy();
+    expect(badge("Reddedildi")).toBeTruthy();
     expect(screen.getByText("out_of_scope")).toBeTruthy();
-    expect(badge("failed (unsupported_content)")).toBeTruthy();
+    expect(badge("Başarısız (Desteklenmeyen içerik)")).toBeTruthy();
     // No fake overall status: unfetched stages render explicit placeholders.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });

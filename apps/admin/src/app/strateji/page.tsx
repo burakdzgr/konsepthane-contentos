@@ -1,4 +1,6 @@
 import { fetchStrategyOverview, type StrategyStatus } from "@/lib/strategy-api";
+
+import { trLabel } from "@/lib/tr-labels";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../notices";
 import {
@@ -82,9 +84,7 @@ export default async function StrategyPage({
                   <li key={row.id}>
                     <strong>{row.name}</strong>
                     <span>Öncelik {row.priority}</span>
-                    <span className="badge">
-                      {row.status === "active" ? "Aktif" : row.status}
-                    </span>
+                    <span className="badge">{trLabel(row.status)}</span>
                   </li>
                 ))}
               </ul>

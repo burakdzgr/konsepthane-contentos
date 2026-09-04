@@ -57,8 +57,8 @@ describe("Sources page", () => {
     expect(screen.getByRole("heading", { name: "Kaynaklar" })).toBeTruthy();
     expect(screen.getByText("Örnek Kaynak")).toBeTruthy();
     expect(screen.getByText("ornek-kaynak")).toBeTruthy();
-    expect(badge("active")).toBeTruthy();
-    expect(badge("paused")).toBeTruthy();
+    expect(badge("Etkin")).toBeTruthy();
+    expect(badge("Duraklatıldı")).toBeTruthy();
     expect(screen.getByText("4 öğe")).toBeTruthy();
     expect(
       screen.getByText("1 yeni · 1 kabul edildi · 1 getirildi · 1 başarısız"),

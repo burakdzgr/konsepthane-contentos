@@ -61,7 +61,12 @@ also `Bilinmiyor` until a real provider or first-party/community signal exists.
 
 ## Recommendation policy and human decisions
 
-- **ÜRET:** high inspiration, usable evidence and a strategy match are present.
+- **ÜRET:** high inspiration, usable evidence and a strategy match are present
+  AND the effective base score is `commissionable` — the same rule the
+  commissioning command enforces (`commissioning_admits`), so ÜRET is never
+  shown next to a decision the backend would refuse. A high-inspiration
+  opportunity whose base score is not commissionable routes to İNSAN
+  İNCELEMESİ with a rationale naming the score block.
 - **ARAŞTIRMAYA DEVAM ET:** the current idea/evidence set is weak or, notably,
   search opportunity is strong while inspiration quality is low.
 - **ELE:** both the established base eligibility and inspiration are weak.

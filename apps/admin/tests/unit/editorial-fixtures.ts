@@ -79,6 +79,8 @@ export function queueRow(overrides: Partial<WorkQueueRow> = {}): WorkQueueRow {
     score_evaluated_at: AT,
     score_engine_name: "opportunity-score",
     score_engine_version: "1",
+    commission_eligible: false,
+    commission_override_possible: false,
     inspiration_evaluation_id: "b1111111-2222-4333-8444-555555555555",
     inspiration_band: "high",
     search_opportunity: "unknown",
@@ -402,6 +404,8 @@ export function workItemDetail(
     opportunity: {
       id: OPPORTUNITY_ID,
       disposition: "commissioned",
+      commission_eligible: false,
+      commission_override_possible: false,
       disposition_reason: "operatör komisyonu",
       disposition_by: "operator",
       disposition_at: AT,

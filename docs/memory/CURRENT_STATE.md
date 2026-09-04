@@ -18,6 +18,75 @@ separate `İlham Değeri` from `Arama Fırsatı`. Machine stages remain automati
 the meaningful operator gates remain content commissioning/rejection and final
 human publication approval. See `docs/IDEA_INTELLIGENCE.md`.
 
+### Commissioning affordance = domain gate (2026-09-03 fix)
+
+A real-world inconsistency was found and closed: the `Benden Bekleyenler`
+card offered "İçerik üretimini onayla" for any non-`continue_research`
+recommendation while the backend commissioning command refused with 409
+because the EFFECTIVE opportunity score was `weak / not_commissionable`
+(at the time every one of the 20 open IDEA_SCORING opportunities was in
+that state). The rule now lives in ONE place:
+
+- ADR 0010 (2026-09-04): a NAMED operator may commission over a
+  `not_commissionable` / `needs_operator_review` score with
+  `override_gate=true` + reason (route body field, form field, bulk
+  checkbox); the override and the overridden verdict are recorded on the
+  EVIDENCE_BUILDING entry event's artifact_refs
+  (`commissioning_gate_override`, `overridden_score_eligibility`,
+  `overridden_score_band`). An UNSCORED opportunity is never commissionable.
+  Read models expose `commission_override_possible`; the admin offers
+  "Yine de içerik üret / Yine de görevlendir" only where it is true.
+- `contentos.opportunities.service.commissioning_admits(disposition,
+  work_item_state, score_eligibility, override_gate=False)` is the pure
+  predicate behind
+  `OpportunityCommissioningService.commission_opportunity` (typed refusal
+  errors are derived from the same predicate) AND behind the read models'
+  new `commission_eligible` boolean on `WorkQueueRow` and the detail
+  `OpportunityView`.
+- Admin `/firsatlar` cards and the `/editorial/{id}` opportunity section
+  render the commission form ONLY when `commission_eligible` is true;
+  otherwise they show the honest refusal reason (effective band /
+  eligibility, missing signals). Rejection stays available (no score gate).
+- Inspiration engine `inspiration-quality` is now version `4` (v2 added the
+  gate rule; v3 made the persisted rationale fully Turkish; v4 words the
+  block as a SOURCE-BASE limitation, not a topic verdict):
+  `recommendation_for` takes `commissionable` and never returns `PRODUCE`
+  for a score the gate would refuse (such rows become `HUMAN_REVIEW` with a
+  rationale naming the score block); the effective score eligibility is
+  part of the evaluation input snapshot, so a re-scored opportunity yields a
+  fresh evaluation. Existing v1 evaluations stay durable until the next
+  `evaluate_opportunity` run.
+
+### Inbox filter, bulk decisions, Turkish status vocabulary (2026-09-04)
+
+- `/firsatlar` groups the 50-row listing by the backend's own facts
+  (`durum` = karar | orta | elenecek | hepsi: `commission_eligible`,
+  `needs_operator_review`, everything else / no score) as tab links with
+  counts, plus `oneri` = uret | insan-incelemesi | ele on the inspiration
+  recommendation. The DEFAULT view is `karar` — only commissionable cards
+  are "Benden Bekleyenler"; weak source bases are "Elenecekler" with bulk
+  reject. The score is worded everywhere as a SOURCE-BASE score (recency,
+  source count, trust, evidence), never a topic verdict, because engine v1
+  measures no demand/competition/audience signal.
+- Bulk decisions: every decidable card carries a checkbox bound (via the
+  HTML `form` attribute, no client JS) to one bulk form with ONE shared
+  reason, an explicit scope (ticked cards | every listed card) and two
+  explicit buttons. `bulkRejectAction` / `bulkCommissionAction`
+  (`apps/admin/src/app/firsatlar/actions.ts`) loop the existing per-item
+  backend commands sequentially (max 50) — there is no bulk endpoint and no
+  bypass. Commissioning is sent only to ids the page listed as
+  `commission_eligible`; others are counted as "atlandı", a backend 409 as
+  "çelişen". The outcome is reported from the redirect query
+  (`toplu`, `basarili`, `atlanan`, `celisen`, `hatali`) and the active
+  filter survives the round trip.
+- `apps/admin/src/lib/tr-labels.ts` (`trLabel` / `trList`) is the single
+  Turkish dictionary for every persisted status vocabulary (workflow
+  states, dispositions, score bands/eligibility, components, missing
+  signals, roles, originality, sufficiency, brief/review/QA/decision/
+  publication statuses, …). The editorial queue, `/firsatlar` and the
+  work-item detail render ONLY Turkish labels; backend values remain the
+  wire/filter contract. An untranslated value is humanized, never hidden.
+
 ## Current phase
 
 PHASE 4 - Content Production (Writer -> Editor -> QA, ending at
@@ -1881,7 +1950,9 @@ main
   durable effective score with eligibility COMMISSIONABLE passes — no
   score is never a pass, NOT_COMMISSIONABLE fails closed, and
   NEEDS_OPERATOR_REVIEW also fails closed because the accepted design
-  authorizes no commissioning override (typed `CommissioningGateError`);
+  authorized no commissioning override (typed `CommissioningGateError`)
+  — SUPERSEDED 2026-09-04 by ADR 0010: a named operator override with
+  reason now exists, recorded on the transition; unscored still fails;
   success atomically sets disposition COMMISSIONED and transitions
   OPERATOR IDEA_SCORING -> EVIDENCE_BUILDING with
   {opportunity_id, opportunity_score_id} artifact refs; idempotent no-op

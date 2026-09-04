@@ -264,6 +264,12 @@ const workQueueRowSchema = z.object({
   score_evaluated_at: timestampSchema.nullable(),
   score_engine_name: z.string().nullable(),
   score_engine_version: z.string().nullable(),
+  // The backend's own commissioning gate evaluated over the effective
+  // score; the ONLY thing that may show a commissioning affordance.
+  commission_eligible: z.boolean(),
+  // ADR 0010: scored but refused; a named operator may still commission
+  // with override_gate + reason. Never true for an unscored card.
+  commission_override_possible: z.boolean(),
   inspiration_evaluation_id: z.string().uuid().nullable(),
   inspiration_band: z.enum(INSPIRATION_BANDS).nullable(),
   search_opportunity: z.enum(SEARCH_OPPORTUNITY_BANDS).nullable(),
@@ -548,6 +554,8 @@ const workItemDetailSchema = z.object({
     .object({
       id: z.string().uuid(),
       disposition: z.enum(OPPORTUNITY_DISPOSITIONS),
+      commission_eligible: z.boolean(),
+      commission_override_possible: z.boolean(),
       disposition_reason: z.string().nullable(),
       disposition_by: z.string().nullable(),
       disposition_at: timestampSchema.nullable(),

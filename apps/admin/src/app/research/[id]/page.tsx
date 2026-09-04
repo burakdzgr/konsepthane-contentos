@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { trLabel } from "@/lib/tr-labels";
 import { notFound } from "next/navigation";
 
 import {
@@ -75,7 +77,7 @@ function DiscoverySection({ detail }: { detail: PipelineDetail }) {
             className="badge"
             data-tone={discoveryStateTone(item.lifecycle_state)}
           >
-            {item.lifecycle_state}
+            {trLabel(item.lifecycle_state)}
           </span>
         </Row>
         <Row name="Kaynak">
@@ -152,7 +154,7 @@ function FetchSection({ detail }: { detail: PipelineDetail }) {
                       className="badge"
                       data-tone={fetchOutcomeTone(attempt.fetch_outcome)}
                     >
-                      {attempt.fetch_outcome}
+                      {trLabel(attempt.fetch_outcome)}
                     </span>
                   </td>
                   <td>{attempt.status_code ?? "—"}</td>
@@ -162,8 +164,8 @@ function FetchSection({ detail }: { detail: PipelineDetail }) {
                       ? `${attempt.body_size_bytes} B`
                       : "—"}
                   </td>
-                  <td>{attempt.robots_decision}</td>
-                  <td>{attempt.retry_classification}</td>
+                  <td>{trLabel(attempt.robots_decision)}</td>
+                  <td>{trLabel(attempt.retry_classification)}</td>
                   <td>{attempt.failure_detail ?? "—"}</td>
                 </tr>
               ))}
@@ -212,7 +214,7 @@ function NormalizationSection({ detail }: { detail: PipelineDetail }) {
                         attempt.normalization_status,
                       )}
                     >
-                      {attempt.normalization_status}
+                      {trLabel(attempt.normalization_status)}
                     </span>
                   </td>
                   <td className="mono">
@@ -271,7 +273,7 @@ function DuplicateSection({ detail }: { detail: PipelineDetail }) {
                       className="badge"
                       data-tone={duplicateOutcomeTone(decision.decision)}
                     >
-                      {decision.decision}
+                      {trLabel(decision.decision)}
                     </span>
                   </td>
                   <td className="mono">
@@ -358,7 +360,7 @@ function ActionPanel({ detail }: { detail: PipelineDetail }) {
               </option>
               {DISCOVERY_REJECTION_REASONS.map((reason) => (
                 <option key={reason} value={reason}>
-                  {reason}
+                  {trLabel(reason)}
                 </option>
               ))}
             </select>

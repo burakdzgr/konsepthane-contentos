@@ -71,7 +71,19 @@ Operator-guarded under `/internal/intake`:
 - `Fırsat İncelemesi` (`/firsatlar`): scored open opportunities with
   the explainable score (band, eligibility → ÜRET/İNCELE/ATLA
   recommendation, missing signals, risk flags) and the
-  commission/reject decision forms.
+  commission/reject decision forms. The commission form is shown only
+  when the row's `commission_eligible` flag is true — the backend's own
+  `commissioning_admits` gate projected by the read model — so the card
+  never offers a decision the command would refuse with 409; a blocked
+  row shows the refusal reason instead and keeps only the reject form.
+  The page groups cards by that flag (`durum=karar|orta|elenecek|hepsi`;
+  the default `karar` shows ONLY commissionable cards, weak source bases
+  are "Elenecekler") and filters by the system recommendation
+  (`oneri=uret|insan-incelemesi|ele`), and offers
+  bulk reject / bulk commission over the ticked or listed cards with one
+  shared reason — each card still goes through its own backend command,
+  and commissioning is only sent for `commission_eligible` cards. All
+  status vocabulary is rendered in Turkish (`tr-labels.ts`).
 - Kontrol Merkezi: "Benden Bekleyenler" (real human decisions only)
   and "Aktif Çalışmalar" cards.
 - Raw discovery-item accept/fetch controls remain ONLY on the

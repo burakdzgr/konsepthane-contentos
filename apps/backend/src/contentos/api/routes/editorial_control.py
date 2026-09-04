@@ -383,6 +383,17 @@ class PromotionResponse(BaseModel):
     duplicate_outcome: str
 
 
+class CommissionRequest(BaseModel):
+    """ADR 0010: `override_gate` lets the named operator commission over a
+    NOT_COMMISSIONABLE / NEEDS_OPERATOR_REVIEW source-base score. The
+    reason is always required; an unscored opportunity is still refused."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+    override_gate: bool = False
+
+
 class CommissionResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -624,14 +635,17 @@ def evaluate_opportunity(
 def commission_opportunity(
     session: Annotated[Session, Depends(get_db_session)],
     opportunity_id: uuid.UUID,
-    body: ReasonRequest,
+    body: CommissionRequest,
 ) -> CommissionResponse:
     """The explicit HUMAN commissioning decision — a direct domain command,
     never a queued task."""
     service = OpportunityCommissioningService(session)
     try:
         result = service.commission_opportunity(
-            opportunity_id, reason=body.reason, request_id=_current_request_id()
+            opportunity_id,
+            reason=body.reason,
+            request_id=_current_request_id(),
+            override_gate=body.override_gate,
         )
     except OpportunityNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from None
