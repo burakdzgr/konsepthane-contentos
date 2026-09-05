@@ -218,6 +218,7 @@ class InspirationIntelligenceService:
         trend_state = (
             TrendState.KNOWN
             if enrichment.trend_direction != TREND_UNKNOWN
+            or enrichment.trend_discovery.observed
             or enrichment.visual_trend is not Band.UNKNOWN
             else TrendState.UNKNOWN
         )
@@ -531,6 +532,21 @@ def _bases(
         )
     else:
         bases.append(f"Google Trends: {_provider_state_tr(trends)}")
+    discovery = enrichment.trend_discovery
+    if discovery.observed:
+        kind = "yükselen" if discovery.trend_type == "rising" else "en çok aranan"
+        rank = f", sıra {discovery.rank}" if discovery.rank is not None else ""
+        bases.append(
+            f"Google Trend Keşfi (BigQuery): '{discovery.term}' Türkiye {kind} sorgularında "
+            f"gözlendi ({discovery.refresh_date or 'tarih bilinmiyor'}{rank})"
+        )
+    elif discovery.state == "not_observed":
+        bases.append(
+            "Google Trend Keşfi (BigQuery): günlük top/rising listelerinde gözlenmedi "
+            "(tek başına düşük trend demek değildir)"
+        )
+    else:
+        bases.append(f"Google Trend Keşfi (BigQuery): {_provider_state_tr(discovery.provider)}")
     pinterest = enrichment.pinterest
     if enrichment.visual_growth_pct is not None:
         bases.append(

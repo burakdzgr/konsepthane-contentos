@@ -26,7 +26,7 @@ read from the durable `search_signals` history the worker recorded earlier
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -40,7 +40,9 @@ from contentos.integrations.base import ProviderError, sanitize_error_class
 from contentos.integrations.dto import KeywordMetrics, PinterestKeywordTrend, TrendSummary
 from contentos.integrations.enums import ProviderName, ProviderState
 from contentos.integrations.google_trends import GoogleTrendsProvider
+from contentos.integrations.google_trends_bigquery import GoogleTrendsBigQueryProvider
 from contentos.integrations.observations import (
+    recent_trend_term_rows,
     record_keyword_metrics,
     record_pinterest_trend,
     record_trend_summary,
@@ -93,6 +95,16 @@ STATE_STORED = "stored"  # value read from the durable observation history
 STATE_NO_DATA = "no_data"  # provider answered, nothing for this phrase
 
 TREND_UNKNOWN = "unknown"
+
+# --- Google Trends public dataset (BigQuery) discovery ------------------------
+# The sets hold ~25 terms per region per day: absence is NOT_OBSERVED, never
+# "low". The lookup reads the durable rows the daily sync persisted.
+TREND_DISCOVERY_LOOKBACK_DAYS = 30
+MAX_TREND_DISCOVERY_ROWS = 2000
+MIN_DISCOVERY_TOKEN_LENGTH = 3
+DISCOVERY_OBSERVED = "observed"
+DISCOVERY_NOT_OBSERVED = "not_observed"
+DISCOVERY_UNKNOWN = "unknown"
 EVIDENCE_SUFFICIENT = "sufficient"
 EVIDENCE_INSUFFICIENT = "insufficient"
 CANNIBALIZATION_UNKNOWN = "unknown"
@@ -138,6 +150,38 @@ class FamilyObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class TrendDiscoveryObservation:
+    """Google's public top/rising sets matched against the keyword set:
+    observed / not_observed / unknown. Never a band; an absent term is not
+    a weak trend, and Google Trends API (keyword interest) stays separate."""
+
+    state: str
+    provider: ProviderObservation
+    term: str | None = None
+    trend_type: str | None = None
+    refresh_date: str | None = None
+    rank: int | None = None
+    percent_gain: float | None = None
+    latest_score: float | None = None
+
+    @property
+    def observed(self) -> bool:
+        return self.state == DISCOVERY_OBSERVED
+
+    def projection(self) -> dict[str, Any]:
+        return {
+            "state": self.state,
+            "term": self.term,
+            "trend_type": self.trend_type,
+            "refresh_date": self.refresh_date,
+            "rank": self.rank,
+            "percent_gain": self.percent_gain,
+            "latest_score": self.latest_score,
+            "provider": self.provider.projection(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EnrichmentContext:
     """What the caller already computed; anything absent is derived here."""
 
@@ -157,6 +201,7 @@ class EnrichmentResult:
     trend_direction: str
     trend_keyword: str | None
     google_trends: ProviderObservation
+    trend_discovery: TrendDiscoveryObservation
     visual_trend: Band
     visual_growth_pct: float | None
     pinterest: ProviderObservation
@@ -196,6 +241,7 @@ class EnrichmentResult:
                 "keyword": self.trend_keyword,
                 "provider": self.google_trends.projection(),
             },
+            "trend_discovery": self.trend_discovery.projection(),
             "visual_trend": {
                 "band": self.visual_trend.value,
                 "growth_pct": self.visual_growth_pct,
@@ -232,10 +278,20 @@ class EnrichmentResult:
         alike and an API re-evaluation over unchanged facts is a reuse."""
         stable = _without_volatile(self.projection())
         result: dict[str, Any] = dict(stable) if isinstance(stable, dict) else {}
-        for section in ("search", "trend", "visual_trend"):
+        for section in ("search", "trend", "trend_discovery", "visual_trend"):
             provider = result.get(section, {}).get("provider")
             if isinstance(provider, dict) and provider.get("state") == STATE_STORED:
                 provider["state"] = ProviderState.HEALTHY.value
+        # Discovery is a durable daily product, not a per-opportunity call:
+        # "unconfigured" (worker) and "not requested" (API) are the same
+        # absence of data and must hash alike.
+        discovery = result.get("trend_discovery", {}).get("provider")
+        if (
+            isinstance(discovery, dict)
+            and discovery.get("state") == ProviderState.NOT_CONFIGURED.value
+        ):
+            discovery["state"] = STATE_NOT_REQUESTED
+            discovery["error_class"] = None
         return result
 
 
@@ -367,6 +423,7 @@ def enrich_opportunity(
     semrush, metrics = _semrush(session, registry, keywords, moment)
     best = best_metric(metrics)
     google_trends, direction = _google_trends(session, registry, primary, work_item.market)
+    discovery = _trend_discovery(session, registry, keywords, work_item.market, moment)
     pinterest, growth = _pinterest(session, registry, primary)
 
     family_rows = _family_rows(session, opportunity.id)
@@ -383,6 +440,7 @@ def enrich_opportunity(
         for known in (
             semrush.known and best is not None,
             google_trends.known and direction != TREND_UNKNOWN,
+            discovery.observed,
             pinterest.known and growth is not None,
         )
         if known
@@ -397,7 +455,9 @@ def enrich_opportunity(
             families_known.append(family.value)
     if best is not None and SignalFamily.SEARCH.value not in families_known:
         families_known.append(SignalFamily.SEARCH.value)
-    if direction != TREND_UNKNOWN and SignalFamily.TREND.value not in families_known:
+    if (
+        direction != TREND_UNKNOWN or discovery.observed
+    ) and SignalFamily.TREND.value not in families_known:
         families_known.append(SignalFamily.TREND.value)
     if growth is not None and SignalFamily.VISUAL_TREND.value not in families_known:
         families_known.append(SignalFamily.VISUAL_TREND.value)
@@ -425,6 +485,7 @@ def enrich_opportunity(
         trend_direction=direction,
         trend_keyword=primary,
         google_trends=google_trends,
+        trend_discovery=discovery,
         visual_trend=pinterest_band(growth),
         visual_growth_pct=growth,
         pinterest=pinterest,
@@ -555,6 +616,92 @@ def _pinterest(
     return ProviderObservation(
         name.value, state, observed_at=trend.observed_at, region=trend.region
     ), growth
+
+
+def _trend_discovery(
+    session: Session,
+    registry: IntegrationRegistry | None,
+    keywords: tuple[str, ...],
+    market: str,
+    now: datetime,
+) -> TrendDiscoveryObservation:
+    """Match the keyword set against the durable Google top/rising rows the
+    daily sync persisted (no live call here: the dataset is daily). A
+    keyword found in the sets is OBSERVED with the dataset's rank/gain; a
+    synced dataset without the keyword is NOT_OBSERVED; no synced rows at
+    all (or an unconfigured provider) stays UNKNOWN."""
+    name = ProviderName.GOOGLE_TRENDS_BIGQUERY
+    if registry is not None:
+        provider = registry.get(name)
+        if isinstance(provider, GoogleTrendsBigQueryProvider) and not provider.configured():
+            return TrendDiscoveryObservation(DISCOVERY_UNKNOWN, _unconfigured(provider, name))
+    if not keywords:
+        return TrendDiscoveryObservation(
+            DISCOVERY_UNKNOWN,
+            ProviderObservation(name.value, STATE_NOT_REQUESTED, error_class="no_keywords"),
+        )
+    since = now - timedelta(days=TREND_DISCOVERY_LOOKBACK_DAYS)
+    rows = recent_trend_term_rows(session, market, since=since, limit=MAX_TREND_DISCOVERY_ROWS)
+    if not rows:
+        return TrendDiscoveryObservation(
+            DISCOVERY_UNKNOWN, ProviderObservation(name.value, STATE_NOT_REQUESTED)
+        )
+    newest = _aware(rows[0].observed_at)
+    wanted: list[tuple[str, set[str]]] = []
+    for keyword in keywords:
+        key = normalize_phrase(keyword)
+        tokens = {token for token in key.split() if len(token) >= MIN_DISCOVERY_TOKEN_LENGTH}
+        if key:
+            wanted.append((key, tokens))
+    best: SearchSignal | None = None
+    best_key: tuple[int, float, int] | None = None
+    for row in rows:
+        subject = normalize_phrase(row.subject)
+        tokens = {token for token in subject.split() if len(token) >= MIN_DISCOVERY_TOKEN_LENGTH}
+        if not subject or not tokens:
+            continue
+        hit = any(
+            subject == key or (bool(ktokens) and (ktokens <= tokens or tokens <= ktokens))
+            for key, ktokens in wanted
+        )
+        if not hit:
+            continue
+        value = row.value
+        rank = value.get("rank")
+        candidate = (
+            0 if value.get("trend_type") == "rising" else 1,
+            -_aware(row.observed_at).timestamp(),
+            int(rank) if isinstance(rank, int) and not isinstance(rank, bool) else 10**6,
+        )
+        if best_key is None or candidate < best_key:
+            best, best_key = row, candidate
+    if best is None:
+        return TrendDiscoveryObservation(
+            DISCOVERY_NOT_OBSERVED,
+            ProviderObservation(name.value, STATE_STORED, observed_at=newest, region=market),
+        )
+    value = best.value
+    rank = value.get("rank")
+    gain = value.get("percent_gain")
+    score = value.get("latest_score")
+    trend_type = value.get("trend_type")
+    refresh = value.get("refresh_date")
+    return TrendDiscoveryObservation(
+        DISCOVERY_OBSERVED,
+        ProviderObservation(
+            name.value, STATE_STORED, observed_at=_aware(best.observed_at), region=market
+        ),
+        term=best.subject,
+        trend_type=trend_type if isinstance(trend_type, str) else None,
+        refresh_date=refresh if isinstance(refresh, str) else None,
+        rank=int(rank) if isinstance(rank, int) and not isinstance(rank, bool) else None,
+        percent_gain=float(gain)
+        if isinstance(gain, (int, float)) and not isinstance(gain, bool)
+        else None,
+        latest_score=float(score)
+        if isinstance(score, (int, float)) and not isinstance(score, bool)
+        else None,
+    )
 
 
 # --- Durable history (provider-free processes) ---------------------------------

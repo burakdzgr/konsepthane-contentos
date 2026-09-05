@@ -176,6 +176,17 @@ class Settings(BaseSettings):
     pinterest_region: str = Field(default="TR", min_length=2, max_length=8)
     pinterest_daily_budget: int = Field(default=200, ge=1, le=100_000)
     pinterest_cache_hours: int = Field(default=24, ge=1, le=720)
+    # Google Trends — BigQuery Public Dataset (first-party trend discovery).
+    # Reuses the Search Console / GA4 service-account key; the account needs
+    # only "BigQuery Job User" on the query project (default: the key's own).
+    google_cloud_project_id: str | None = Field(default=None, min_length=1)
+    google_trends_bigquery_country: str = Field(default="TR", min_length=2, max_length=2)
+    google_trends_bigquery_daily_budget: int = Field(default=20, ge=1, le=10_000)
+    google_trends_bigquery_cache_hours: int = Field(default=24, ge=1, le=720)
+    google_trends_bigquery_max_bytes_billed: int = Field(
+        default=2_000_000_000, ge=10_000_000, le=1_000_000_000_000
+    )
+    google_trends_bigquery_sync_hour_utc: int = Field(default=15, ge=0, le=23)
     integrations_http_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
 
     # --- performance loop (agent E) ---
@@ -207,6 +218,7 @@ class Settings(BaseSettings):
         "ga4_key_events",
         "google_trends_api_key",
         "google_trends_api_url",
+        "google_cloud_project_id",
         "pinterest_access_token",
         mode="before",
     )

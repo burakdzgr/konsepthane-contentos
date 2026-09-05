@@ -189,6 +189,8 @@ class EditorialControlDispatcher(Protocol):
 
     def enqueue_performance_sync(self, *, request_id: str | None = None) -> list[str]: ...
 
+    def enqueue_trend_discovery_sync(self, *, request_id: str | None = None) -> list[str]: ...
+
 
 class CeleryEditorialControlDispatcher:
     """Producer-only publisher of the six frozen Task 13 editorial jobs.
@@ -380,3 +382,10 @@ class CeleryEditorialControlDispatcher:
         """Operator "sync now": the whole performance chain as ONE bounded job."""
         self._send(SYNC_ALL_TASK, {}, request_id)
         return [SYNC_ALL_TASK]
+
+    def enqueue_trend_discovery_sync(self, *, request_id: str | None = None) -> list[str]:
+        """Operator "Şimdi senkronize et" for the Google Trends public dataset."""
+        from contentos.worker.trend_discovery_tasks import SYNC_GOOGLE_TRENDS_BIGQUERY_TASK
+
+        self._send(SYNC_GOOGLE_TRENDS_BIGQUERY_TASK, {}, request_id)
+        return [SYNC_GOOGLE_TRENDS_BIGQUERY_TASK]

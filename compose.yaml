@@ -49,6 +49,13 @@ x-backend-environment: &backend-environment
   CONTENTOS_GOOGLE_TRENDS_API_URL: ${CONTENTOS_GOOGLE_TRENDS_API_URL:-}
   CONTENTOS_GOOGLE_TRENDS_DAILY_BUDGET: ${CONTENTOS_GOOGLE_TRENDS_DAILY_BUDGET:-200}
   CONTENTOS_GOOGLE_TRENDS_CACHE_HOURS: ${CONTENTOS_GOOGLE_TRENDS_CACHE_HOURS:-24}
+  # Google Trends — BigQuery Public Dataset (same service-account key).
+  CONTENTOS_GOOGLE_CLOUD_PROJECT_ID: ${CONTENTOS_GOOGLE_CLOUD_PROJECT_ID:-}
+  CONTENTOS_GOOGLE_TRENDS_BIGQUERY_COUNTRY: ${CONTENTOS_GOOGLE_TRENDS_BIGQUERY_COUNTRY:-TR}
+  CONTENTOS_GOOGLE_TRENDS_BIGQUERY_DAILY_BUDGET: ${CONTENTOS_GOOGLE_TRENDS_BIGQUERY_DAILY_BUDGET:-20}
+  CONTENTOS_GOOGLE_TRENDS_BIGQUERY_CACHE_HOURS: ${CONTENTOS_GOOGLE_TRENDS_BIGQUERY_CACHE_HOURS:-24}
+  CONTENTOS_GOOGLE_TRENDS_BIGQUERY_MAX_BYTES_BILLED: ${CONTENTOS_GOOGLE_TRENDS_BIGQUERY_MAX_BYTES_BILLED:-2000000000}
+  CONTENTOS_GOOGLE_TRENDS_BIGQUERY_SYNC_HOUR_UTC: ${CONTENTOS_GOOGLE_TRENDS_BIGQUERY_SYNC_HOUR_UTC:-15}
   CONTENTOS_PINTEREST_ACCESS_TOKEN: ${CONTENTOS_PINTEREST_ACCESS_TOKEN:-}
   CONTENTOS_PINTEREST_REGION: ${CONTENTOS_PINTEREST_REGION:-TR}
   CONTENTOS_PINTEREST_DAILY_BUDGET: ${CONTENTOS_PINTEREST_DAILY_BUDGET:-200}
@@ -124,6 +131,11 @@ services:
         "8000",
       ]
     environment: *backend-environment
+    volumes:
+      # Local secret files (gitignored): e.g. the Google service-account
+      # key referenced by CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON as
+      # /run/contentos/secrets/<file>. Read-only inside the containers.
+      - ./secrets:/run/contentos/secrets:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -164,6 +176,11 @@ services:
         "${CONTENTOS_CELERY_DEFAULT_QUEUE:-contentos.default}",
       ]
     environment: *backend-environment
+    volumes:
+      # Local secret files (gitignored): e.g. the Google service-account
+      # key referenced by CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON as
+      # /run/contentos/secrets/<file>. Read-only inside the containers.
+      - ./secrets:/run/contentos/secrets:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -191,6 +208,11 @@ services:
         "/tmp/celerybeat-schedule",
       ]
     environment: *backend-environment
+    volumes:
+      # Local secret files (gitignored): e.g. the Google service-account
+      # key referenced by CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON as
+      # /run/contentos/secrets/<file>. Read-only inside the containers.
+      - ./secrets:/run/contentos/secrets:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

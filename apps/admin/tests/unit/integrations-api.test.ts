@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchIntegrations, testIntegration } from "@/lib/integrations-api";
+import {
+  fetchIntegrations,
+  fetchTrendDiscovery,
+  syncTrendDiscovery,
+  testIntegration,
+} from "@/lib/integrations-api";
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -99,5 +104,82 @@ describe("testIntegration", () => {
     expect(await testIntegration("pinterest_trends")).toEqual({
       kind: "not-found",
     });
+  });
+});
+
+describe("trend discovery", () => {
+  it("reads the latest synced Türkiye sets", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        provider: "google_trends_bigquery",
+        country: "TR",
+        synced: true,
+        refresh_date: "2026-09-03",
+        last_sync_at: "2026-09-04T15:30:00+00:00",
+        total_terms: 2,
+        matched_count: 1,
+        unique_terms_ever: 1,
+        top: [],
+        rising: [
+          {
+            term: "ayıcıklı doğum günü",
+            trend_type: "rising",
+            rank: 2,
+            percent_gain: 250,
+            latest_score: 70,
+            region_count: 2,
+            refresh_date: "2026-09-03",
+            matched: true,
+            match_kind: "domain",
+            strategy_keywords: [],
+            domain_terms: ["doğum günü"],
+            first_refresh_date: null,
+            occurrence_count: 1,
+          },
+        ],
+        matched: [],
+        generated_at: "2026-09-05T10:00:00+00:00",
+      }),
+    );
+
+    const result = await fetchTrendDiscovery();
+
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.rising[0]?.percent_gain).toBe(250);
+      expect(result.data.synced).toBe(true);
+    }
+    const [url] = fetchMock.mock.calls[0] as [URL];
+    expect(String(url)).toBe(
+      "http://127.0.0.1:8000/internal/integrations/google_trends_bigquery/discovery",
+    );
+  });
+
+  it("queues the sync through the internal API", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "queued",
+        tasks: ["contentos.trends.sync_google_trends_bigquery"],
+      }),
+    );
+
+    const result = await syncTrendDiscovery();
+
+    expect(result).toEqual({
+      kind: "ok",
+      tasks: ["contentos.trends.sync_google_trends_bigquery"],
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(String(url)).toBe(
+      "http://127.0.0.1:8000/internal/integrations/google_trends_bigquery/sync",
+    );
+    expect(init.method).toBe("POST");
+  });
+
+  it("reports an unreachable backend on sync", async () => {
+    stubFetch(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    expect(await syncTrendDiscovery()).toEqual({ kind: "unreachable" });
   });
 });

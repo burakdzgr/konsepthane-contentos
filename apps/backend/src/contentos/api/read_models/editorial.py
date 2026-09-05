@@ -217,12 +217,25 @@ class ContentValueView(_FrozenModel):
     community_need_band: IntelligenceBand
 
 
+class TrendDiscoveryView(_FrozenModel):
+    """Google's public top/rising sets (BigQuery): observed / not_observed /
+    unknown. Not a band — an absent term is never "low"."""
+
+    state: str
+    term: str | None
+    trend_type: str | None
+    refresh_date: str | None
+    rank: int | None
+    percent_gain: float | None
+
+
 class SearchIntelligenceView(_FrozenModel):
     semrush_potential_band: IntelligenceBand
     search_keyword: str | None
     search_volume: int | None
     keyword_difficulty: float | None
     google_trends_direction: str
+    google_trends_discovery: TrendDiscoveryView
     pinterest_trend_band: IntelligenceBand
     competition_band: IntelligenceBand
     provider_freshness: dict[str, ProviderFreshnessView]
@@ -303,6 +316,25 @@ _FACTOR_ORDER = (
     "strategic_fit",
 )
 _TREND_DIRECTIONS = frozenset({"rising", "stable", "falling"})
+_DISCOVERY_STATES = frozenset({"observed", "not_observed"})
+
+
+def _trend_discovery_view(raw: dict[str, Any]) -> TrendDiscoveryView:
+    state = raw.get("state")
+    rank = raw.get("rank")
+    gain = raw.get("percent_gain")
+    return TrendDiscoveryView(
+        state=state if isinstance(state, str) and state in _DISCOVERY_STATES else "unknown",
+        term=raw.get("term") if isinstance(raw.get("term"), str) else None,
+        trend_type=raw.get("trend_type") if isinstance(raw.get("trend_type"), str) else None,
+        refresh_date=raw.get("refresh_date") if isinstance(raw.get("refresh_date"), str) else None,
+        rank=int(rank) if isinstance(rank, int) and not isinstance(rank, bool) else None,
+        percent_gain=float(gain)
+        if isinstance(gain, (int, float)) and not isinstance(gain, bool)
+        else None,
+    )
+
+
 _EVIDENCE_STATES = frozenset({"sufficient", "insufficient"})
 
 
@@ -373,6 +405,7 @@ def intelligence_view(
     block = _dict(_dict(input_snapshot).get("intelligence"))
     search = _dict(block.get("search"))
     trend = _dict(block.get("trend"))
+    discovery = _dict(block.get("trend_discovery"))
     visual = _dict(block.get("visual_trend"))
     families = _dict(block.get("families"))
     historical = _dict(block.get("historical"))
@@ -411,11 +444,13 @@ def intelligence_view(
                 if isinstance(direction, str) and direction in _TREND_DIRECTIONS
                 else "unknown"
             ),
+            google_trends_discovery=_trend_discovery_view(discovery),
             pinterest_trend_band=_family_band(visual.get("band")),
             competition_band=family("competition"),
             provider_freshness={
                 "semrush": _provider_freshness(search.get("provider")),
                 "google_trends": _provider_freshness(trend.get("provider")),
+                "google_trends_bigquery": _provider_freshness(discovery.get("provider")),
                 "pinterest_trends": _provider_freshness(visual.get("provider")),
             },
         ),

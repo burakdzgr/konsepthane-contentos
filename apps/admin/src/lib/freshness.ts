@@ -11,6 +11,7 @@ export const PROVIDER_SHORT_NAMES: Record<string, string> = {
   google_search_console: "Search Console",
   google_analytics: "GA4",
   google_trends: "Google Trends",
+  google_trends_bigquery: "Google Trend Keşfi",
   pinterest_trends: "Pinterest Trends",
 };
 
@@ -21,6 +22,7 @@ export const PROVIDER_CACHE_HOURS: Record<string, number> = {
   google_search_console: 12,
   google_analytics: 12,
   google_trends: 24,
+  google_trends_bigquery: 24,
   pinterest_trends: 24,
 };
 

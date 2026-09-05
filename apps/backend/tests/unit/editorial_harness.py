@@ -257,6 +257,10 @@ class FakeEditorialControlDispatcher:
         self.calls.append(("performance_sync", {}, request_id))
         return ["contentos.performance.sync_all"]
 
+    def enqueue_trend_discovery_sync(self, *, request_id: str | None = None) -> list[str]:
+        self.calls.append(("trend_discovery_sync", {}, request_id))
+        return ["contentos.trends.sync_google_trends_bigquery"]
+
     def enqueue_generate_media_image(
         self,
         work_item_id: str,

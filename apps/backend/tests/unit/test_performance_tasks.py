@@ -339,9 +339,9 @@ class TestScheduleAndRegistration:
     def test_beat_schedule_is_present_when_enabled_and_absent_when_disabled(self) -> None:
         enabled = create_celery_app(settings(performance_schedule_enabled=True))
         schedule = enabled.conf.beat_schedule
-        assert {entry["task"] for entry in schedule.values()} == set(PERFORMANCE_TASK_NAMES) - {
-            SYNC_ALL_TASK
-        }
+        assert {entry["task"] for entry in schedule.values()} == (
+            set(PERFORMANCE_TASK_NAMES) - {SYNC_ALL_TASK}
+        ) | {"contentos.trends.sync_google_trends_bigquery"}
         assert str(schedule["performance-sync-search-console"]["schedule"]).startswith("<crontab")
         disabled = create_celery_app(settings(performance_schedule_enabled=False))
         assert not disabled.conf.beat_schedule

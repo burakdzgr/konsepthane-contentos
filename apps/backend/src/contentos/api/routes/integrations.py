@@ -9,7 +9,8 @@ Responses never carry secrets: only states, Turkish detail sentences,
 bounded error classes and the NAMES of the environment variables to set.
 """
 
-from datetime import datetime
+import uuid
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,6 +31,11 @@ from contentos.integrations.enums import (
 )
 from contentos.integrations.http import utc_now
 from contentos.integrations.registry import IntegrationRegistry, UnknownProviderError
+from contentos.intelligence.trend_discovery import (
+    DiscoverySnapshot,
+    TrendTermSummary,
+    discovery_snapshot,
+)
 
 router = APIRouter(prefix="/internal/integrations")
 
@@ -123,3 +129,122 @@ def test_integration(
         raise HTTPException(status_code=404, detail="unknown integration provider") from None
     session.commit()
     return _view(session, registry, status)
+
+
+# --- Google Trends public dataset discovery (BigQuery) ----------------------------
+#
+# GET  /internal/integrations/google_trends_bigquery/discovery -> the latest
+#      synced Türkiye top / rising sets and which terms ContentOS deems
+#      relevant (DB-only; never calls BigQuery)
+# POST /internal/integrations/google_trends_bigquery/sync      -> enqueue the
+#      daily sync now through the producer seam ("Şimdi senkronize et")
+
+
+class TrendTermView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    term: str
+    trend_type: str
+    rank: int | None
+    percent_gain: float | None
+    latest_score: float | None
+    region_count: int | None
+    refresh_date: date
+    matched: bool
+    match_kind: str | None
+    strategy_keywords: list[str]
+    domain_terms: list[str]
+    first_refresh_date: date | None
+    occurrence_count: int | None
+
+
+class TrendDiscoveryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    provider: ProviderName
+    country: str
+    synced: bool
+    refresh_date: date | None
+    last_sync_at: datetime | None
+    total_terms: int
+    matched_count: int
+    unique_terms_ever: int
+    top: list[TrendTermView]
+    rising: list[TrendTermView]
+    matched: list[TrendTermView]
+    generated_at: datetime
+
+
+class TrendSyncResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    tasks: list[str]
+
+
+def _term_view(item: TrendTermSummary) -> TrendTermView:
+    return TrendTermView(
+        term=item.term,
+        trend_type=item.trend_type,
+        rank=item.rank,
+        percent_gain=item.percent_gain,
+        latest_score=item.latest_score,
+        region_count=item.region_count,
+        refresh_date=item.refresh_date,
+        matched=item.matched,
+        match_kind=item.match_kind,
+        strategy_keywords=list(item.strategy_keywords),
+        domain_terms=list(item.domain_terms),
+        first_refresh_date=item.first_refresh_date,
+        occurrence_count=item.occurrence_count,
+    )
+
+
+def _discovery_response(
+    snapshot: DiscoverySnapshot, last_sync_at: datetime | None
+) -> TrendDiscoveryResponse:
+    return TrendDiscoveryResponse(
+        provider=ProviderName.GOOGLE_TRENDS_BIGQUERY,
+        country=snapshot.country,
+        synced=snapshot.synced,
+        refresh_date=snapshot.refresh_date,
+        last_sync_at=last_sync_at,
+        total_terms=snapshot.total_terms,
+        matched_count=len(snapshot.matched),
+        unique_terms_ever=snapshot.unique_terms_ever,
+        top=[_term_view(item) for item in snapshot.top],
+        rising=[_term_view(item) for item in snapshot.rising],
+        matched=[_term_view(item) for item in snapshot.matched],
+        generated_at=utc_now(),
+    )
+
+
+@router.get("/google_trends_bigquery/discovery", response_model=TrendDiscoveryResponse)
+def trend_discovery(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    registry: Annotated[IntegrationRegistry, Depends(get_integration_registry)],
+    _operator: Annotated[User, Depends(require_operator)],
+) -> TrendDiscoveryResponse:
+    country = str(getattr(request.app.state.settings, "google_trends_bigquery_country", "TR"))
+    snapshot = discovery_snapshot(session, country=country)
+    return _discovery_response(
+        snapshot, registry.last_sync_at(session, ProviderName.GOOGLE_TRENDS_BIGQUERY)
+    )
+
+
+@router.post("/google_trends_bigquery/sync", response_model=TrendSyncResponse)
+def trend_discovery_sync(
+    request: Request,
+    _operator: Annotated[User, Depends(require_operator)],
+) -> TrendSyncResponse:
+    dispatcher = request.app.state.editorial_control_dispatcher
+    request_id = request.headers.get("X-Request-ID") or f"trend-{uuid.uuid4()}"
+    try:
+        tasks = dispatcher.enqueue_trend_discovery_sync(request_id=request_id)
+    except Exception as error:  # noqa: BLE001 - broker failures are bounded 503s
+        raise HTTPException(
+            status_code=503,
+            detail=f"trend discovery sync could not be queued ({type(error).__name__})",
+        ) from None
+    return TrendSyncResponse(status="queued", tasks=list(tasks))

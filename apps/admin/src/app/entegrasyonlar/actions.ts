@@ -4,13 +4,14 @@ import { redirect } from "next/navigation";
 
 import {
   PROVIDER_NAMES,
+  syncTrendDiscovery,
   testIntegration,
   type ProviderName,
 } from "@/lib/integrations-api";
 
-// The ONLY mutation on the integrations page: run a provider's single
-// cheap connection test. The backend persists the outcome; secrets never
-// travel through here.
+// Two mutations on the integrations page: run a provider's single cheap
+// connection test, and queue the Google Trends public-dataset discovery
+// sync. The backend persists outcomes; secrets never travel through here.
 
 export async function testIntegrationAction(formData: FormData): Promise<void> {
   const raw = formData.get("provider");
@@ -30,5 +31,17 @@ export async function testIntegrationAction(formData: FormData): Promise<void> {
   }
   redirect(
     `/entegrasyonlar?notice=test-${result.data.state}&provider=${result.data.name}`,
+  );
+}
+
+export async function syncTrendDiscoveryAction(): Promise<void> {
+  const result = await syncTrendDiscovery();
+  if (result.kind !== "ok") {
+    redirect(
+      `/entegrasyonlar?error=${result.kind === "unreachable" ? "unreachable" : "malformed"}`,
+    );
+  }
+  redirect(
+    "/entegrasyonlar?notice=sync-queued&provider=google_trends_bigquery",
   );
 }

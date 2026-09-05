@@ -18,8 +18,9 @@ import type { IntegrationView } from "@/lib/integrations-api";
 
 // The operator's view of ONE run through the whole line, in the order the
 // system works: source → URLs → prefilter → fetch → understand → ideas →
-// grouping → community / market / strategy signals → Semrush / Google
-// Trends / Pinterest Trends → Konsepthane's own history → opportunity.
+// grouping → community / market / strategy signals → Semrush / Google Trend
+// Keşfi (BigQuery public dataset) / Google Trends API / Pinterest Trends →
+// Konsepthane's own history → opportunity.
 //
 // Every state is derived from durable data: intake stages from the run
 // view, signal stages from the run-scoped intelligence summary, provider
@@ -331,8 +332,16 @@ export function buildLineStages(input: LineStageInput): LineStage[] {
     signalStage("strategy", "Strateji eşleşmesi", "market", input, live, now),
     providerStage("semrush", "Semrush", "semrush", "search", input, now),
     providerStage(
+      "google-trends-discovery",
+      "Google Trend Keşfi",
+      "google_trends_bigquery",
+      null,
+      input,
+      now,
+    ),
+    providerStage(
       "google-trends",
-      "Google Trends",
+      "Google Trends API",
       "google_trends",
       "trend",
       input,

@@ -1,6 +1,7 @@
 # External intelligence providers (Entegrasyonlar)
 
-ContentOS can enrich idea intelligence with five external providers. Every
+ContentOS can enrich idea intelligence with six external provider
+connections (five vendors; Google Trends has two separate capabilities). Every
 adapter talks to the vendor's **official API only**, is constructed from
 `Settings`, and degrades to an honest state when credentials are missing:
 nothing is scraped, nothing is fabricated, and a missing metric stays
@@ -16,7 +17,8 @@ Code: `apps/backend/src/contentos/integrations/`. Admin screen:
 | **Semrush** | External SEO *market* intelligence: search volume, keyword difficulty, CPC, competition, intent, related keywords, a competitor domain's organic keywords. | Treated as Search Console truth. It is a market estimate. |
 | **Google Search Console** | *Our* real search performance for konsepthane.net: clicks, impressions, CTR, position per query/page/date/country/device. | Used as a market-demand estimate for topics we do not rank for. |
 | **Google Analytics 4** | On-site behaviour of our pages: users, sessions, views, engagement rate, and key events **only** for names configured in `CONTENTOS_GA4_KEY_EVENTS`. | Invented events; key events without configuration stay UNKNOWN. |
-| **Google Trends** | Relative interest (0–100) over time and a rising/stable/falling summary. | Absolute volumes; scraping trends.google.com. Requires official (alpha/allow-listed) API access. |
+| **Google Trends (API)** | *Deep keyword trend analysis*: relative interest (0–100) over time for a chosen phrase and a rising/stable/falling summary. | Absolute volumes; scraping trends.google.com. Requires official (alpha/allow-listed) API access. |
+| **Google Trend Keşfi (BigQuery)** | *Current trend discovery*: the daily Türkiye **Top** and **Rising** search-term sets Google publishes in the official public dataset `bigquery-public-data.google_trends`. Usable today with the same service account. | Search volume for an arbitrary keyword; proof that a keyword is *not* trending (absence = `NOT_OBSERVED`, never "low"); a substitute for Semrush or for the Trends API. |
 | **Pinterest Trends** | Visual/idea trend signals: growing keywords per region with week-over-week / year-over-year growth. | Scraping pinterest.com. Requires a Pinterest developer app with `trends:read`. |
 
 ## States
@@ -114,6 +116,76 @@ growing trend for the configured region.
 | Variable | Purpose |
 | --- | --- |
 | `CONTENTOS_INTEGRATIONS_HTTP_TIMEOUT_SECONDS` | Per-call HTTP timeout, default `20`. Connection tests use a 4 s cap so the admin answers within its request window. |
+
+### Google Trends — BigQuery Public Dataset (trend discovery)
+
+Two capabilities, two providers, never merged:
+
+| | `google_trends` (API alpha) | `google_trends_bigquery` (public dataset) |
+| --- | --- | --- |
+| Question | "How does interest in *this phrase* move over time?" | "Which queries did Google list in Türkiye's top / rising sets on refresh date X?" |
+| Availability | `access_required` until Google grants alpha access | Active as soon as the service account can run BigQuery jobs |
+| Output | Relative 0–100 series → rising / stable / falling | Term, rank, region rows, latest/peak score, percent gain (rising) per refresh date |
+| Absence means | UNKNOWN | `NOT_OBSERVED` — the sets hold ~25 terms per region per day |
+| In the opportunity view | "Google Trends" direction | "Google Trend Keşfi": *Yükselen sorgularda gözlendi · sıra N* / *Günlük listelerde gözlenmedi* / *Bilinmiyor* |
+
+| Variable | Purpose |
+| --- | --- |
+| `CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON` | Same key as Search Console / GA4. |
+| `CONTENTOS_GOOGLE_CLOUD_PROJECT_ID` | The Google Cloud project that runs (and would bill) the query jobs. Optional: defaults to the key file's `project_id`. |
+| `CONTENTOS_GOOGLE_TRENDS_BIGQUERY_COUNTRY` | Two-letter country for the daily discovery, default `TR`. |
+| `CONTENTOS_GOOGLE_TRENDS_BIGQUERY_DAILY_BUDGET` / `..._CACHE_HOURS` | Default `20` queries per UTC day / `24` h response cache. A full day needs 3 queries. |
+| `CONTENTOS_GOOGLE_TRENDS_BIGQUERY_MAX_BYTES_BILLED` | `maximumBytesBilled` per query, default 2 GB. A partition-bound TR day scans a few hundred MB at most; the public dataset is within BigQuery's free 1 TB/month tier for this usage. |
+| `CONTENTOS_GOOGLE_TRENDS_BIGQUERY_SYNC_HOUR_UTC` | Daily beat hour (UTC), default `15`; the sync is idempotent per refresh date. |
+
+**Minimum IAM:** grant the service account **`roles/bigquery.jobUser`
+("BigQuery Job User")** on the project and enable the BigQuery API. Public
+datasets are readable by every authenticated account; no dataset-level
+role, no `dataViewer` on your own project, nothing wider.
+
+**Cost safety (code, not convention):** every query is bound to one
+`refresh_date` partition (the latest-partition probe to a 14-day window)
+and to `country_code = @country`; only the needed columns are selected;
+rows are grouped per (term, region) and `LIMIT 5000`; `maximumBytesBilled`
+caps each job; BigQuery's query cache is on; the shared response cache and
+daily budget sit in front; there is no free-form SQL endpoint. Dates are
+inlined as `DATE '…'` literals from real `date` values (partition pruning),
+the country as a named parameter.
+
+**Connection test:** one real, bounded query — `MAX(refresh_date)` for the
+country over the last 14 partitions — with a 4 s cap. An empty window is
+reported as healthy with a "yayın gecikmesi" note (Google publishes late
+some days); a job that does not finish inside the test window is
+`degraded` with an explicit "the daily sync still runs" detail.
+
+**Daily sync** (`contentos.trends.sync_google_trends_bigquery`, Celery beat,
+Redis broker): latest partition → skip when that refresh date is already
+persisted → `international_top_terms` + `international_top_rising_terms`
+aggregated per term (regions kept underneath: one country observation per
+term, never one signal per province) → `search_signals` rows (`trend`,
+provider `google_trends_bigquery`, `as_of` = refresh date, value with
+dataset, table, rank, scores, gain, regions, query version) → relevance
+matching against the strategy layer (active keywords, clusters, audiences)
+**or** the Konsepthane domain vocabulary → `intelligence_signals` rows of
+family `trend` (one per term; a new refresh date bumps `occurrence_count`,
+`first_refresh_date` is kept: ContentOS-owned "recurring / newly rising"
+history, distinct from Google's fields). Strategy is a priority signal,
+never a censor. Transient failures (`rate_limited`, `degraded`) retry twice
+with 15 → 30 min backoff; everything else waits for the next day.
+
+**Operator surfaces:** `/entegrasyonlar` groups both capabilities under one
+"Google Trends" card (*Güncel Trend Keşfi · Google BigQuery* with the last
+refresh date, counts, relevant terms and "Şimdi Senkronize Et"; *Derin
+Keyword Trend Analizi · Google Trends API Alpha*). The live run shows
+"Google Trend Keşfi" and "Google Trends API" as separate stages. API:
+`GET /internal/integrations/google_trends_bigquery/discovery` (DB-only)
+and `POST /internal/integrations/google_trends_bigquery/sync` (queues the
+task through the producer seam).
+
+**When alpha access arrives:** set `CONTENTOS_GOOGLE_TRENDS_API_KEY`; both
+observations then sit side by side on the same opportunity — keyword
+interest from the API, top/rising discovery from the dataset — with no
+code change.
 
 ## Cost control
 

@@ -151,6 +151,17 @@ class SemrushProvider(ProviderSupport):
                 )
             )
         except ProviderError as error:
+            if error.error_class.endswith("_http_400"):
+                # The units endpoint answers 400 {"errors":[{"field":"key",...}]}
+                # for a key it does not recognise — typically a personal
+                # access token (semrtkn-pat-…) instead of the Analytics API key.
+                return self.status(
+                    ProviderState.ACCESS_REQUIRED,
+                    "Semrush anahtarı reddedildi: Analytics API v3 için Semrush hesabında "
+                    "Profile → Subscription info → API bölümündeki API anahtarını kullanın; "
+                    "kişisel erişim belirteci (semrtkn-pat-…) bu API'de geçerli değildir.",
+                    error_class=error.error_class,
+                )
             return self.status_from_error(error)
         api_error = semrush_error(body)
         if api_error is not None:

@@ -18,6 +18,7 @@ from contentos.worker.performance_tasks import register_performance_tasks
 from contentos.worker.research_tasks import register_research_pipeline_tasks
 from contentos.worker.runtime import WorkerRuntime
 from contentos.worker.signals import install_worker_signal_handlers
+from contentos.worker.trend_discovery_tasks import register_trend_discovery_tasks
 
 
 def create_worker_app(settings: Settings | None = None) -> Celery:
@@ -36,6 +37,7 @@ def create_worker_app(settings: Settings | None = None) -> Celery:
     register_intake_tasks(app, runtime)
     register_autopilot_tasks(app, runtime)
     register_performance_tasks(app, runtime)
+    register_trend_discovery_tasks(app, runtime)
     _arm_autopilot_on_ready(app)
     return app
 

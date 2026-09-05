@@ -26,6 +26,7 @@ PROVIDER_ORDER = [
     "google_search_console",
     "google_analytics",
     "google_trends",
+    "google_trends_bigquery",
     "pinterest_trends",
 ]
 

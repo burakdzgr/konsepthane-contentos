@@ -87,6 +87,44 @@ class PinterestKeywordTrend:
     provider: str = "pinterest_trends"
 
 
+@dataclass(frozen=True, slots=True)
+class TrendTermRegion:
+    """One region's (province's) row for a term in Google's top/rising sets."""
+
+    region_code: str | None
+    region_name: str | None
+    rank: int | None
+    latest_score: float | None
+    percent_gain: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class TrendTermObservation:
+    """A term Google listed in a country's top or rising set on one refresh
+    date (BigQuery Public Dataset). Ranks and scores are what the dataset
+    supplies; nothing here is a search volume, and a term absent from the
+    set is simply not observed."""
+
+    term: str
+    country_code: str
+    refresh_date: date
+    trend_type: str  # top | rising
+    rank: int | None
+    latest_score: float | None
+    peak_score: float | None
+    percent_gain: float | None
+    region_count: int
+    regions: tuple[TrendTermRegion, ...]
+    first_week: date | None
+    last_week: date | None
+    weeks_with_score: int | None
+    dataset: str
+    table: str
+    query_version: str
+    observed_at: datetime
+    provider: str = "google_trends_bigquery"
+
+
 def trend_direction(values: list[float], *, window: int = 12) -> str:
     """rising|stable|falling from the last `window` points vs the previous
     `window`; `unknown` when fewer than two full windows exist. Relative

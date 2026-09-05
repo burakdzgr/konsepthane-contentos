@@ -21,6 +21,7 @@ class ProviderName(StrEnum):
     GOOGLE_SEARCH_CONSOLE = "google_search_console"
     GOOGLE_ANALYTICS = "google_analytics"
     GOOGLE_TRENDS = "google_trends"
+    GOOGLE_TRENDS_BIGQUERY = "google_trends_bigquery"
     PINTEREST_TRENDS = "pinterest_trends"
 
 
@@ -30,6 +31,7 @@ DISPLAY_NAMES: dict[ProviderName, str] = {
     ProviderName.GOOGLE_SEARCH_CONSOLE: "Google Search Console",
     ProviderName.GOOGLE_ANALYTICS: "Google Analytics 4",
     ProviderName.GOOGLE_TRENDS: "Google Trends",
+    ProviderName.GOOGLE_TRENDS_BIGQUERY: "Google Trend Keşfi (BigQuery)",
     ProviderName.PINTEREST_TRENDS: "Pinterest Trends",
 }
 
@@ -46,6 +48,7 @@ REQUIRED_ENV: dict[ProviderName, tuple[str, ...]] = {
         "CONTENTOS_GA4_PROPERTY_ID",
     ),
     ProviderName.GOOGLE_TRENDS: ("CONTENTOS_GOOGLE_TRENDS_API_KEY",),
+    ProviderName.GOOGLE_TRENDS_BIGQUERY: ("CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON",),
     ProviderName.PINTEREST_TRENDS: ("CONTENTOS_PINTEREST_ACCESS_TOKEN",),
 }
 
@@ -69,6 +72,14 @@ OPTIONAL_ENV: dict[ProviderName, tuple[str, ...]] = {
         "CONTENTOS_GOOGLE_TRENDS_DAILY_BUDGET",
         "CONTENTOS_GOOGLE_TRENDS_CACHE_HOURS",
     ),
+    ProviderName.GOOGLE_TRENDS_BIGQUERY: (
+        "CONTENTOS_GOOGLE_CLOUD_PROJECT_ID",
+        "CONTENTOS_GOOGLE_TRENDS_BIGQUERY_COUNTRY",
+        "CONTENTOS_GOOGLE_TRENDS_BIGQUERY_DAILY_BUDGET",
+        "CONTENTOS_GOOGLE_TRENDS_BIGQUERY_CACHE_HOURS",
+        "CONTENTOS_GOOGLE_TRENDS_BIGQUERY_MAX_BYTES_BILLED",
+        "CONTENTOS_GOOGLE_TRENDS_BIGQUERY_SYNC_HOUR_UTC",
+    ),
     ProviderName.PINTEREST_TRENDS: (
         "CONTENTOS_PINTEREST_REGION",
         "CONTENTOS_PINTEREST_DAILY_BUDGET",
@@ -88,7 +99,15 @@ PURPOSES: dict[ProviderName, str] = {
     ProviderName.GOOGLE_ANALYTICS: (
         "Site içi davranış: kullanıcı, oturum, görüntüleme, etkileşim."
     ),
-    ProviderName.GOOGLE_TRENDS: ("Göreli ilgi eğilimi (0-100 ölçeği); mutlak hacim değildir."),
+    ProviderName.GOOGLE_TRENDS: (
+        "Derin anahtar kelime trend analizi: seçilen bir ifadenin göreli ilgi eğilimi "
+        "(0-100 ölçeği); mutlak hacim değildir. Resmi API (alfa) erişimi gerekir."
+    ),
+    ProviderName.GOOGLE_TRENDS_BIGQUERY: (
+        "Güncel trend keşfi: Google'ın yayınladığı günlük Türkiye En Çok Aranan / "
+        "Yükselen sorgu setleri (resmi BigQuery Public Dataset). Rastgele anahtar "
+        "kelime hacmi vermez; listede olmamak düşük trend demek değildir."
+    ),
     ProviderName.PINTEREST_TRENDS: (
         "Görsel/fikir eğilimleri: Pinterest'te yükselen anahtar kelimeler."
     ),

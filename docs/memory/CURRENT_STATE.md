@@ -460,6 +460,45 @@ that state). The rule now lives in ONE place:
   work-item detail render ONLY Turkish labels; backend values remain the
   wire/filter contract. An untranslated value is humanized, never hidden.
 
+## Google Trends — BigQuery Public Dataset trend discovery (2026-09-05)
+
+While the official Google Trends API (alpha) stays `access_required`, the
+trend layer is no longer blind: `GoogleTrendsBigQueryProvider`
+(`contentos/integrations/google_trends_bigquery.py`, provider
+`google_trends_bigquery`) reads Türkiye's daily Top / Rising search-term
+sets from the official public dataset `bigquery-public-data.google_trends`
+through the BigQuery REST API with the same service-account key as Search
+Console/GA4 (`BigQuery Job User` only; project id from the key or
+`CONTENTOS_GOOGLE_CLOUD_PROJECT_ID`). Cost-safe by construction:
+partition-bound (`refresh_date` literal / 14-day probe), `country_code`
+parameter, needed columns only, per-(term, region) grouping with LIMIT,
+`maximumBytesBilled`, BigQuery query cache, shared response cache + daily
+budget (default 20), no free-form SQL. Semantics are kept separate from the
+API provider: the dataset never yields keyword volume and never proves a
+keyword is not trending — absence is `not_observed`, never "low".
+
+Daily Celery beat task `contentos.trends.sync_google_trends_bigquery`
+(`worker/trend_discovery_tasks.py`, idempotent per refresh date, bounded
+retries on transient failures): observations → `search_signals` (`trend`,
+`as_of` = refresh date, full dataset provenance, regions kept under one
+country observation) → relevance matching (`intelligence/trend_discovery.py`:
+strategy keywords/clusters/audiences OR the Konsepthane domain vocabulary,
+strategy as priority not filter) → `intelligence_signals` family `trend`
+with ContentOS-owned recurring / first-seen history. Opportunity enrichment
+adds `trend_discovery` (observed / not_observed / unknown, term, rank,
+gain, refresh date, provider freshness) next to the untouched Google Trends
+API direction; the read model exposes it as
+`search_intelligence.google_trends_discovery`; the rationale names it
+("Google Trend Keşfi (BigQuery): 'doğum günü' Türkiye yükselen sorgularında
+gözlendi (2026-09-03, sıra 2)"). API:
+`GET/POST /internal/integrations/google_trends_bigquery/{discovery,sync}`.
+Admin: `/entegrasyonlar` groups "Google Trends" into *Güncel Trend Keşfi ·
+Google BigQuery* (last refresh, counts, relevant terms, "Şimdi Senkronize
+Et") and *Derin Keyword Trend Analizi · Google Trends API Alpha*; the live
+run lists "Google Trend Keşfi" and "Google Trends API" as separate stages;
+the opportunity card shows "Google Trend Keşfi". No new tables, no
+migration. Docs: `docs/INTEGRATIONS.md` (dataset vs API section).
+
 ## Idea & Content Intelligence Engine — closed loop (2026-09-05)
 
 ContentOS now implements Discover → Understand → Evaluate → Produce →

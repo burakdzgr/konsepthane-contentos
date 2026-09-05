@@ -8,6 +8,7 @@ from integrations_fixtures import (
     Recorder,
     assert_no_secrets,
     integration_settings,
+    json_response,
     text_response,
     timeout_raiser,
 )
@@ -195,3 +196,24 @@ def test_unconfigured_call_raises_typed_not_configured() -> None:
         semrush.keyword_overview(["x"])
     assert info.value.kind is ProviderState.NOT_CONFIGURED
     assert semrush.name is ProviderName.SEMRUSH
+
+
+def test_rejected_key_on_the_units_endpoint_is_access_required() -> None:
+    recorder = Recorder(
+        lambda request: json_response(
+            400, {"errors": [{"field": "key", "message": "invalid api key: semrtkn-pat-x"}]}
+        )
+    )
+    provider = SemrushProvider(
+        integration_settings(semrush_api_key=FAKE_SEMRUSH_KEY),
+        http_client=recorder.client(),
+        clock=FixedClock(),
+        sleep=recorder.sleep,
+    )
+
+    status = provider.test_connection()
+
+    assert status.state is ProviderState.ACCESS_REQUIRED
+    assert status.last_error_class == "semrush_http_400"
+    assert "Subscription info" in status.detail
+    assert "semrtkn-pat-x" not in status.detail

@@ -93,6 +93,14 @@ export function intelligenceView(
       search_volume: null,
       keyword_difficulty: null,
       google_trends_direction: "unknown",
+      google_trends_discovery: {
+        state: "unknown",
+        term: null,
+        trend_type: null,
+        refresh_date: null,
+        rank: null,
+        percent_gain: null,
+      },
       pinterest_trend_band: "unknown",
       competition_band: "unknown",
       provider_freshness: {

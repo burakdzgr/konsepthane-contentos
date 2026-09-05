@@ -321,7 +321,8 @@ describe("Run detail page", () => {
       "Pazar sinyali",
       "Strateji eşleşmesi",
       "Semrush",
-      "Google Trends",
+      "Google Trend Keşfi",
+      "Google Trends API",
       "Pinterest Trends",
       "Konsepthane geçmiş verisi",
       "Fırsat",
@@ -351,7 +352,10 @@ describe("Run detail page", () => {
     // Provider stages from the integrations board with freshness.
     expect(detailOf("Semrush")).toBe("2 gün önce");
     expect(stateOf("Semrush")).toBe("done");
-    expect(detailOf("Google Trends")).toBe("Yapılandırılmadı");
+    expect(detailOf("Google Trends API")).toBe("Yapılandırılmadı");
+    // The public-dataset discovery is its own stage: absent from the board
+    // here, so it says so instead of pretending Google Trends is "down".
+    expect(detailOf("Google Trend Keşfi")).toBe("Yapılandırılmadı");
     expect(detailOf("Pinterest Trends")).toBe("API erişimi bekleniyor");
     expect(stateOf("Pinterest Trends")).toBe("unavailable");
     // Search Console data older than twice its 12h cache TTL is "eski veri".
@@ -371,8 +375,9 @@ describe("Run detail page", () => {
 
     const list = screen.getByRole("list", { name: "Çalışma aşamaları" });
     expect(within(list).getAllByText("sinyal özeti okunamadı").length).toBe(3);
+    // Semrush, Google Trend Keşfi, Google Trends API, Pinterest, history.
     expect(within(list).getAllByText("sağlayıcı durumu okunamadı").length).toBe(
-      4,
+      5,
     );
     expect(within(list).queryByText(/%|100/)).toBeNull();
   });

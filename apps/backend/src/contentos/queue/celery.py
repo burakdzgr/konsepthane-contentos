@@ -34,9 +34,11 @@ def create_celery_app(settings: Settings) -> Celery:
         # autopilot keeps its self-re-arming sweep. Lazy import: the worker
         # module must not be pulled in by every producer.
         from contentos.worker.performance_tasks import performance_beat_schedule
+        from contentos.worker.trend_discovery_tasks import trend_discovery_beat_schedule
 
         app.conf.beat_schedule = {
             **dict(app.conf.beat_schedule or {}),
             **performance_beat_schedule(settings),
+            **trend_discovery_beat_schedule(settings),
         }
     return app

@@ -272,6 +272,13 @@ const LABELS: Record<string, string> = {
   not_requested: "Bu süreçte sorgulanmadı",
   stored: "Kayıtlı gözlem",
   no_data: "Veri yok",
+  // Google Trends public dataset discovery (BigQuery)
+  observed: "Gözlendi",
+  not_observed: "Gözlenmedi",
+  top: "En çok arananlar",
+  google_trends_bigquery: "Google Trend Keşfi (BigQuery)",
+  strategy: "Strateji eşleşmesi",
+  domain: "Konsepthane alanı",
   // Dashboard activity kinds
   workflow: "İş akışı",
   publication: "Yayın",

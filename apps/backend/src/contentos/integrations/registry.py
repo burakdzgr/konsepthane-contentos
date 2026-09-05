@@ -28,6 +28,7 @@ from contentos.integrations.enums import DISPLAY_NAMES, ProviderName, ProviderSt
 from contentos.integrations.google_analytics import GoogleAnalyticsProvider
 from contentos.integrations.google_search_console import GoogleSearchConsoleProvider
 from contentos.integrations.google_trends import GoogleTrendsProvider
+from contentos.integrations.google_trends_bigquery import GoogleTrendsBigQueryProvider
 from contentos.integrations.http import Clock, Sleep, utc_now
 from contentos.integrations.models import IntegrationStatusRecord
 from contentos.integrations.pinterest_trends import PinterestTrendsProvider
@@ -92,6 +93,7 @@ class IntegrationRegistry:
                 build(GoogleSearchConsoleProvider),
                 build(GoogleAnalyticsProvider),
                 build(GoogleTrendsProvider),
+                build(GoogleTrendsBigQueryProvider),
                 build(PinterestTrendsProvider),
             ]
         self._providers: dict[ProviderName, IntegrationProvider] = {

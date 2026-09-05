@@ -56,6 +56,26 @@ const EVIDENCE_LABELS: Record<string, string> = {
 
 const numberFormat = new Intl.NumberFormat("tr-TR");
 
+// Google's public top/rising sets: "observed" names the set and rank; an
+// absent term is "gözlenmedi", never "düşük" — the sets hold ~25 terms a day.
+export function discoveryLabel(
+  entry: IntelligenceView["search_intelligence"]["google_trends_discovery"],
+): string {
+  if (entry.state === "observed") {
+    const where =
+      entry.trend_type === "rising"
+        ? "Yükselen sorgularda gözlendi"
+        : "En çok arananlarda gözlendi";
+    const rank = entry.rank === null ? "" : ` · sıra ${entry.rank}`;
+    const term = entry.term === null ? "" : ` (${entry.term})`;
+    return `${where}${rank}${term}`;
+  }
+  if (entry.state === "not_observed") {
+    return "Günlük listelerde gözlenmedi";
+  }
+  return "Bilinmiyor";
+}
+
 // "2 gün önce", "2 gün önce (kayıtlı)", "Yapılandırılmadı", "API erişimi
 // gerekli", ... — the provider state and observation time behind a band,
 // never a fabricated timestamp. Data older than twice the provider's cache
@@ -189,6 +209,16 @@ export function OpportunityIntelligence({
                 now,
                 "google_trends",
               )}
+            />
+            <Fact
+              name="Google Trend Keşfi"
+              value={discoveryLabel(search.google_trends_discovery)}
+              note={providerFreshness(
+                freshness.google_trends_bigquery,
+                now,
+                "google_trends_bigquery",
+              )}
+              title="Google'ın yayınladığı günlük Türkiye En Çok Aranan / Yükselen sorgu setleri (BigQuery Public Dataset). Listede olmamak düşük trend demek değildir."
             />
             <Fact
               name="Pinterest Trend"
