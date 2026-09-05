@@ -623,6 +623,12 @@ class TestNoGenericEndpoints:
             "/internal/editorial/work-items/{work_item_id}/approve",
             "/internal/editorial/work-items/{work_item_id}/revoke-approval",
             "/internal/editorial/work-items/{work_item_id}/resolve-approval-expired",
+            # Performance loop (agent E): approving a REFRESH opportunity is a
+            # named operator decision that moves an already-published item
+            # onto the canonical rework route (MEASURING -> REFRESH_CANDIDATE).
+            # It is not a publication approval and cannot publish anything;
+            # test_performance_api.py proves the state and the attempt count.
+            "/internal/performance/refresh-opportunities/{refresh_id}/approve",
         }
         # Phase 7 P2: scheduling exists ONLY as the governed operator
         # command gated on a current approval + a durable package. The

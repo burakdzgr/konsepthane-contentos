@@ -24,8 +24,13 @@ import {
   type IntakeStageView,
 } from "@/lib/intake-api";
 import { STATE_LABELS_TR } from "@/lib/motor-plan";
+import {
+  fetchRefreshOpportunities,
+  fetchStrategySuggestions,
+} from "@/lib/performance-api";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { controlIntakeRunAction } from "../calisma/actions";
+import { RECOMMENDATION } from "../firsatlar/intelligence";
 import { AppIcon } from "../icons";
 import { ControlNotice } from "../notices";
 import { pauseIntakeAction, resumeIntakeAction } from "./actions";
@@ -40,17 +45,17 @@ const KONTROL_NOTICES: Record<string, string> = {
 };
 
 const AGENT_NAMES: Record<string, string> = {
-  research: "Research Agent",
-  opportunity: "Opportunity Agent",
-  ideas: "Idea Agent",
-  evidence: "Evidence Agent",
-  intent: "SEO / Niyet Agent",
-  brief: "Brief Agent",
-  writer: "Writer Agent",
-  editor: "Editor Agent",
-  qa: "QA Agent",
-  media: "Media Agent",
-  publisher: "Publisher Agent",
+  research: "Araştırma ajanı",
+  opportunity: "Fırsat ajanı",
+  ideas: "Fikir ajanı",
+  evidence: "Kanıt ajanı",
+  intent: "SEO / Niyet ajanı",
+  brief: "Brief ajanı",
+  writer: "Yazar ajanı",
+  editor: "Editör ajanı",
+  qa: "Kalite ajanı",
+  media: "Medya ajanı",
+  publisher: "Yayın ajanı",
 };
 
 const EVENT_LABELS: Record<string, string> = {
@@ -65,12 +70,12 @@ const EVENT_LABELS: Record<string, string> = {
   discovery_retrying: "Keşif yeniden deneniyor",
   prefilter_progress: "Ön eleme devam ediyor",
   prefilter_completed: "Ön eleme tamamlandı",
-  fetch_batch_dispatched: "Fetch partisi kuyruğa aktarıldı",
-  fetch_item_dispatched: "Sayfa fetch kuyruğuna aktarıldı",
+  fetch_batch_dispatched: "Getirme partisi kuyruğa aktarıldı",
+  fetch_item_dispatched: "Sayfa getirme kuyruğuna aktarıldı",
   fetch_progress: "Sayfalar indiriliyor",
-  fetch_budget_exhausted: "Günlük fetch bütçesi doldu",
-  fetch_cap_reached: "Fetch sınırına ulaşıldı",
-  fetch_completed: "Fetch aşaması tamamlandı",
+  fetch_budget_exhausted: "Günlük getirme bütçesi doldu",
+  fetch_cap_reached: "Getirme sınırına ulaşıldı",
+  fetch_completed: "Getirme aşaması tamamlandı",
   promotion_dispatched: "İçerik fırsata yükseltiliyor",
   promotion_cap_reached: "Fırsat sınırına ulaşıldı",
   operational_pause: "Operasyonel durdurma devrede",
@@ -80,9 +85,9 @@ const EVENT_LABELS: Record<string, string> = {
 const STAGE_EVENT_LABELS: Record<string, string> = {
   discovery: "KEŞİF",
   prefilter: "ÖN ELEME",
-  fetch: "FETCH",
-  normalize: "NORMALİZE",
-  duplicate: "ANALİZ",
+  fetch: "GETİRME",
+  normalize: "ANLAMA",
+  duplicate: "GRUPLAMA",
   promote: "FIRSAT",
 };
 
@@ -159,7 +164,7 @@ function ConsoleHeader({ run }: { run: IntakeRunView | null }) {
           <h1 id="kontrol-title">
             {run === null
               ? "ContentOS Motoru"
-              : `${run.source_name} — Research Run #${run.id.slice(0, 4)}`}
+              : `${run.source_name} — Araştırma Çalışması #${run.id.slice(0, 4)}`}
           </h1>
           {run !== null && (
             <span
@@ -172,11 +177,7 @@ function ConsoleHeader({ run }: { run: IntakeRunView | null }) {
                     : "idle"
               }
             >
-              {run.status === "running"
-                ? "ÇALIŞIYOR"
-                : run.status === "paused"
-                  ? "DURAKLATILDI"
-                  : run.status.toLocaleUpperCase("tr-TR")}
+              {trLabel(run.status).toLocaleUpperCase("tr-TR")}
             </span>
           )}
           {live && run !== null && (
@@ -283,7 +284,7 @@ function PipelineStrip({
     },
     {
       key: "fetch",
-      label: "Fetch",
+      label: "Getirme",
       count:
         run === null
           ? formatCount(summary.research.discovery_states.fetched ?? 0)
@@ -293,14 +294,14 @@ function PipelineStrip({
     },
     {
       key: "normalize",
-      label: "Normalize",
+      label: "Anlama",
       count: formatCount(detail?.chain.normalized_succeeded ?? 0),
       note: "tamamlandı",
       state: stageFromDetail(detail, "normalize")?.state ?? "pending",
     },
     {
       key: "analysis",
-      label: "Analiz",
+      label: "Gruplama",
       count: formatCount(detail?.chain.duplicates_evaluated ?? 0),
       note: "inceleniyor",
       state: stageFromDetail(detail, "duplicate")?.state ?? "pending",
@@ -499,7 +500,7 @@ function KpiStrip({
         tone: "ok",
       },
       {
-        label: "Fetch Kuyruğu",
+        label: "Getirme Kuyruğu",
         value: formatCount(
           run === null
             ? (summary.queue.depth ?? 0)
@@ -511,7 +512,7 @@ function KpiStrip({
         note: summary.queue.depth === null ? "anlık ölçüm yok" : "bekleyen",
       },
       {
-        label: "Fetch Edilen",
+        label: "Getirilen Sayfa",
         value: formatCount(
           run?.fetched ?? summary.research.discovery_states.fetched ?? 0,
         ),
@@ -519,15 +520,15 @@ function KpiStrip({
         tone: "ok",
       },
       {
-        label: "Normalize Edilen",
+        label: "Anlaşılan İçerik",
         value: formatCount(detail?.chain.normalized_succeeded ?? 0),
         note: `${detail?.chain.normalized_failed ?? 0} hata`,
         tone: "ok",
       },
       {
-        label: "Analiz Edilen",
+        label: "Gruplanan İçerik",
         value: String(detail?.chain.duplicates_evaluated ?? 0),
-        note: "kopya analizi",
+        note: "benzer içerik analizi",
       },
       {
         label: "Uygun Bulunan",
@@ -635,8 +636,13 @@ function CurrentContent({
                   <dd>{STATE_LABELS_TR[row.current_state]}</dd>
                 </div>
                 <div>
-                  <dt>Skor</dt>
-                  <dd>{row.score_overall_value?.toFixed(2) ?? "—"}</dd>
+                  <dt>Sistem önerisi</dt>
+                  <dd>
+                    {row.recommendation !== null
+                      ? (RECOMMENDATION[row.recommendation]?.label ??
+                        trLabel(row.recommendation))
+                      : "Değerlendiriliyor"}
+                  </dd>
                 </div>
               </dl>
             )}
@@ -659,12 +665,12 @@ function agentStatus(
   agent: AgentView,
   enginePaused: boolean,
 ): { label: string; tone: string } {
-  if (enginePaused) return { label: "PAUSED", tone: "bad" };
-  if (agent.is_paused) return { label: "PAUSED", tone: "warn" };
+  if (enginePaused) return { label: "DURDURULDU", tone: "bad" };
+  if (agent.is_paused) return { label: "DURAKLATILDI", tone: "warn" };
   if (agent.last_attempt !== null && agent.last_attempt.status !== "succeeded")
-    return { label: "ERROR", tone: "bad" };
-  if (agent.attempts_today > 0) return { label: "RUNNING", tone: "ok" };
-  return { label: "IDLE", tone: "idle" };
+    return { label: "HATA", tone: "bad" };
+  if (agent.attempts_today > 0) return { label: "AKTİF", tone: "ok" };
+  return { label: "BOŞTA", tone: "idle" };
 }
 
 function AgentRail({
@@ -791,25 +797,47 @@ function EngineControl({
   );
 }
 
-function AttentionPanel({ summary }: { summary: DashboardSummary }) {
-  const items = [
+// The four genuine human gates and nothing else: production decision,
+// publication approval, refresh decision, strategy suggestion. Mechanical
+// states (blocked, expired) are facts for the health card, not decisions.
+function AttentionPanel({
+  summary,
+  refreshCount,
+  suggestionCount,
+}: {
+  summary: DashboardSummary;
+  refreshCount: number | null;
+  suggestionCount: number | null;
+}) {
+  const items: Array<{
+    label: string;
+    note: string;
+    count: number | null;
+    href: string;
+  }> = [
     {
-      label: "İçerik Üretim Kararı",
-      note: "Fırsat için editoryal karar bekleniyor",
+      label: "Üretim kararı",
+      note: "Bu fikirden içerik üretilsin mi?",
       count: summary.attention.production_decisions,
       href: "/firsatlar",
     },
     {
-      label: "Nihai Yayın Onayı",
-      note: "Taslak yayın için onay bekliyor",
+      label: "Yayın onayı",
+      note: "Hazırlanan paket yayınlansın mı?",
       count: summary.attention.awaiting_human_review,
-      href: "/editorial?state=awaiting_human_review",
+      href: "/firsatlar#yayin-onayi",
     },
     {
-      label: "Bloke içerik",
-      note: "Çözüm ve yönlendirme bekleniyor",
-      count: stateCount(summary, "blocked"),
-      href: "/editorial?state=blocked",
+      label: "Güncelleme kararı",
+      note: "Düşen içerik yenilensin mi?",
+      count: refreshCount,
+      href: "/firsatlar#guncelleme",
+    },
+    {
+      label: "Strateji önerisi",
+      note: "Performans verisinden gelen öneri stratejiye girsin mi?",
+      count: suggestionCount,
+      href: "/firsatlar#strateji",
     },
   ];
   return (
@@ -821,11 +849,16 @@ function AttentionPanel({ summary }: { summary: DashboardSummary }) {
       <ul className="console-decision-list">
         {items.map((item) => (
           <li key={item.label}>
-            <Link href={item.href} aria-label={`${item.label} ${item.count}`}>
-              <span className="console-count-orb">{item.count}</span>
+            <Link
+              href={item.href}
+              aria-label={`${item.label} ${item.count ?? "okunamadı"}`}
+            >
+              <span className="console-count-orb">{item.count ?? "—"}</span>
               <span>
                 <strong>{item.label}</strong>
-                <small>{item.note}</small>
+                <small>
+                  {item.count === null ? "sayı şu anda okunamıyor" : item.note}
+                </small>
               </span>
               <span aria-hidden="true">›</span>
             </Link>
@@ -840,12 +873,12 @@ function TopOpportunities({ rows }: { rows: WorkQueueRow[] | null }) {
   return (
     <section
       className="console-card console-bottom-card"
-      aria-label="Son fırsatlar"
+      aria-label="Öne çıkan fikirler"
     >
-      <h2>Son Fırsatlar</h2>
-      {rows === null && <Unavailable>Fırsatlar okunamıyor.</Unavailable>}
+      <h2>Öne Çıkan Fikirler</h2>
+      {rows === null && <Unavailable>Fikirler okunamıyor.</Unavailable>}
       {rows !== null && rows.length === 0 && (
-        <Unavailable>Açık fırsat yok.</Unavailable>
+        <Unavailable>Değerlendirilen fikir yok.</Unavailable>
       )}
       {rows !== null && rows.length > 0 && (
         <ul className="console-compact-list">
@@ -856,14 +889,19 @@ function TopOpportunities({ rows }: { rows: WorkQueueRow[] | null }) {
                   <strong>{row.title_working_label}</strong>
                   <small>{row.topic_summary ?? "İçerik fırsatı"}</small>
                 </span>
-                <span>{row.score_overall_value?.toFixed(2) ?? "—"}</span>
+                <span>
+                  {row.recommendation !== null
+                    ? (RECOMMENDATION[row.recommendation]?.label ??
+                      trLabel(row.recommendation))
+                    : "Değerlendiriliyor"}
+                </span>
               </Link>
             </li>
           ))}
         </ul>
       )}
-      <Link className="console-card-link" href="/firsatlar">
-        Tüm fırsatları gör →
+      <Link className="console-card-link" href="/fikirler">
+        Tüm fikirleri gör →
       </Link>
     </section>
   );
@@ -917,11 +955,12 @@ function SystemHealth({ summary }: { summary: DashboardSummary }) {
     [
       "AI servisleri",
       summary.ai.text_provider_configured
-        ? `${summary.ai.attempts_today} deneme`
-        : "Yapılandırılmamış (OpenAI anahtarı yok)",
+        ? `${summary.ai.provider === "subcontractor" ? "Subcontractor gateway" : "OpenAI"} · ${summary.ai.attempts_today} deneme`
+        : `Yapılandırılmadı (${summary.ai.provider === "subcontractor" ? "gateway adresi/anahtarı yok" : "OpenAI anahtarı yok"})`,
     ],
     ["Yayın paketleri", String(summary.publishing.packages_total)],
   ];
+  const blocked = stateCount(summary, "blocked");
   return (
     <section
       className="console-card console-bottom-card"
@@ -935,6 +974,16 @@ function SystemHealth({ summary }: { summary: DashboardSummary }) {
             <dd>{value}</dd>
           </div>
         ))}
+        <div>
+          <dt>Engellenen içerik</dt>
+          <dd>
+            {blocked > 0 ? (
+              <Link href="/editorial?state=blocked">{blocked} içerik</Link>
+            ) : (
+              "yok"
+            )}
+          </dd>
+        </div>
       </dl>
       {budget !== null && (
         <div className="console-budget">
@@ -994,6 +1043,24 @@ export default async function KontrolPage({
   const detailResult =
     focusRun === null ? null : await fetchIntakeRunDetail(focusRun.id);
   const detail = detailResult?.kind === "ok" ? detailResult.data : null;
+  // Refresh / strategy counts come with the summary on current backends;
+  // an older backend omits them, so read the proposed lists directly.
+  const needsPerformance =
+    summary !== null &&
+    (summary.attention.refresh_decisions === undefined ||
+      summary.attention.strategy_suggestions === undefined);
+  const [refreshResult, suggestionResult] = needsPerformance
+    ? await Promise.all([
+        fetchRefreshOpportunities("proposed"),
+        fetchStrategySuggestions("proposed"),
+      ])
+    : [null, null];
+  const refreshCount =
+    summary?.attention.refresh_decisions ??
+    (refreshResult?.kind === "ok" ? refreshResult.data.length : null);
+  const suggestionCount =
+    summary?.attention.strategy_suggestions ??
+    (suggestionResult?.kind === "ok" ? suggestionResult.data.length : null);
   const topOpportunities =
     opportunitiesResult.kind === "ok"
       ? opportunitiesResult.data.items
@@ -1047,7 +1114,11 @@ export default async function KontrolPage({
             </aside>
           </div>
           <div className="console-bottom-grid">
-            <AttentionPanel summary={summary} />
+            <AttentionPanel
+              summary={summary}
+              refreshCount={refreshCount}
+              suggestionCount={suggestionCount}
+            />
             <TopOpportunities rows={topOpportunities} />
             <PublicationQueue rows={publications} />
             <SystemHealth summary={summary} />

@@ -153,6 +153,27 @@ def _dispatched_item_ids(session: Session, run_id: uuid.UUID) -> list[uuid.UUID]
     return ids
 
 
+def run_document_ids(session: Session, run_id: uuid.UUID) -> list[uuid.UUID] | None:
+    """Normalized documents produced by one run's dispatched fetches, or
+    ``None`` when no such run exists. Shared by the run-scoped intelligence
+    summary so "signals for this run" means exactly the run's own documents."""
+    from contentos.fetching.snapshots import FetchSnapshot
+    from contentos.normalization.models import NormalizedDocument
+
+    if session.get(IntakeRun, run_id) is None:
+        return None
+    item_ids = _dispatched_item_ids(session, run_id)
+    if not item_ids:
+        return []
+    return list(
+        session.scalars(
+            select(NormalizedDocument.id)
+            .join(FetchSnapshot, FetchSnapshot.id == NormalizedDocument.fetch_snapshot_id)
+            .where(FetchSnapshot.discovery_item_id.in_(item_ids))
+        ).all()
+    )
+
+
 def _chain_view(session: Session, run_id: uuid.UUID) -> IntakeChainView:
     from contentos.duplicates.models import DuplicateDecision
     from contentos.fetching.snapshots import FetchSnapshot

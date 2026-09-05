@@ -39,6 +39,7 @@ from contentos.duplicates.service import DuplicateDecisionService
 from contentos.fetching.models import FetchOutcome, RetryClassification
 from contentos.fetching.snapshot_repository import FetchSnapshotRepository
 from contentos.fetching.snapshot_service import FetchSnapshotService
+from contentos.intelligence.service import IntelligenceSignalService
 from contentos.normalization.enums import NormalizationStatus
 from contentos.normalization.pipeline import NormalizationPipeline
 from contentos.research.extractor import DeterministicEvidenceExtractor
@@ -308,6 +309,9 @@ def register_research_pipeline_tasks(
             document = pipeline.normalize_snapshot(parsed_id)
             session.commit()
             if document.normalization_status is NormalizationStatus.SUCCEEDED:
+                # Role-aware intelligence extraction rides on the committed
+                # document; it is fail-safe and never fails normalization.
+                _extract_intelligence_signals(session, document.id)
                 next_task = dispatch_next(self, EVALUATE_DUPLICATE_TASK, str(document.id))
                 return _summary(
                     self,
@@ -376,6 +380,33 @@ def register_research_pipeline_tasks(
     app.task(name=NORMALIZE_FETCH_TASK, **common_options)(normalize_fetch)
     app.task(name=EVALUATE_DUPLICATE_TASK, **common_options)(evaluate_duplicate)
     app.task(name=EXTRACT_RESEARCH_EVIDENCE_TASK, **common_options)(extract_research_evidence)
+
+
+def _extract_intelligence_signals(session: Session, document_id: uuid.UUID) -> None:
+    """Best-effort signal extraction after the normalization commit.
+
+    Any failure is logged and rolled back; the research pipeline continues
+    as if nothing happened (a later re-run is idempotent).
+    """
+    try:
+        result = IntelligenceSignalService(session).extract_for_document(document_id)
+        session.commit()
+    except Exception as error:  # noqa: BLE001 - never fail normalization
+        session.rollback()
+        _logger.warning(
+            "intelligence_extraction_failed",
+            normalized_document_id=str(document_id),
+            error_type=type(error).__name__,
+        )
+        return
+    _logger.info(
+        "intelligence_extraction_completed",
+        normalized_document_id=str(document_id),
+        created=result.created,
+        updated=result.updated,
+        families=[family.value for family in result.families],
+        skipped_reason=result.skipped_reason,
+    )
 
 
 def _summary(task: Any, status: str, **fields: Any) -> dict[str, Any]:

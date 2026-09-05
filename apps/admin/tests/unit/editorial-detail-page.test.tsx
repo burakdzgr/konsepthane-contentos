@@ -191,6 +191,47 @@ describe("Editorial detail page", () => {
     expect(screen.getByText("input_tokens: 100")).toBeTruthy();
   });
 
+  it("shows the same Opportunity Intelligence sections on the detail", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail(),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    for (const name of [
+      "İçerik Değeri",
+      "Arama İstihbaratı",
+      "Konsepthane Verisi",
+      "Araştırma",
+    ]) {
+      expect(screen.getByRole("region", { name })).toBeTruthy();
+    }
+    const search = screen.getByRole("region", { name: "Arama İstihbaratı" });
+    expect(search.textContent).toContain("Yapılandırılmadı");
+    expect(search.textContent).toContain("API erişimi gerekli");
+    expect(screen.getByText("Sistem Önerisi")).toBeTruthy();
+    expect(screen.getByText(/Neden\?/)).toBeTruthy();
+    expect(screen.getByText(/inspiration-quality\/5/)).toBeTruthy();
+    expect(screen.queryByText(/not_configured|access_required/)).toBeNull();
+  });
+
+  it("says so when an opportunity was never evaluated", async () => {
+    detailMock.mockResolvedValue({
+      kind: "ok",
+      data: workItemDetail({ inspiration: null }),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByText(/Fırsat istihbaratı henüz hesaplanmadı/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Araştırma" })).toBeNull();
+  });
+
   it("keeps accept-for-drafting wording distinct from publication", async () => {
     detailMock.mockResolvedValue({
       kind: "ok",
@@ -215,6 +256,7 @@ describe("Editorial detail page", () => {
       kind: "ok",
       data: {
         ai: {
+          provider: "subcontractor",
           text_provider_configured: false,
           image_provider_configured: false,
         },
@@ -241,7 +283,7 @@ describe("Editorial detail page", () => {
       screen.getByRole("heading", { name: "Fikir adayları üret" }),
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
-      "CONTENTOS_OPENAI_API_KEY",
+      "CONTENTOS_SUBCONTRACTOR_BASE_URL",
     );
   });
 

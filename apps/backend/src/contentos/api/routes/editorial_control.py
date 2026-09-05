@@ -473,18 +473,10 @@ def _require_ai_provider(request: Request, *, image: bool = False) -> None:
     an unrecorded provider-identity error. 503 with a stable marker the
     admin maps to an actionable notice; nothing is queued, nothing changes."""
     settings = request.app.state.settings
-    configured = (
-        settings.openai_image_provider_configured
-        if image
-        else settings.openai_text_provider_configured
-    )
+    configured = settings.image_provider_configured if image else settings.text_provider_configured
     if configured:
         return
-    needed = (
-        "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL"
-        if image
-        else "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL"
-    )
+    needed = settings.ai_provider_required_env(image=image)
     raise HTTPException(
         status_code=503,
         detail=(

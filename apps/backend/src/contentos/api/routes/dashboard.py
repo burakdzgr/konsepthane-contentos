@@ -76,8 +76,9 @@ def dashboard_summary(
         session,
         daily_budget=settings.ai_daily_attempt_budget,
         queue_depth=depth,
-        text_provider_configured=settings.openai_text_provider_configured,
-        image_provider_configured=settings.openai_image_provider_configured,
+        provider=settings.ai_provider,
+        text_provider_configured=settings.text_provider_configured,
+        image_provider_configured=settings.image_provider_configured,
     )
 
 

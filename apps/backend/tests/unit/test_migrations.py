@@ -55,7 +55,7 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0029"]
+    assert script.get_heads() == ["0034"]
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None
@@ -78,6 +78,11 @@ def test_migration_chain_has_expected_metadata() -> None:
     assert script.get_revision("0016").down_revision == "0015"
     assert script.get_revision("0017").down_revision == "0016"
     assert script.get_revision("0029").down_revision == "0028"
+    assert script.get_revision("0030").down_revision == "0029"
+    assert script.get_revision("0034").down_revision == "0033"
+    assert script.get_revision("0033").down_revision == "0032"
+    assert script.get_revision("0032").down_revision == "0031"
+    assert script.get_revision("0031").down_revision == "0030"
     assert script.get_revision("0028").down_revision == "0027"
     assert script.get_revision("0027").down_revision == "0026"
     assert script.get_revision("0026").down_revision == "0025"
@@ -103,6 +108,35 @@ def test_strategy_and_inspiration_migration_is_additive_and_protected() -> None:
     assert "trg_inspiration_signals_append_only" in sql
     assert "trg_inspiration_evaluations_append_only" in sql
     assert sql.count("ON DELETE RESTRICT") >= 4
+
+
+def test_source_purpose_migration_is_additive_with_defaults() -> None:
+    sql = offline_sql("upgrade", "0030:0031")
+
+    assert "ALTER TABLE sources ADD COLUMN primary_role" in sql
+    assert "ALTER TABLE sources ADD COLUMN capabilities" in sql
+    assert "DEFAULT 'inspiration'" in sql
+    assert "ck_sources_primary_role" in sql
+    assert "'community_intent'" in sql
+    assert "DROP TABLE" not in sql
+    assert "DROP COLUMN" not in sql
+
+
+def test_intelligence_signals_migration_is_bounded_and_idempotent() -> None:
+    sql = offline_sql("upgrade", "0031:0032")
+
+    assert "CREATE TABLE intelligence_signals" in sql
+    assert "uq_intelligence_signals_observation_hash" in sql
+    assert "ck_intelligence_signals_family" in sql
+    assert "'community_need'" in sql and "'historical_performance'" in sql
+    assert "ck_intelligence_signals_occurrence_min" in sql
+    assert "ck_intelligence_signals_hash_format" in sql
+    assert "ck_intelligence_signals_value_object" in sql
+    assert "ix_intelligence_signals_family_concept" in sql
+    assert sql.count("ON DELETE RESTRICT") == 3
+    # Signals are bounded patterns, never raw community text.
+    for forbidden in ("raw_text", "clean_text", "paragraph", "author_name"):
+        assert forbidden not in sql
 
 
 def test_fetch_snapshot_migration_contains_append_only_protection() -> None:

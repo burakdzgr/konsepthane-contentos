@@ -8,6 +8,7 @@ dependencies = [
   "argon2-cffi>=25.1.0",
   "celery[redis]",
   "fastapi",
+  "google-auth>=2.57.1",
   "httpx",
   "openai>=3.6.0",
   "pgvector",

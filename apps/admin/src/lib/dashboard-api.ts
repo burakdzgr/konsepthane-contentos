@@ -63,6 +63,9 @@ const summarySchema = z.object({
     awaiting_human_review: z.number().int(),
     approval_expired: z.number().int(),
     changes_requested: z.number().int(),
+    // Performance loop (agent E); absent on older backends -> not shown.
+    refresh_decisions: z.number().int().optional(),
+    strategy_suggestions: z.number().int().optional(),
   }),
   research: z.object({
     active_sources: z.number().int(),
@@ -73,6 +76,7 @@ const summarySchema = z.object({
     failures_today: z.number().int(),
     daily_budget: z.number().int().nullable(),
     remaining_budget: z.number().int().nullable(),
+    provider: z.string(),
     text_provider_configured: z.boolean(),
     image_provider_configured: z.boolean(),
   }),

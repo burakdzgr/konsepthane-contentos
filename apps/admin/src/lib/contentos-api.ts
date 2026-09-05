@@ -53,7 +53,7 @@ export type FetchedResponse = {
 };
 
 export type BackendRequestInit = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   jsonBody?: unknown;
   // Multipart uploads; fetch sets the boundary content-type itself.
   formBody?: FormData;

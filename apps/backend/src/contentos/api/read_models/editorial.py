@@ -76,6 +76,7 @@ from contentos.ideas.enums import (
 from contentos.ideas.models import Idea, IdeaSelectionEvent
 from contentos.inspiration.enums import (
     InspirationBand,
+    IntelligenceBand,
     OpportunityRecommendation,
     SearchOpportunityBand,
     TrendState,
@@ -169,6 +170,9 @@ class WorkQueueRow(_FrozenModel):
     strategy_context: dict[str, Any]
     inspiration_signal_count: int
     inspiration_concept_count: int
+    # Explainable Opportunity Intelligence sections of the latest evaluation;
+    # None until the engine has evaluated the opportunity at least once.
+    intelligence: "IntelligenceView | None"
     selected_idea_id: uuid.UUID | None
     selected_idea_title: str | None
     selected_idea_originality: OriginalityStatus | None
@@ -187,6 +191,265 @@ class WorkQueuePage(_FrozenModel):
     total: int
     limit: int
     offset: int
+
+
+# --- opportunity intelligence ---------------------------------------------------
+#
+# Every band below is the ONE operator vocabulary (IntelligenceBand); family
+# bands (strong/moderate/weak), factor values (1..5) and provider potentials
+# are folded into it here, and UNKNOWN stays "unknown" (never 0, never a
+# fabricated band). Provider freshness names the state and observation time
+# so the admin can say "2 gün önce" or "Yapılandırılmadı" truthfully.
+
+
+class ProviderFreshnessView(_FrozenModel):
+    state: str
+    observed_at: datetime | None
+    error_class: str | None
+    region: str | None
+
+
+class ContentValueView(_FrozenModel):
+    inspiration_band: IntelligenceBand
+    audience_fit_band: IntelligenceBand
+    strategy_fit_band: IntelligenceBand
+    market_band: IntelligenceBand
+    community_need_band: IntelligenceBand
+
+
+class SearchIntelligenceView(_FrozenModel):
+    semrush_potential_band: IntelligenceBand
+    search_keyword: str | None
+    search_volume: int | None
+    keyword_difficulty: float | None
+    google_trends_direction: str
+    pinterest_trend_band: IntelligenceBand
+    competition_band: IntelligenceBand
+    provider_freshness: dict[str, ProviderFreshnessView]
+
+
+class KonsepthaneDataView(_FrozenModel):
+    similar_content_performance_band: IntelligenceBand
+    cannibalization_status: str
+    historical_outcome: str | None
+
+
+class ResearchSummaryView(_FrozenModel):
+    independent_sources: int | None
+    signal_families: int | None
+    evidence_state: str
+
+
+class FactorBandView(_FrozenModel):
+    factor: str
+    band: IntelligenceBand
+    basis: str
+
+
+class IntelligenceView(_FrozenModel):
+    engine_version: str
+    content_value: ContentValueView
+    search_intelligence: SearchIntelligenceView
+    konsepthane_data: KonsepthaneDataView
+    research: ResearchSummaryView
+    recommendation: OpportunityRecommendation
+    why: str
+    factor_bands: list[FactorBandView]
+
+
+class InspirationEvaluationView(_FrozenModel):
+    id: uuid.UUID
+    engine_name: str
+    engine_version: str
+    inspiration_band: InspirationBand
+    search_opportunity: SearchOpportunityBand
+    trend_state: TrendState
+    recommendation: OpportunityRecommendation
+    rationale: str
+    missing_signals: list[str]
+    strategy_context: dict[str, Any]
+    evaluated_at: datetime
+    intelligence: IntelligenceView
+
+
+# WorkQueueRow references IntelligenceView before it is defined (the queue
+# row is the first read model in the file); resolve the forward reference
+# explicitly so FastAPI never meets a half-built schema.
+WorkQueueRow.model_rebuild()
+
+
+_FAMILY_TO_BAND: dict[str, IntelligenceBand] = {
+    "strong": IntelligenceBand.HIGH,
+    "moderate": IntelligenceBand.MEDIUM,
+    "weak": IntelligenceBand.LOW,
+    "unknown": IntelligenceBand.UNKNOWN,
+}
+_INSPIRATION_TO_BAND: dict[str, IntelligenceBand] = {
+    "high": IntelligenceBand.HIGH,
+    "medium": IntelligenceBand.MEDIUM,
+    "low": IntelligenceBand.LOW,
+    "unknown": IntelligenceBand.UNKNOWN,
+}
+_FACTOR_ORDER = (
+    "novelty",
+    "usefulness",
+    "specificity",
+    "visual_potential",
+    "shareability",
+    "emotional_impact",
+    "audience_fit",
+    "turkish_market_applicability",
+    "variation_potential",
+    "strategic_fit",
+)
+_TREND_DIRECTIONS = frozenset({"rising", "stable", "falling"})
+_EVIDENCE_STATES = frozenset({"sufficient", "insufficient"})
+
+
+def _family_band(value: Any) -> IntelligenceBand:
+    return _FAMILY_TO_BAND.get(str(value), IntelligenceBand.UNKNOWN)
+
+
+def _factor_band(value: Any) -> IntelligenceBand:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return IntelligenceBand.UNKNOWN
+    if value >= 5:
+        return IntelligenceBand.VERY_HIGH
+    if value == 4:
+        return IntelligenceBand.HIGH
+    if value == 3:
+        return IntelligenceBand.MEDIUM
+    return IntelligenceBand.LOW
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _provider_freshness(raw: Any) -> ProviderFreshnessView:
+    block = _dict(raw)
+    observed_raw = block.get("observed_at")
+    observed_at: datetime | None = None
+    if isinstance(observed_raw, str):
+        try:
+            observed_at = datetime.fromisoformat(observed_raw)
+        except ValueError:
+            observed_at = None
+    state = block.get("state")
+    return ProviderFreshnessView(
+        state=state if isinstance(state, str) and state else "unknown",
+        observed_at=observed_at,
+        error_class=block.get("error_class") if isinstance(block.get("error_class"), str) else None,
+        region=block.get("region") if isinstance(block.get("region"), str) else None,
+    )
+
+
+def intelligence_view(
+    *,
+    engine_version: str,
+    inspiration_band: InspirationBand,
+    recommendation: OpportunityRecommendation,
+    rationale: str,
+    factors: dict[str, Any] | None,
+    input_snapshot: dict[str, Any] | None,
+) -> IntelligenceView:
+    """Project one persisted evaluation into the explainable sections.
+
+    Older (pre-v5) evaluations carry no `intelligence` block: every
+    provider-derived section is then UNKNOWN and research counts are null —
+    the view never invents what the engine did not record.
+    """
+    factor_map = _dict(factors)
+    block = _dict(_dict(input_snapshot).get("intelligence"))
+    search = _dict(block.get("search"))
+    trend = _dict(block.get("trend"))
+    visual = _dict(block.get("visual_trend"))
+    families = _dict(block.get("families"))
+    historical = _dict(block.get("historical"))
+    research = _dict(block.get("research"))
+
+    def family(name: str) -> IntelligenceBand:
+        return _family_band(_dict(families.get(name)).get("band"))
+
+    def factor_value(name: str) -> Any:
+        return _dict(factor_map.get(name)).get("value")
+
+    direction = trend.get("direction")
+    evidence_state = research.get("evidence_state")
+    cannibalization = block.get("cannibalization_status")
+    outcome = historical.get("outcome")
+    return IntelligenceView(
+        engine_version=engine_version,
+        content_value=ContentValueView(
+            inspiration_band=_INSPIRATION_TO_BAND.get(
+                inspiration_band.value, IntelligenceBand.UNKNOWN
+            ),
+            audience_fit_band=_factor_band(factor_value("audience_fit")),
+            strategy_fit_band=_factor_band(factor_value("strategic_fit")),
+            market_band=family("market"),
+            community_need_band=family("community_need"),
+        ),
+        search_intelligence=SearchIntelligenceView(
+            semrush_potential_band=_family_band(search.get("potential_band")),
+            search_keyword=search.get("keyword")
+            if isinstance(search.get("keyword"), str)
+            else None,
+            search_volume=_optional_int(search.get("search_volume")),
+            keyword_difficulty=_optional_float(search.get("keyword_difficulty")),
+            google_trends_direction=(
+                direction
+                if isinstance(direction, str) and direction in _TREND_DIRECTIONS
+                else "unknown"
+            ),
+            pinterest_trend_band=_family_band(visual.get("band")),
+            competition_band=family("competition"),
+            provider_freshness={
+                "semrush": _provider_freshness(search.get("provider")),
+                "google_trends": _provider_freshness(trend.get("provider")),
+                "pinterest_trends": _provider_freshness(visual.get("provider")),
+            },
+        ),
+        konsepthane_data=KonsepthaneDataView(
+            similar_content_performance_band=_family_band(historical.get("band")),
+            cannibalization_status=(
+                cannibalization
+                if isinstance(cannibalization, str) and cannibalization
+                else "unknown"
+            ),
+            historical_outcome=outcome if isinstance(outcome, str) else None,
+        ),
+        research=ResearchSummaryView(
+            independent_sources=_optional_int(research.get("independent_sources")),
+            signal_families=_optional_int(research.get("signal_families")),
+            evidence_state=(
+                evidence_state
+                if isinstance(evidence_state, str) and evidence_state in _EVIDENCE_STATES
+                else "unknown"
+            ),
+        ),
+        recommendation=recommendation,
+        why=rationale,
+        factor_bands=[
+            FactorBandView(
+                factor=name,
+                band=_factor_band(factor_value(name)),
+                basis=str(
+                    _dict(factor_map.get(name)).get("basis") or "Bu faktör için yeterli sinyal yok."
+                ),
+            )
+            for name in _FACTOR_ORDER
+        ],
+    )
 
 
 # --- detail ------------------------------------------------------------------
@@ -503,6 +766,9 @@ class WorkItemDetail(_FrozenModel):
     total_briefs: int
     briefs_truncated: bool
     ai_attempts: list[AiAttemptView]
+    # Latest inspiration evaluation with its Opportunity Intelligence
+    # sections; None when the opportunity was never evaluated.
+    inspiration: InspirationEvaluationView | None
 
 
 class EligibleEvidenceView(_FrozenModel):
@@ -582,6 +848,8 @@ def _latest_inspiration_subquery() -> Any:
         InspirationEvaluation.rationale.label("rationale"),
         InspirationEvaluation.strategy_context.label("strategy_context"),
         InspirationEvaluation.input_snapshot.label("input_snapshot"),
+        InspirationEvaluation.factors.label("factors"),
+        InspirationEvaluation.engine_version.label("engine_version"),
         func.row_number()
         .over(
             partition_by=InspirationEvaluation.opportunity_id,
@@ -742,6 +1010,8 @@ def list_work_items(
                 latest_inspiration.c.rationale,
                 latest_inspiration.c.strategy_context,
                 latest_inspiration.c.input_snapshot,
+                latest_inspiration.c.factors,
+                latest_inspiration.c.engine_version,
                 latest_selection.c.idea_id,
                 latest_selection.c.action,
                 Idea.working_title,
@@ -812,6 +1082,8 @@ def list_work_items(
             inspiration_rationale,
             strategy_context,
             inspiration_input_snapshot,
+            inspiration_factors,
+            inspiration_engine_version,
             selection_idea_id,
             selection_action,
             selected_title,
@@ -871,6 +1143,20 @@ def list_work_items(
                 ),
                 inspiration_concept_count=int(
                     (inspiration_input_snapshot or {}).get("concept_count", 0)
+                ),
+                intelligence=(
+                    intelligence_view(
+                        engine_version=str(inspiration_engine_version or ""),
+                        inspiration_band=inspiration_band,
+                        recommendation=recommendation,
+                        rationale=inspiration_rationale or "",
+                        factors=inspiration_factors,
+                        input_snapshot=inspiration_input_snapshot,
+                    )
+                    if inspiration_evaluation_id is not None
+                    and inspiration_band is not None
+                    and recommendation is not None
+                    else None
                 ),
                 selected_idea_id=selection_idea_id if selected else None,
                 selected_idea_title=selected_title if selected else None,
@@ -945,8 +1231,10 @@ def get_work_item_detail(session: Session, work_item_id: uuid.UUID) -> WorkItemD
     analyses: list[IntentAnalysisView] = []
     total_analyses = 0
     attempt_ids: set[uuid.UUID] = set()
+    inspiration: InspirationEvaluationView | None = None
 
     if opportunity is not None:
+        inspiration = _inspiration_view(session, opportunity.id)
         research_inputs = _research_input_views(session, opportunity.id)
         scores, total_scores = _score_views(session, opportunity.id)
         (
@@ -1054,6 +1342,43 @@ def get_work_item_detail(session: Session, work_item_id: uuid.UUID) -> WorkItemD
         total_briefs=total_briefs,
         briefs_truncated=total_briefs > len(briefs),
         ai_attempts=attempts,
+        inspiration=inspiration,
+    )
+
+
+def _inspiration_view(
+    session: Session, opportunity_id: uuid.UUID
+) -> InspirationEvaluationView | None:
+    """Latest evaluation (evaluated_at DESC, id DESC) — the same order the
+    service's `latest_evaluation` and the queue subquery use."""
+    row = session.scalar(
+        select(InspirationEvaluation)
+        .where(InspirationEvaluation.opportunity_id == opportunity_id)
+        .order_by(InspirationEvaluation.evaluated_at.desc(), InspirationEvaluation.id.desc())
+        .limit(1)
+    )
+    if row is None:
+        return None
+    return InspirationEvaluationView(
+        id=row.id,
+        engine_name=row.engine_name,
+        engine_version=row.engine_version,
+        inspiration_band=row.inspiration_band,
+        search_opportunity=row.search_opportunity,
+        trend_state=row.trend_state,
+        recommendation=row.recommendation,
+        rationale=row.rationale,
+        missing_signals=list(row.missing_signals),
+        strategy_context=dict(row.strategy_context),
+        evaluated_at=row.evaluated_at,
+        intelligence=intelligence_view(
+            engine_version=row.engine_version,
+            inspiration_band=row.inspiration_band,
+            recommendation=row.recommendation,
+            rationale=row.rationale,
+            factors=row.factors,
+            input_snapshot=row.input_snapshot,
+        ),
     )
 
 

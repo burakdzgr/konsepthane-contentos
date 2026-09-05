@@ -5,6 +5,8 @@ import { REGISTRABLE_SOURCE_KINDS } from "@/lib/research-control-api";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
 import { registerSourceAction } from "../actions";
+import { SourceAddressFields } from "../address-fields";
+import { PurposeFields } from "../purpose-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -42,29 +44,7 @@ export default async function NewSourcePage({
           Ad
           <input type="text" name="name" required maxLength={200} />
         </label>
-        <label>
-          Tür
-          <select name="kind" required defaultValue="">
-            <option value="" disabled>
-              Tür seç…
-            </option>
-            {REGISTRABLE_SOURCE_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Temel URL
-          <input
-            type="url"
-            name="base_url"
-            required
-            maxLength={500}
-            placeholder="https://example.com/feed"
-          />
-        </label>
+        <SourceAddressFields kinds={REGISTRABLE_SOURCE_KINDS} />
         <label>
           Güven kademesi
           <select name="trust_tier" required defaultValue="">
@@ -78,6 +58,7 @@ export default async function NewSourcePage({
             ))}
           </select>
         </label>
+        <PurposeFields />
         <label>
           Yerel ayar
           <input

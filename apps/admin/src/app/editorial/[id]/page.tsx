@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { fetchCurrentUser } from "@/lib/auth-api";
 import { fetchDashboardSummary } from "@/lib/dashboard-api";
+import { OpportunityIntelligence } from "../../firsatlar/intelligence";
 import {
   RESOLVED_CONTRADICTION_STATUSES,
   fetchEligibleEvidence,
@@ -164,6 +165,18 @@ function Row({ name, children }: { name: string; children: React.ReactNode }) {
   );
 }
 
+// Technical provenance (engine identities, pinned ids, content hashes)
+// stays available but folded: an operator reads bands and reasons, an
+// auditor opens "Gelişmiş".
+function Advanced({ children }: { children: React.ReactNode }) {
+  return (
+    <details className="detail-fold">
+      <summary>Gelişmiş</summary>
+      <dl className="status-list">{children}</dl>
+    </details>
+  );
+}
+
 function TruncationNote({
   shown,
   total,
@@ -221,6 +234,7 @@ function ReasonForm({
 // The operator's single answer to "şimdi ne yapmalı": one step, one
 // section. Everything else on the page folds away until asked for.
 type AiConfiguration = {
+  provider: string;
   text_provider_configured: boolean;
   image_provider_configured: boolean;
 } | null;
@@ -236,9 +250,13 @@ function aiBlocked(step: NextStep, ai: AiConfiguration): string | null {
   if (configured) {
     return null;
   }
-  return step.needsAi === "image"
-    ? "Bu adım yapay zeka görsel sağlayıcısı gerektiriyor ve yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın."
-    : "Bu adım yapay zeka sağlayıcısı gerektiriyor ve yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın. Buton çalışmayacak.";
+  const needed =
+    ai.provider === "subcontractor"
+      ? "CONTENTOS_SUBCONTRACTOR_BASE_URL ve CONTENTOS_SUBCONTRACTOR_API_KEY"
+      : step.needsAi === "image"
+        ? "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL"
+        : "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL";
+  return `Bu adım yapay zeka ${step.needsAi === "image" ? "görsel " : ""}sağlayıcısı gerektiriyor ve yapılandırılmamış: .env dosyasına ${needed} ekleyip api ve worker konteynerlerini yeniden başlatın. Buton çalışmayacak.`;
 }
 
 function NextStepCard({ step, ai }: { step: NextStep; ai: AiConfiguration }) {
@@ -381,17 +399,19 @@ function ScoreCard({ score }: { score: ScoreView }) {
         <Row name="Genel değer">
           {score.overall_value !== null ? score.overall_value : "Bilinmiyor"}
         </Row>
-        <Row name="Motor">
-          <span className="mono">
-            {score.engine_name}/{score.engine_version}
-          </span>
-        </Row>
         <Row name="Eksik sinyaller">{trList(score.missing_signals)}</Row>
         <Row name="Risk bayrakları">{trList(score.risk_flags)}</Row>
         <Row name="Değerlendirildi">
           {formatUtcTimestamp(score.evaluated_at)}
         </Row>
       </dl>
+      <Advanced>
+        <Row name="Motor">
+          <span className="mono">
+            {score.engine_name}/{score.engine_version}
+          </span>
+        </Row>
+      </Advanced>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
@@ -469,6 +489,33 @@ function OpportunitySection({ detail }: { detail: WorkItemDetail }) {
           </span>
         </Row>
       </dl>
+      {detail.inspiration !== null ? (
+        <div className="detail-card">
+          <h3>Fırsat istihbaratı</h3>
+          <OpportunityIntelligence
+            intelligence={detail.inspiration.intelligence}
+          />
+          <p className="muted">
+            Değerlendirildi{" "}
+            {formatUtcTimestamp(detail.inspiration.evaluated_at)}
+            {detail.inspiration.missing_signals.length > 0 &&
+              ` · Eksik sinyaller: ${trList(detail.inspiration.missing_signals)}`}
+          </p>
+          <Advanced>
+            <Row name="Motor">
+              <span className="mono">
+                {detail.inspiration.engine_name}/
+                {detail.inspiration.engine_version}
+              </span>
+            </Row>
+          </Advanced>
+        </div>
+      ) : (
+        <p className="empty-note">
+          Fırsat istihbaratı henüz hesaplanmadı; değerlendirme kuyruğa
+          alındığında bölümler burada görünür.
+        </p>
+      )}
       {detail.scores.length === 0 && (
         <p className="empty-note">
           Henüz değerlendirilmedi. Puanlama açık bir eylemdir.
@@ -859,20 +906,23 @@ function PackCard({
               .join(" · ")}
           </Row>
         )}
+        <Row name="Sabitlenmiş fikir">
+          {pack.idea_id !== null ? "Sabitlendi" : "Sabitlenmemiş"}
+        </Row>
+        <Row name="Birleştirildi">{formatUtcTimestamp(pack.created_at)}</Row>
+      </dl>
+      <Advanced>
         <Row name="Birleştirici">
           <span className="mono">
             {pack.assembler_name}/{pack.assembler_version}
           </span>
         </Row>
-        <Row name="Sabitlenmiş fikir">
-          {pack.idea_id !== null ? (
+        {pack.idea_id !== null && (
+          <Row name="Sabitlenmiş fikir kimliği">
             <span className="mono muted">{pack.idea_id}</span>
-          ) : (
-            "Sabitlenmemiş"
-          )}
-        </Row>
-        <Row name="Birleştirildi">{formatUtcTimestamp(pack.created_at)}</Row>
-      </dl>
+          </Row>
+        )}
+      </Advanced>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
@@ -1095,13 +1145,15 @@ function IntentCard({ analysis }: { analysis: IntentAnalysisView }) {
         <Row name="Kanibalizasyon">
           {cannibalizationLabel(analysis.cannibalization_status)}
         </Row>
+        <Row name="Oluşturuldu">{formatUtcTimestamp(analysis.created_at)}</Row>
+      </dl>
+      <Advanced>
         <Row name="Motor">
           <span className="mono">
             {analysis.engine_name}/{analysis.engine_version}
           </span>
         </Row>
-        <Row name="Oluşturuldu">{formatUtcTimestamp(analysis.created_at)}</Row>
-      </dl>
+      </Advanced>
     </div>
   );
 }
@@ -1216,6 +1268,8 @@ function BriefCard({
         <Row name="Yapı koruması">
           {typeof guardOutcome === "string" ? guardOutcome : "Raporlanmadı"}
         </Row>
+      </dl>
+      <Advanced>
         <Row name="Sabitlemeler">
           fikir <span className="mono muted">{brief.idea_id}</span> · paket{" "}
           <span className="mono muted">{brief.evidence_pack_id}</span> · niyet{" "}
@@ -1226,7 +1280,7 @@ function BriefCard({
             {brief.engine_name}/{brief.engine_version}
           </span>
         </Row>
-      </dl>
+      </Advanced>
       {brief.claims.length > 0 && (
         <div className="table-scroll">
           <table className="data-table">
@@ -2173,7 +2227,6 @@ function PublicationSection({
                     <tr key={row.id}>
                       <td>v{row.version}</td>
                       <td>
-                        <span className="mono">{row.id}</span>
                         <p className="muted">
                           {row.section_count} bölüm · {row.manifest_needs} medya
                           bağlaması
@@ -2181,10 +2234,14 @@ function PublicationSection({
                             ? ` · vazgeçilen karşılanmamış ihtiyaçlar: ${row.waived_unmet_indexes.join(", ")}`
                             : ""}
                         </p>
-                        <p className="mono muted">
-                          hash={row.package_hash.slice(0, 12)}… content=
-                          {row.content_hash.slice(0, 12)}…
-                        </p>
+                        <details className="detail-fold">
+                          <summary>Gelişmiş</summary>
+                          <p className="mono muted">paket={row.id}</p>
+                          <p className="mono muted">
+                            hash={row.package_hash.slice(0, 12)}… content=
+                            {row.content_hash.slice(0, 12)}…
+                          </p>
+                        </details>
                       </td>
                       <td>{row.assembled_by.display_name}</td>
                       <td>
@@ -2376,12 +2433,17 @@ function DecisionsSection({
                       </td>
                       <td>{decision.reviewer.display_name}</td>
                       <td>{decision.reason}</td>
-                      <td className="mono muted">
-                        draft={decision.content_draft_id} hash=
-                        {decision.content_hash.slice(0, 12)}…
-                        {decision.revokes_decision_id !== null
-                          ? ` revokes=${decision.revokes_decision_id}`
-                          : ""}
+                      <td>
+                        <details className="detail-fold">
+                          <summary>Gelişmiş</summary>
+                          <p className="mono muted">
+                            draft={decision.content_draft_id} hash=
+                            {decision.content_hash.slice(0, 12)}…
+                            {decision.revokes_decision_id !== null
+                              ? ` revokes=${decision.revokes_decision_id}`
+                              : ""}
+                          </p>
+                        </details>
                       </td>
                     </tr>
                   ))}

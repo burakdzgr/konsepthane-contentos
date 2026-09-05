@@ -52,6 +52,7 @@ from contentos.evidence_packs.service import (
 from contentos.ideas.generation import IdeaGenerationEngine
 from contentos.ideas.service import IdeaService
 from contentos.inspiration.service import InspirationIntelligenceService
+from contentos.integrations.registry import create_integration_registry
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.opportunities.errors import OpportunityNotFoundError
 from contentos.opportunities.repository import OpportunityRepository
@@ -226,7 +227,14 @@ def register_editorial_pipeline_tasks(
         parsed_id = _parse_uuid(opportunity_id)
         with task_session() as session:
             evaluation = OpportunityScoringService(session).evaluate_opportunity(parsed_id)
-            intelligence = InspirationIntelligenceService(session).evaluate(parsed_id)
+            # Pre-decision enrichment runs ONLY here: the worker composes the
+            # provider registry (durable cache/budget through this session);
+            # the API process evaluates provider-free. Construction touches
+            # no network; every provider call inside is fail-safe.
+            intelligence = InspirationIntelligenceService(session).evaluate(
+                parsed_id,
+                registry=create_integration_registry(runtime.settings, runtime.create_session),
+            )
             session.commit()
             # Commissioning remains a HUMAN decision: no downstream dispatch.
             return _summary(
@@ -933,6 +941,7 @@ def register_editorial_pipeline_tasks(
         is never an editorial decision (REJECTED is unreachable).
         """
         from contentos.decisions.service import DecisionService
+        from contentos.performance.service import record_publication_fail_safe
         from contentos.publishing.models import PublicationPackage
         from contentos.publishing.service import PublishingService
         from contentos.publishing.transport import TransportConfigurationError
@@ -1107,6 +1116,15 @@ def register_editorial_pipeline_tasks(
                     "publication_package_id",
                     str(package.id),
                 )
+            # PUBLISHED = measurement started (agent E): tiny, fail-safe.
+            record_publication_fail_safe(
+                session,
+                work_item_id=parsed_item,
+                publication_package_id=package.id,
+                publication_attempt_id=prior.id,
+                remote_publication_ref=prior.remote_publication_ref,
+                published_at=prior.created_at,
+            )
             # No downstream dispatch: distribution/measuring are later phases.
             return _summary(
                 self,

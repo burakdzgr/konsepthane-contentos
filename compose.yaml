@@ -22,6 +22,38 @@ x-backend-environment: &backend-environment
   CONTENTOS_OPENAI_TIMEOUT_SECONDS: ${CONTENTOS_OPENAI_TIMEOUT_SECONDS:-60}
   CONTENTOS_OPENAI_IMAGE_MODEL: ${CONTENTOS_OPENAI_IMAGE_MODEL:-}
   CONTENTOS_OPENAI_IMAGE_TIMEOUT_SECONDS: ${CONTENTOS_OPENAI_IMAGE_TIMEOUT_SECONDS:-120}
+  # Subcontractor AI gateway (ADR 0011): CONTENTOS_AI_PROVIDER=subcontractor
+  # routes every AI job to the self-hosted gateway on the host machine.
+  CONTENTOS_AI_PROVIDER: ${CONTENTOS_AI_PROVIDER:-openai}
+  CONTENTOS_SUBCONTRACTOR_BASE_URL: ${CONTENTOS_SUBCONTRACTOR_BASE_URL:-}
+  CONTENTOS_SUBCONTRACTOR_API_KEY: ${CONTENTOS_SUBCONTRACTOR_API_KEY:-}
+  CONTENTOS_SUBCONTRACTOR_MODEL: ${CONTENTOS_SUBCONTRACTOR_MODEL:-chatgpt}
+  CONTENTOS_SUBCONTRACTOR_IMAGE_MODEL: ${CONTENTOS_SUBCONTRACTOR_IMAGE_MODEL:-chatgpt}
+  CONTENTOS_SUBCONTRACTOR_TIMEOUT_SECONDS: ${CONTENTOS_SUBCONTRACTOR_TIMEOUT_SECONDS:-420}
+  CONTENTOS_SUBCONTRACTOR_ADMIN_TOKEN: ${CONTENTOS_SUBCONTRACTOR_ADMIN_TOKEN:-}
+  # External intelligence providers (Entegrasyonlar): all optional; empty =
+  # not configured. Secrets stay in .env; containers only receive them here.
+  CONTENTOS_SEMRUSH_API_KEY: ${CONTENTOS_SEMRUSH_API_KEY:-}
+  CONTENTOS_SEMRUSH_DATABASE: ${CONTENTOS_SEMRUSH_DATABASE:-tr}
+  CONTENTOS_SEMRUSH_DAILY_BUDGET: ${CONTENTOS_SEMRUSH_DAILY_BUDGET:-200}
+  CONTENTOS_SEMRUSH_CACHE_HOURS: ${CONTENTOS_SEMRUSH_CACHE_HOURS:-72}
+  CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON: ${CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON:-}
+  CONTENTOS_GSC_SITE_URL: ${CONTENTOS_GSC_SITE_URL:-}
+  CONTENTOS_GSC_DAILY_BUDGET: ${CONTENTOS_GSC_DAILY_BUDGET:-500}
+  CONTENTOS_GSC_CACHE_HOURS: ${CONTENTOS_GSC_CACHE_HOURS:-12}
+  CONTENTOS_GA4_PROPERTY_ID: ${CONTENTOS_GA4_PROPERTY_ID:-}
+  CONTENTOS_GA4_KEY_EVENTS: ${CONTENTOS_GA4_KEY_EVENTS:-}
+  CONTENTOS_GA4_DAILY_BUDGET: ${CONTENTOS_GA4_DAILY_BUDGET:-500}
+  CONTENTOS_GA4_CACHE_HOURS: ${CONTENTOS_GA4_CACHE_HOURS:-12}
+  CONTENTOS_GOOGLE_TRENDS_API_KEY: ${CONTENTOS_GOOGLE_TRENDS_API_KEY:-}
+  CONTENTOS_GOOGLE_TRENDS_API_URL: ${CONTENTOS_GOOGLE_TRENDS_API_URL:-}
+  CONTENTOS_GOOGLE_TRENDS_DAILY_BUDGET: ${CONTENTOS_GOOGLE_TRENDS_DAILY_BUDGET:-200}
+  CONTENTOS_GOOGLE_TRENDS_CACHE_HOURS: ${CONTENTOS_GOOGLE_TRENDS_CACHE_HOURS:-24}
+  CONTENTOS_PINTEREST_ACCESS_TOKEN: ${CONTENTOS_PINTEREST_ACCESS_TOKEN:-}
+  CONTENTOS_PINTEREST_REGION: ${CONTENTOS_PINTEREST_REGION:-TR}
+  CONTENTOS_PINTEREST_DAILY_BUDGET: ${CONTENTOS_PINTEREST_DAILY_BUDGET:-200}
+  CONTENTOS_PINTEREST_CACHE_HOURS: ${CONTENTOS_PINTEREST_CACHE_HOURS:-24}
+  CONTENTOS_INTEGRATIONS_HTTP_TIMEOUT_SECONDS: ${CONTENTOS_INTEGRATIONS_HTTP_TIMEOUT_SECONDS:-20}
   CONTENTOS_DATABASE_URL: postgresql+psycopg://${CONTENTOS_POSTGRES_USER:-contentos}:${CONTENTOS_POSTGRES_PASSWORD:-contentos-dev-password}@postgres:5432/${CONTENTOS_POSTGRES_DB:-contentos}
   CONTENTOS_DB_POOL_SIZE: ${CONTENTOS_DB_POOL_SIZE:-5}
   CONTENTOS_DB_POOL_TIMEOUT_SECONDS: ${CONTENTOS_DB_POOL_TIMEOUT_SECONDS:-30}
@@ -92,6 +124,8 @@ services:
         "8000",
       ]
     environment: *backend-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${CONTENTOS_API_HOST_PORT:-8000}:8000"
     depends_on:
@@ -130,6 +164,8 @@ services:
         "${CONTENTOS_CELERY_DEFAULT_QUEUE:-contentos.default}",
       ]
     environment: *backend-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -138,6 +174,33 @@ services:
       redis:
         condition: service_healthy
     stop_grace_period: 30s
+    networks: [contentos]
+
+  beat:
+    image: contentos-backend:dev
+    # Celery beat for the performance loop (daily provider syncs, assess,
+    # refresh detection, history, suggestions). Exactly ONE instance.
+    command:
+      [
+        "python",
+        "-m",
+        "contentos.worker.main",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule",
+        "/tmp/celerybeat-schedule",
+      ]
+    environment: *backend-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 15s
     networks: [contentos]
 
   admin:

@@ -2,6 +2,12 @@ import Link from "next/link";
 
 import { fetchWorkQueue, type WorkQueueRow } from "@/lib/editorial-api";
 import { formatUtcTimestamp } from "@/lib/format";
+import {
+  fetchRefreshOpportunities,
+  fetchStrategySuggestions,
+  type RefreshOpportunity,
+  type StrategySuggestion,
+} from "@/lib/performance-api";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { trLabel, trList } from "@/lib/tr-labels";
 import { ControlNotice } from "../notices";
@@ -10,7 +16,9 @@ import {
   commissionOpportunityAction,
   rejectOpportunityAction,
 } from "../editorial/[id]/actions";
+import { RefreshCard, SuggestionCard } from "../performans/cards";
 import { bulkCommissionAction, bulkRejectAction } from "./actions";
+import { OpportunityIntelligence, RECOMMENDATION } from "./intelligence";
 import {
   INBOX_GROUP_HINTS,
   INBOX_GROUP_LABELS,
@@ -24,41 +32,18 @@ import {
   type InboxGroup,
 } from "./filters";
 
-// The reviewed-opportunity queue: the FIRST genuine human decision of
-// the pipeline — "should Konsepthane produce content on this topic?" —
-// asked only after the machine finished discovery, prefilter, fetch,
-// normalization, deduplication and explainable scoring.
+// The human inbox. Four genuine decisions and nothing mechanical: the
+// production decision ("should Konsepthane produce content on this
+// topic?", asked only after the machine finished discovery, prefilter,
+// fetch, normalization, deduplication and explainable scoring), the final
+// publication approval, the refresh decision on declining content, and the
+// strategy suggestion. The three later groups appear above the inbox only
+// while they have something to decide.
 export const dynamic = "force-dynamic";
 
 const NOTICES: Record<string, string> = {};
 
 const BULK_FORM_ID = "toplu-islem";
-
-const RECOMMENDATION: Record<
-  string,
-  { label: string; tone: string; hint: string }
-> = {
-  produce: {
-    label: "İÇERİK ÜRET",
-    tone: "ok",
-    hint: "Fikir seti, araştırma ve strateji eşleşmesi üretim kararı için yeterli.",
-  },
-  continue_research: {
-    label: "ARAŞTIRMAYA DEVAM ET",
-    tone: "warn",
-    hint: "Konu umut veriyor; mevcut fikirler veya kanıtlar henüz yeterince güçlü değil.",
-  },
-  human_review: {
-    label: "İNSAN İNCELEMESİ",
-    tone: "warn",
-    hint: "Sinyaller dengeli değil; editoryal değerlendirme gerekiyor.",
-  },
-  eliminate: {
-    label: "ELE",
-    tone: "bad",
-    hint: "İlham ve temel uygunluk birlikte zayıf.",
-  },
-};
 
 // Why the backend would refuse commissioning right now. The card mirrors
 // the domain gate (`commission_eligible`) instead of guessing from the
@@ -91,15 +76,6 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
     row.recommendation !== null
       ? (RECOMMENDATION[row.recommendation] ?? null)
       : null;
-  const clusters = Array.isArray(row.strategy_context.clusters)
-    ? row.strategy_context.clusters
-        .map((entry) =>
-          typeof entry === "object" && entry !== null && "name" in entry
-            ? String(entry.name)
-            : null,
-        )
-        .filter((entry): entry is string => entry !== null)
-    : [];
   const decidable =
     row.opportunity_id !== null && row.recommendation !== "continue_research";
   return (
@@ -142,44 +118,31 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
         </span>
       </header>
       {row.topic_summary !== null && <p>{row.topic_summary}</p>}
-      <dl className="agent-facts">
-        <div>
-          <dt>İlham Değeri</dt>
-          <dd title="Bir fikrin ne kadar özgün, uygulanabilir ve paylaşılabilir olduğunu değerlendirir.">
-            {trLabel(row.inspiration_band)}
-          </dd>
-        </div>
-        <div>
-          <dt>Arama fırsatı</dt>
-          <dd>{trLabel(row.search_opportunity)}</dd>
-        </div>
-        <div>
-          <dt>Kaynak tabanı</dt>
-          <dd title="Güncellik, kaynak sayısı, kaynak güveni ve kanıt miktarından hesaplanan deterministik skor; konunun değerini değil kaynak kalitesini ölçer. Görevlendirme kapısı yalnızca buna bakar.">
-            {row.score_eligibility === null
-              ? "Henüz yok"
-              : `${trLabel(row.score_band)} / ${trLabel(row.score_eligibility)}`}
-          </dd>
-        </div>
-        <div>
-          <dt>Stratejik alan</dt>
-          <dd title="Bu içeriğin Konsepthane'nin büyümek istediği konu alanlarıyla ilişkisini gösterir.">
-            {clusters.join(", ") || "Eşleşme yok"}
-          </dd>
-        </div>
-        <div>
-          <dt>Değerlendirildi</dt>
-          <dd>
-            {row.score_evaluated_at !== null
-              ? formatUtcTimestamp(row.score_evaluated_at)
-              : "henüz değil"}
-          </dd>
-        </div>
-      </dl>
+      {row.intelligence !== null ? (
+        // The header badge IS the system recommendation; the sections
+        // explain it and the "Neden?" sentence names the concrete bases.
+        <OpportunityIntelligence
+          intelligence={row.intelligence}
+          showVerdict={false}
+        />
+      ) : (
+        <p className="muted">
+          Fırsat istihbaratı henüz hesaplanmadı; değerlendirme tamamlandığında
+          bölümler burada görünür.
+        </p>
+      )}
       <p className="muted">
-        Araştırma: {row.inspiration_signal_count} kaynak sinyali ·{" "}
-        {row.inspiration_concept_count} gruplanmış fikir · Trend:{" "}
-        {row.trend_state === "known" ? "Var" : "Bilinmiyor"}
+        Kaynak tabanı:{" "}
+        <strong title="Güncellik, kaynak sayısı, kaynak güveni ve kanıt miktarından hesaplanan deterministik skor; konunun değerini değil kaynak kalitesini ölçer. Görevlendirme kapısı yalnızca buna bakar.">
+          {row.score_eligibility === null
+            ? "Henüz yok"
+            : `${trLabel(row.score_band)} / ${trLabel(row.score_eligibility)}`}
+        </strong>{" "}
+        · {row.inspiration_signal_count} kaynak sinyali ·{" "}
+        {row.inspiration_concept_count} gruplanmış fikir · Değerlendirildi:{" "}
+        {row.score_evaluated_at !== null
+          ? formatUtcTimestamp(row.score_evaluated_at)
+          : "henüz değil"}
       </p>
       {row.score_risk_flags.length > 0 && (
         <p className="muted">Risk işaretleri: {trList(row.score_risk_flags)}</p>
@@ -187,7 +150,6 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
       {recommendation !== null && (
         <p className="muted">{recommendation.hint}</p>
       )}
-      {row.inspiration_rationale !== null && <p>{row.inspiration_rationale}</p>}
       <div className="opportunity-actions">
         <Link href={`/editorial/${row.work_item_id}`}>İncele</Link>
         {decidable && row.opportunity_id !== null && (
@@ -282,15 +244,132 @@ function OpportunityCard({ row }: { row: WorkQueueRow }) {
 
 type GroupCounts = Record<InboxGroup, number>;
 
+type OtherDecisions = {
+  approvals: WorkQueueRow[] | null;
+  refreshes: RefreshOpportunity[] | null;
+  suggestions: StrategySuggestion[] | null;
+};
+
+function PublicationApprovals({ rows }: { rows: WorkQueueRow[] }) {
+  return (
+    <section
+      id="yayin-onayi"
+      className="decision-group"
+      aria-labelledby="yayin-onayi-baslik"
+    >
+      <h2 id="yayin-onayi-baslik">Yayın onayı bekleyen ({rows.length})</h2>
+      <p className="muted">
+        Hazırlanan paket yayınlansın mı? Nihai onay yalnızca adlandırılmış bir
+        insandan gelir; içerik onaysız yayınlanmaz.
+      </p>
+      <ul className="plain-list">
+        {rows.map((row) => (
+          <li key={row.work_item_id}>
+            <Link href={`/editorial/${row.work_item_id}`}>
+              {row.title_working_label}
+            </Link>{" "}
+            <span className="muted">
+              · {trLabel(row.current_state)} ·{" "}
+              {formatUtcTimestamp(row.current_state_entered_at)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RefreshDecisions({ rows }: { rows: RefreshOpportunity[] }) {
+  return (
+    <section
+      id="guncelleme"
+      className="decision-group"
+      aria-labelledby="guncelleme-baslik"
+    >
+      <h2 id="guncelleme-baslik">Güncelleme kararı bekleyen ({rows.length})</h2>
+      <p className="muted">
+        Düşen ya da eskiyen yayınlar için teşhis ve öneri. Onay yalnızca yeniden
+        araştırmayı başlatır; yayın kararı yine ayrıca sorulur.
+      </p>
+      {rows.map((row) => (
+        <RefreshCard key={row.id} row={row} returnTo="/firsatlar" />
+      ))}
+    </section>
+  );
+}
+
+function StrategyDecisions({ rows }: { rows: StrategySuggestion[] }) {
+  return (
+    <section
+      id="strateji"
+      className="decision-group"
+      aria-labelledby="strateji-baslik"
+    >
+      <h2 id="strateji-baslik">Strateji önerileri ({rows.length})</h2>
+      <p className="muted">
+        Gerçek performans verisinden türetilen öneriler. Strateji yalnızca sizin
+        kararınızla değişir.
+      </p>
+      {rows.map((row) => (
+        <SuggestionCard key={row.id} row={row} returnTo="/firsatlar" />
+      ))}
+    </section>
+  );
+}
+
+function OtherDecisionGroups({ other }: { other: OtherDecisions }) {
+  const approvals = other.approvals ?? [];
+  const refreshes = other.refreshes ?? [];
+  const suggestions = other.suggestions ?? [];
+  if (
+    approvals.length === 0 &&
+    refreshes.length === 0 &&
+    suggestions.length === 0
+  ) {
+    return null;
+  }
+  return (
+    <div className="decision-groups">
+      {approvals.length > 0 && <PublicationApprovals rows={approvals} />}
+      {refreshes.length > 0 && <RefreshDecisions rows={refreshes} />}
+      {suggestions.length > 0 && <StrategyDecisions rows={suggestions} />}
+    </div>
+  );
+}
+
 function GroupTabs({
   filters,
   counts,
+  other,
 }: {
   filters: InboxFilters;
   counts: GroupCounts;
+  other: OtherDecisions;
 }) {
+  const extra: Array<{ href: string; label: string; count: number }> = [
+    {
+      href: "#yayin-onayi",
+      label: "Yayın onayı",
+      count: other.approvals?.length ?? 0,
+    },
+    {
+      href: "#guncelleme",
+      label: "Güncelleme kararı",
+      count: other.refreshes?.length ?? 0,
+    },
+    {
+      href: "#strateji",
+      label: "Strateji önerisi",
+      count: other.suggestions?.length ?? 0,
+    },
+  ].filter((entry) => entry.count > 0);
   return (
     <nav className="inbox-tabs" aria-label="Fırsat grupları">
+      {extra.map((entry) => (
+        <Link key={entry.href} href={`/firsatlar${entry.href}`}>
+          {entry.label} ({entry.count})
+        </Link>
+      ))}
       {INBOX_GROUPS.map((group) => {
         const href =
           `/firsatlar?durum=${group}` +
@@ -485,11 +564,33 @@ export default async function OpportunityReviewPage({
 }) {
   const query = searchParams === undefined ? {} : await searchParams;
   const filters = parseInboxFilters(query);
-  const result = await fetchWorkQueue({
-    workflowState: "idea_scoring",
-    opportunityDisposition: "open",
-    limit: 50,
-  });
+  const [result, approvalsResult, refreshResult, suggestionResult] =
+    await Promise.all([
+      fetchWorkQueue({
+        workflowState: "idea_scoring",
+        opportunityDisposition: "open",
+        limit: 50,
+      }),
+      fetchWorkQueue({ workflowState: "awaiting_human_review", limit: 50 }),
+      fetchRefreshOpportunities("proposed"),
+      fetchStrategySuggestions("proposed"),
+    ]);
+  const other: OtherDecisions = {
+    approvals:
+      approvalsResult.kind === "ok"
+        ? approvalsResult.data.items.filter(
+            (row) => row.current_state === "awaiting_human_review",
+          )
+        : null,
+    refreshes:
+      refreshResult.kind === "ok"
+        ? refreshResult.data.filter((row) => row.status === "proposed")
+        : null,
+    suggestions:
+      suggestionResult.kind === "ok"
+        ? suggestionResult.data.filter((row) => row.status === "proposed")
+        : null,
+  };
   const decidable =
     result.kind === "ok"
       ? result.data.items.filter(
@@ -526,9 +627,9 @@ export default async function OpportunityReviewPage({
           <p className="eyebrow">Gerçek editoryal kararlar</p>
           <h1 id="firsatlar-title">Benden Bekleyenler</h1>
           <p className="muted">
-            Bu konuda Konsepthane için içerik üretelim mi? Makine keşfetti,
-            filtreledi, getirdi ve skorladı — karar sizin. Karar gerekçesiyle
-            kayda geçer.
+            Yalnızca sizden karar bekleyen işler: üretim kararı, yayın onayı,
+            güncelleme kararı ve strateji önerisi. Makine keşfetti, filtreledi,
+            getirdi ve skorladı — karar sizin ve gerekçesiyle kayda geçer.
           </p>
         </div>
         <AutoRefresh
@@ -545,9 +646,10 @@ export default async function OpportunityReviewPage({
       {result.kind !== "ok" && (
         <p role="status">Backend API&apos;ye şu anda erişilemiyor.</p>
       )}
+      <OtherDecisionGroups other={other} />
       {decidable !== null && (
         <>
-          <GroupTabs filters={filters} counts={counts} />
+          <GroupTabs filters={filters} counts={counts} other={other} />
           <p className="muted inbox-hint">{INBOX_GROUP_HINTS[filters.durum]}</p>
           <FilterForm filters={filters} />
         </>

@@ -16,6 +16,7 @@ vi.mock("@/lib/research-control-api", async () => {
     registerSource: vi.fn(),
     transitionSourceLifecycle: vi.fn(),
     runSourceDiscovery: vi.fn(),
+    updateSourcePurpose: vi.fn(),
   };
 });
 
@@ -23,11 +24,13 @@ import {
   registerSourceAction,
   runSourceDiscoveryAction,
   transitionSourceLifecycleAction,
+  updateSourcePurposeAction,
 } from "@/app/sources/actions";
 import {
   registerSource,
   runSourceDiscovery,
   transitionSourceLifecycle,
+  updateSourcePurpose,
 } from "@/lib/research-control-api";
 
 const SOURCE_ID = "11111111-2222-4333-8444-555555555555";
@@ -35,6 +38,7 @@ const SOURCE_ID = "11111111-2222-4333-8444-555555555555";
 const registerMock = vi.mocked(registerSource);
 const transitionMock = vi.mocked(transitionSourceLifecycle);
 const discoveryMock = vi.mocked(runSourceDiscovery);
+const purposeMock = vi.mocked(updateSourcePurpose);
 
 function form(entries: Record<string, string>): FormData {
   const data = new FormData();
@@ -91,6 +95,57 @@ describe("registerSourceAction", () => {
       market: "TR",
       termsNotes: "şartlar okundu",
     });
+  });
+
+  it("passes the chosen role and checked capabilities, deduplicated", async () => {
+    registerMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "registered",
+        source_id: SOURCE_ID,
+        lifecycle_state: "active",
+      },
+    });
+    const data = form({
+      slug: "forum",
+      name: "Forum",
+      kind: "manual",
+      base_url: "https://forum.example.test/",
+      trust_tier: "general",
+      primary_role: "community_intent",
+    });
+    data.append("capabilities", "community_need");
+    data.append("capabilities", "market");
+    data.append("capabilities", "community_need");
+    data.append("capabilities", "telepathy");
+
+    await expectRedirect(
+      registerSourceAction(data),
+      "/sources?notice=source-registered",
+    );
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryRole: "community_intent",
+        capabilities: ["community_need", "market"],
+      }),
+    );
+  });
+
+  it("rejects an unknown role before calling the backend", async () => {
+    await expectRedirect(
+      registerSourceAction(
+        form({
+          slug: "ornek",
+          name: "Örnek",
+          kind: "manual",
+          base_url: "https://x.example.test/",
+          trust_tier: "general",
+          primary_role: "oracle",
+        }),
+      ),
+      "/sources/new?error=invalid",
+    );
+    expect(registerMock).not.toHaveBeenCalled();
   });
 
   it("reports an idempotent registration as existing", async () => {
@@ -195,6 +250,85 @@ describe("transitionSourceLifecycleAction", () => {
         form({ source_id: SOURCE_ID, new_state: "paused", reason: "x" }),
       ),
       "/sources?error=conflict",
+    );
+  });
+});
+
+describe("updateSourcePurposeAction", () => {
+  it("updates the purpose and redirects with a notice", async () => {
+    purposeMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "updated",
+        source_id: SOURCE_ID,
+        primary_role: "trend",
+        capabilities: ["trend", "visual_trend"],
+      },
+    });
+    const data = form({ source_id: SOURCE_ID, primary_role: "trend" });
+    data.append("capabilities", "visual_trend");
+    data.append("capabilities", "trend");
+
+    await expectRedirect(
+      updateSourcePurposeAction(data),
+      "/sources?notice=purpose-updated",
+    );
+    expect(purposeMock).toHaveBeenCalledWith(SOURCE_ID, "trend", [
+      "visual_trend",
+      "trend",
+    ]);
+  });
+
+  it("sends no capabilities when none are checked", async () => {
+    purposeMock.mockResolvedValue({
+      kind: "ok",
+      data: {
+        status: "updated",
+        source_id: SOURCE_ID,
+        primary_role: "search",
+        capabilities: ["search"],
+      },
+    });
+
+    await expectRedirect(
+      updateSourcePurposeAction(
+        form({ source_id: SOURCE_ID, primary_role: "search" }),
+      ),
+      "/sources?notice=purpose-updated",
+    );
+    expect(purposeMock).toHaveBeenCalledWith(SOURCE_ID, "search", undefined);
+  });
+
+  it("refuses an invalid id or role without calling the backend", async () => {
+    await expectRedirect(
+      updateSourcePurposeAction(
+        form({ source_id: "junk", primary_role: "search" }),
+      ),
+      "/sources?error=invalid",
+    );
+    await expectRedirect(
+      updateSourcePurposeAction(
+        form({ source_id: SOURCE_ID, primary_role: "oracle" }),
+      ),
+      "/sources?error=invalid",
+    );
+    expect(purposeMock).not.toHaveBeenCalled();
+  });
+
+  it("maps backend failures to bounded error redirects", async () => {
+    purposeMock.mockResolvedValue({ kind: "not_found" });
+    await expectRedirect(
+      updateSourcePurposeAction(
+        form({ source_id: SOURCE_ID, primary_role: "search" }),
+      ),
+      "/sources?error=not-found",
+    );
+    purposeMock.mockResolvedValue({ kind: "invalid" });
+    await expectRedirect(
+      updateSourcePurposeAction(
+        form({ source_id: SOURCE_ID, primary_role: "search" }),
+      ),
+      "/sources?error=invalid",
     );
   });
 });

@@ -19,16 +19,22 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from contentos.db.base import Base
-from contentos.db.types import JSON_DICT
+from contentos.db.types import JSON_DICT, JSON_LIST
 from contentos.db.types import string_enum as _string_enum
 from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
     RobotsPolicy,
+    SourceCapability,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
 )
+
+
+def _default_capabilities() -> list[str]:
+    return [SourceCapability.INSPIRATION.value]
 
 
 class Source(Base):
@@ -49,6 +55,18 @@ class Source(Base):
         _string_enum(SourceKind, "ck_sources_kind", 32), nullable=False
     )
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Editorial purpose (migration 0031): technical `kind` says HOW content is
+    # acquired; `primary_role` + `capabilities` say WHAT the pipeline may use
+    # it for. Capabilities are validated, deduplicated, ordered enum VALUES.
+    primary_role: Mapped[SourceRole] = mapped_column(
+        _string_enum(SourceRole, "ck_sources_primary_role", 24),
+        nullable=False,
+        default=SourceRole.INSPIRATION,
+        server_default=SourceRole.INSPIRATION.value,
+    )
+    capabilities: Mapped[list[str]] = mapped_column(
+        JSON_LIST, nullable=False, default=_default_capabilities
+    )
     locale: Mapped[str] = mapped_column(String(20), nullable=False, default="tr-TR")
     market: Mapped[str] = mapped_column(String(2), nullable=False, default="TR")
     lifecycle_state: Mapped[SourceLifecycleState] = mapped_column(

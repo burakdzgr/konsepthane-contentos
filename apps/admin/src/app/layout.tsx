@@ -60,8 +60,14 @@ export default async function RootLayout({
         : "unknown";
     if (summaryResult.kind === "ok") {
       const summary = summaryResult.data;
+      // "Benden Bekleyenler" = every genuine human decision: production,
+      // publication approval, refresh, strategy suggestion.
       badges = {
-        firsatlar: summary.attention.production_decisions,
+        firsatlar:
+          summary.attention.production_decisions +
+          summary.attention.awaiting_human_review +
+          (summary.attention.refresh_decisions ?? 0) +
+          (summary.attention.strategy_suggestions ?? 0),
         onay: summary.attention.awaiting_human_review,
         yayin:
           (summary.work_item_states["scheduled"] ?? 0) +

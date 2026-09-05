@@ -54,7 +54,7 @@ from contentos.research.validation import (
     compute_evidence_key,
     evidence_key_payload,
 )
-from contentos.sources.enums import DiscoveryStrategy, SourceKind, TrustTier
+from contentos.sources.enums import DiscoveryStrategy, SourceKind, SourceRole, TrustTier
 from contentos.sources.models import Source
 from contentos.sources.service import SourceRegistryService
 
@@ -603,3 +603,24 @@ class TestLimits:
                     extractor_version=f"metadata-{index}",
                     metadata=metadata,
                 )
+
+
+class TestCommunitySourcesNeverProduceEvidence:
+    def test_community_intent_source_is_refused_before_any_row_exists(
+        self, session: Session
+    ) -> None:
+        source, _, _, document = create_document(session, "topluluk")
+        SourceRegistryService(session).update_source_purpose(
+            source.id, primary_role=SourceRole.COMMUNITY_INTENT
+        )
+
+        with pytest.raises(ResearchDocumentNotEligibleError, match="community sources never"):
+            record(session, document)
+        assert evidence_count(session) == 0
+
+        # Any non-community role is admitted by the same predicate.
+        SourceRegistryService(session).update_source_purpose(
+            source.id, primary_role=SourceRole.TURKISH_EDITORIAL
+        )
+        record(session, document)
+        assert evidence_count(session) == 1

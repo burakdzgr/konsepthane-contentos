@@ -6,10 +6,9 @@ import { Suspense } from "react";
 
 import { AppIcon, type AppIconName } from "./icons";
 
-// The sidebar navigation: every entry points at a REAL page or a real
-// filtered view; capabilities that do not exist yet (distribution,
-// analytics) are honestly marked unavailable instead of dead links.
-// Count badges come from the layout's live dashboard reads.
+// The sidebar navigation: every entry points at a REAL page. Count badges
+// come from the layout's live dashboard reads; "Benden Bekleyenler" counts
+// only genuine human decisions.
 
 export type NavBadges = {
   calisma?: number;
@@ -31,6 +30,9 @@ type NavSection = {
   entries: NavEntry[];
 };
 
+// The operator's path through the product, in the order the work flows:
+// manage sources → watch the runs → read what was found → produce → decide
+// → learn from performance. Technical views live under "Sistem".
 const NAV_SECTIONS: NavSection[] = [
   {
     title: "Çalışma Alanı",
@@ -43,25 +45,24 @@ const NAV_SECTIONS: NavSection[] = [
         badge: "calisma",
       },
       { href: "/sources", label: "Kaynaklar", icon: "source" },
-    ],
-  },
-  {
-    title: "İçerik",
-    entries: [
+      { href: "/fikirler", label: "Fikirler", icon: "spark" },
+      { href: "/editorial", label: "İçerikler", icon: "content" },
       {
         href: "/firsatlar",
         label: "Benden Bekleyenler",
         icon: "spark",
         badge: "firsatlar",
       },
-      { href: "/editorial", label: "İçerikler", icon: "content" },
       { href: "/strateji", label: "Strateji", icon: "spark" },
+      { href: "/performans", label: "Performans", icon: "activity" },
+      { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: "health" },
     ],
   },
   {
     title: "Sistem",
     entries: [
       { href: "/", label: "Sistem Sağlığı", icon: "health" },
+      { href: "/operasyon", label: "Canlı Operasyon", icon: "activity" },
       { href: "/motor", label: "Gelişmiş Motor", icon: "motor" },
       { href: "/research", label: "Teknik Görünümler", icon: "research" },
     ],

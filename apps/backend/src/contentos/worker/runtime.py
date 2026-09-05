@@ -82,6 +82,12 @@ class WorkerRuntime:
         """
         if self._provider_factory is not None:
             return self._provider_factory()
+        if self._settings.ai_provider == "subcontractor":
+            from contentos.ai.providers.subcontractor_provider import (
+                create_subcontractor_provider_from_settings,
+            )
+
+            return create_subcontractor_provider_from_settings(self._settings)
         from contentos.ai.providers.openai_provider import (
             create_openai_provider_from_settings,
         )
@@ -93,6 +99,12 @@ class WorkerRuntime:
         is the bounded media-image envelope). Lazy, injectable for tests."""
         if self._image_provider_factory is not None:
             return self._image_provider_factory()
+        if self._settings.ai_provider == "subcontractor":
+            from contentos.ai.providers.subcontractor_provider import (
+                create_subcontractor_image_provider_from_settings,
+            )
+
+            return create_subcontractor_image_provider_from_settings(self._settings)
         from contentos.ai.providers.openai_image_provider import (
             create_openai_image_provider_from_settings,
         )

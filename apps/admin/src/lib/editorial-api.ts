@@ -242,6 +242,92 @@ const countSchema = z.number().int().min(0);
 const timestampSchema = z.string().min(1);
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
+// Opportunity Intelligence: explainable sections over ONE band vocabulary.
+// A provider that is not configured / refused / rate-limited stays unknown
+// with its state and last observation time — never a number.
+export const INTELLIGENCE_BANDS = [
+  "very_high",
+  "high",
+  "medium",
+  "low",
+  "unknown",
+] as const;
+export const TREND_DIRECTIONS = [
+  "rising",
+  "stable",
+  "falling",
+  "unknown",
+] as const;
+export const EVIDENCE_STATES = [
+  "sufficient",
+  "insufficient",
+  "unknown",
+] as const;
+
+const intelligenceBandSchema = z.enum(INTELLIGENCE_BANDS);
+
+const providerFreshnessSchema = z.object({
+  state: z.string(),
+  observed_at: timestampSchema.nullable(),
+  error_class: z.string().nullable(),
+  region: z.string().nullable(),
+});
+
+const intelligenceSchema = z.object({
+  engine_version: z.string(),
+  content_value: z.object({
+    inspiration_band: intelligenceBandSchema,
+    audience_fit_band: intelligenceBandSchema,
+    strategy_fit_band: intelligenceBandSchema,
+    market_band: intelligenceBandSchema,
+    community_need_band: intelligenceBandSchema,
+  }),
+  search_intelligence: z.object({
+    semrush_potential_band: intelligenceBandSchema,
+    search_keyword: z.string().nullable(),
+    search_volume: countSchema.nullable(),
+    keyword_difficulty: z.number().nullable(),
+    google_trends_direction: z.enum(TREND_DIRECTIONS),
+    pinterest_trend_band: intelligenceBandSchema,
+    competition_band: intelligenceBandSchema,
+    provider_freshness: z.record(z.string(), providerFreshnessSchema),
+  }),
+  konsepthane_data: z.object({
+    similar_content_performance_band: intelligenceBandSchema,
+    cannibalization_status: z.string(),
+    historical_outcome: z.string().nullable(),
+  }),
+  research: z.object({
+    independent_sources: countSchema.nullable(),
+    signal_families: countSchema.nullable(),
+    evidence_state: z.enum(EVIDENCE_STATES),
+  }),
+  recommendation: z.enum(OPPORTUNITY_RECOMMENDATIONS),
+  why: z.string(),
+  factor_bands: z.array(
+    z.object({
+      factor: z.string(),
+      band: intelligenceBandSchema,
+      basis: z.string(),
+    }),
+  ),
+});
+
+const inspirationEvaluationSchema = z.object({
+  id: z.string().uuid(),
+  engine_name: z.string(),
+  engine_version: z.string(),
+  inspiration_band: z.enum(INSPIRATION_BANDS),
+  search_opportunity: z.enum(SEARCH_OPPORTUNITY_BANDS),
+  trend_state: z.enum(TREND_STATES),
+  recommendation: z.enum(OPPORTUNITY_RECOMMENDATIONS),
+  rationale: z.string(),
+  missing_signals: z.array(z.string()),
+  strategy_context: jsonRecordSchema,
+  evaluated_at: timestampSchema,
+  intelligence: intelligenceSchema,
+});
+
 const workQueueRowSchema = z.object({
   work_item_id: z.string().uuid(),
   title_working_label: z.string(),
@@ -279,6 +365,7 @@ const workQueueRowSchema = z.object({
   strategy_context: jsonRecordSchema,
   inspiration_signal_count: countSchema,
   inspiration_concept_count: countSchema,
+  intelligence: intelligenceSchema.nullable(),
   selected_idea_id: z.string().uuid().nullable(),
   selected_idea_title: z.string().nullable(),
   selected_idea_originality: z.enum(ORIGINALITY_STATUSES).nullable(),
@@ -605,6 +692,7 @@ const workItemDetailSchema = z.object({
   total_briefs: countSchema,
   briefs_truncated: z.boolean(),
   ai_attempts: z.array(aiAttemptSchema),
+  inspiration: inspirationEvaluationSchema.nullable(),
 });
 
 const draftSummarySchema = z.object({
@@ -963,6 +1051,11 @@ const eligibleEvidenceSchema = z.object({
 });
 
 export type WorkQueueRow = z.infer<typeof workQueueRowSchema>;
+export type IntelligenceView = z.infer<typeof intelligenceSchema>;
+export type ProviderFreshnessView = z.infer<typeof providerFreshnessSchema>;
+export type InspirationEvaluationView = z.infer<
+  typeof inspirationEvaluationSchema
+>;
 export type WorkQueuePage = z.infer<typeof workQueuePageSchema>;
 export type WorkItemDetail = z.infer<typeof workItemDetailSchema>;
 export type ScoreView = z.infer<typeof scoreSchema>;

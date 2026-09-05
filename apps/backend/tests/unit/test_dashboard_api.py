@@ -174,8 +174,7 @@ class TestSummary:
         # No broker exists in unit tests: the depth is honestly unknown.
         assert body["queue"]["depth"] is None
         assert body["ai"]["attempts_today"] == 0
-        assert body["ai"]["text_provider_configured"] is True
-        assert body["ai"]["image_provider_configured"] is True
+        assert body["ai"]["provider"] == "openai"
         assert body["ai"]["text_provider_configured"] is True
         assert body["ai"]["image_provider_configured"] is True
         assert len(body["pauses"]) == len(PauseScope)

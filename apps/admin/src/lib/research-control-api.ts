@@ -8,7 +8,9 @@ import {
 import {
   DISCOVERY_LIFECYCLE_STATES,
   DISCOVERY_REJECTION_REASONS,
+  SOURCE_CAPABILITIES,
   SOURCE_LIFECYCLE_STATES,
+  SOURCE_ROLES,
   TRUST_TIERS,
   isUuid,
 } from "@/lib/research-api";
@@ -46,6 +48,13 @@ const lifecycleResponseSchema = z.object({
   lifecycle_state: z.enum(SOURCE_LIFECYCLE_STATES),
 });
 
+const purposeResponseSchema = z.object({
+  status: z.literal("updated"),
+  source_id: z.string().uuid(),
+  primary_role: z.enum(SOURCE_ROLES),
+  capabilities: z.array(z.enum(SOURCE_CAPABILITIES)),
+});
+
 const itemMutationResponseSchema = z.object({
   status: z.literal("updated"),
   discovery_item_id: z.string().uuid(),
@@ -62,6 +71,7 @@ export type SourceRegistrationResult = z.infer<
   typeof registrationResponseSchema
 >;
 export type SourceLifecycleResult = z.infer<typeof lifecycleResponseSchema>;
+export type SourcePurposeResult = z.infer<typeof purposeResponseSchema>;
 export type ItemMutationResult = z.infer<typeof itemMutationResponseSchema>;
 export type TaskTriggerResult = z.infer<typeof triggerResponseSchema>;
 
@@ -116,12 +126,14 @@ export type SourceRegistrationInput = {
   locale?: string;
   market?: string;
   termsNotes?: string;
+  primaryRole?: (typeof SOURCE_ROLES)[number];
+  capabilities?: readonly (typeof SOURCE_CAPABILITIES)[number][];
 };
 
 export async function registerSource(
   input: SourceRegistrationInput,
 ): Promise<ControlResult<SourceRegistrationResult>> {
-  const body: Record<string, string> = {
+  const body: Record<string, string | string[]> = {
     slug: input.slug,
     name: input.name,
     kind: input.kind,
@@ -137,10 +149,37 @@ export async function registerSource(
   if (input.termsNotes) {
     body.terms_notes = input.termsNotes;
   }
+  if (input.primaryRole) {
+    body.primary_role = input.primaryRole;
+  }
+  if (input.capabilities && input.capabilities.length > 0) {
+    body.capabilities = [...input.capabilities];
+  }
   return postControl(
     "/internal/research/sources",
     body,
     registrationResponseSchema,
+  );
+}
+
+export async function updateSourcePurpose(
+  sourceId: string,
+  primaryRole: (typeof SOURCE_ROLES)[number],
+  capabilities?: readonly (typeof SOURCE_CAPABILITIES)[number][],
+): Promise<ControlResult<SourcePurposeResult>> {
+  if (!isUuid(sourceId)) {
+    return { kind: "not_found" };
+  }
+  const body: Record<string, string | string[]> = {
+    primary_role: primaryRole,
+  };
+  if (capabilities && capabilities.length > 0) {
+    body.capabilities = [...capabilities];
+  }
+  return postControl(
+    `/internal/research/sources/${encodeURIComponent(sourceId)}/purpose`,
+    body,
+    purposeResponseSchema,
   );
 }
 

@@ -373,6 +373,9 @@ class TestSourcesEndpoint:
         assert row["lifecycle_state"] == "active"
         assert row["trust_tier"] == "general"
         assert row["discovery_strategy"] == "manual"
+        # Editorial purpose defaults: inspiration / ["inspiration"].
+        assert row["primary_role"] == "inspiration"
+        assert row["capabilities"] == ["inspiration"]
         # Registration normalizes the base URL (trailing slash stripped).
         assert row["base_url"] == "https://yogun-kaynak.example.test"
         assert row["created_at"] and row["updated_at"]

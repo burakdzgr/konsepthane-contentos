@@ -7,12 +7,17 @@ from fastapi import Depends, FastAPI
 from contentos.api.error_handlers import install_error_handling
 from contentos.api.middleware import RequestContextMiddleware
 from contentos.api.routes.auth import router as auth_router
+from contentos.api.routes.autopilot import router as autopilot_router
 from contentos.api.routes.dashboard import router as dashboard_router
 from contentos.api.routes.decisions import router as decisions_router
 from contentos.api.routes.editorial import router as editorial_router
 from contentos.api.routes.editorial_control import router as editorial_control_router
 from contentos.api.routes.health import router as health_router
 from contentos.api.routes.intake import router as intake_router
+from contentos.api.routes.integrations import router as integrations_router
+from contentos.api.routes.intelligence import router as intelligence_router
+from contentos.api.routes.operations import router as operations_router
+from contentos.api.routes.performance import router as performance_router
 from contentos.api.routes.research import router as research_router
 from contentos.api.routes.research_control import router as research_control_router
 from contentos.api.routes.strategy import router as strategy_router
@@ -57,12 +62,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     operator_guard = [Depends(require_operator)]
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(autopilot_router)
     app.include_router(research_router, dependencies=operator_guard)
     app.include_router(research_control_router, dependencies=operator_guard)
     app.include_router(editorial_router, dependencies=operator_guard)
     app.include_router(editorial_control_router, dependencies=operator_guard)
     app.include_router(dashboard_router, dependencies=operator_guard)
     app.include_router(intake_router, dependencies=operator_guard)
+    app.include_router(operations_router, dependencies=operator_guard)
+    app.include_router(performance_router, dependencies=operator_guard)
+    app.include_router(integrations_router, dependencies=operator_guard)
+    app.include_router(intelligence_router, dependencies=operator_guard)
     app.include_router(strategy_router, dependencies=operator_guard)
     # Human decisions require the REVIEWER role (ADR 0004): a pure reviewer
     # may decide without being able to drive the pipeline, and vice versa.

@@ -8,6 +8,7 @@ import {
   type SourceListItem,
 } from "@/lib/research-api";
 import { trLabel } from "@/lib/tr-labels";
+import { capabilityLabel, roleLabel } from "@/lib/source-purpose";
 import { formatUtcTimestamp } from "@/lib/format";
 import {
   allowedLifecycleTargets,
@@ -24,13 +25,18 @@ import {
 import { ControlNotice } from "../notices";
 import { startIntakeRunAction } from "../calisma/actions";
 import { fetchIntakeRuns } from "@/lib/intake-api";
-import { transitionSourceLifecycleAction } from "./actions";
+import {
+  transitionSourceLifecycleAction,
+  updateSourcePurposeAction,
+} from "./actions";
+import { PurposeFields } from "./purpose-fields";
 
 const SOURCE_NOTICES: Record<string, string> = {
   "source-registered":
     "Kaynak kaydedildi. Kaynak kaydetmek onu otomatik olarak taramaz.",
   "source-existing": "Aynı kaynak zaten mevcuttu; hiçbir şey değiştirilmedi.",
   "lifecycle-updated": "Kaynak durumu güncellendi.",
+  "purpose-updated": "Kaynağın amacı güncellendi.",
   "discovery-queued": "Keşif kuyruğa alındı.",
 };
 
@@ -169,6 +175,18 @@ function SourceControls({
         />
         <button type="submit">Durumu uygula</button>
       </form>
+      <details className="purpose-editor">
+        <summary>Amacı düzenle</summary>
+        <form action={updateSourcePurposeAction} className="stacked-form">
+          <input type="hidden" name="source_id" value={source.id} />
+          <PurposeFields
+            primaryRole={source.primary_role}
+            capabilities={source.capabilities}
+            label={source.slug}
+          />
+          <button type="submit">Amacı kaydet</button>
+        </form>
+      </details>
       {liveRunId !== null ? (
         <p className="run-live-link">
           <Link href={`/calisma/${liveRunId}`}>● Aktif çalışmayı aç</Link>
@@ -243,6 +261,7 @@ export default async function SourcesPage({
                 <tr>
                   <th scope="col">Kaynak</th>
                   <th scope="col">Tür / Strateji</th>
+                  <th scope="col">Amaç</th>
                   <th scope="col">Durum</th>
                   <th scope="col">Güven</th>
                   <th scope="col">Yerel ayar</th>
@@ -264,6 +283,22 @@ export default async function SourcesPage({
                     <td>
                       {trLabel(source.kind)} /{" "}
                       {trLabel(source.discovery_strategy)}
+                    </td>
+                    <td>
+                      <span className="badge" data-tone="info">
+                        {roleLabel(source.primary_role)}
+                      </span>
+                      <span className="purpose-badges">
+                        {source.capabilities.map((capability) => (
+                          <span
+                            key={capability}
+                            className="badge purpose-badge"
+                            data-tone="idle"
+                          >
+                            {capabilityLabel(capability)}
+                          </span>
+                        ))}
+                      </span>
                     </td>
                     <td>
                       <span

@@ -16,6 +16,8 @@ function sourceRow(overrides: Record<string, unknown> = {}) {
     slug: "ornek-kaynak",
     name: "Örnek Kaynak",
     kind: "manual",
+    primary_role: "inspiration",
+    capabilities: ["inspiration"],
     locale: "tr-TR",
     market: "TR",
     lifecycle_state: "active",
@@ -132,6 +134,46 @@ describe("fetchResearchSources", () => {
     );
 
     expect(await fetchResearchSources()).toEqual({ kind: "malformed" });
+  });
+
+  it("rejects an unknown source role or capability as malformed", async () => {
+    stubFetch(async () =>
+      jsonResponse(200, page([sourceRow({ primary_role: "oracle" })])),
+    );
+    expect(await fetchResearchSources()).toEqual({ kind: "malformed" });
+
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        page([sourceRow({ capabilities: ["inspiration", "telepathy"] })]),
+      ),
+    );
+    expect(await fetchResearchSources()).toEqual({ kind: "malformed" });
+  });
+
+  it("parses a source with several capabilities", async () => {
+    stubFetch(async () =>
+      jsonResponse(
+        200,
+        page([
+          sourceRow({
+            primary_role: "turkish_editorial",
+            capabilities: ["inspiration", "market", "competition", "taxonomy"],
+          }),
+        ]),
+      ),
+    );
+    const result = await fetchResearchSources();
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.items[0]?.primary_role).toBe("turkish_editorial");
+      expect(result.data.items[0]?.capabilities).toEqual([
+        "inspiration",
+        "market",
+        "competition",
+        "taxonomy",
+      ]);
+    }
   });
 
   it("treats a network failure as unreachable", async () => {

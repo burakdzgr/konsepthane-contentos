@@ -36,6 +36,29 @@ export const TRUST_TIERS = [
   "reference_only",
 ] as const;
 
+// Editorial purpose (backend SourceRole / SourceCapability). Technical
+// `kind` says HOW content is acquired; these say WHAT it may be used for.
+export const SOURCE_ROLES = [
+  "inspiration",
+  "turkish_editorial",
+  "community_intent",
+  "competitor",
+  "taxonomy",
+  "trend",
+  "search",
+] as const;
+
+export const SOURCE_CAPABILITIES = [
+  "inspiration",
+  "community_need",
+  "market",
+  "competition",
+  "taxonomy",
+  "search",
+  "trend",
+  "visual_trend",
+] as const;
+
 export const DISCOVERY_STRATEGIES = [
   "feed",
   "sitemap",
@@ -122,6 +145,8 @@ const sourceListItemSchema = z.object({
   slug: z.string().min(1),
   name: z.string().min(1),
   kind: z.enum(SOURCE_KINDS),
+  primary_role: z.enum(SOURCE_ROLES),
+  capabilities: z.array(z.enum(SOURCE_CAPABILITIES)),
   locale: z.string(),
   market: z.string(),
   lifecycle_state: z.enum(SOURCE_LIFECYCLE_STATES),
@@ -185,6 +210,8 @@ const pipelineDetailSchema = z.object({
     slug: z.string().min(1),
     name: z.string().min(1),
     kind: z.enum(SOURCE_KINDS),
+    primary_role: z.enum(SOURCE_ROLES),
+    capabilities: z.array(z.enum(SOURCE_CAPABILITIES)),
     locale: z.string(),
     market: z.string(),
     lifecycle_state: z.enum(SOURCE_LIFECYCLE_STATES),

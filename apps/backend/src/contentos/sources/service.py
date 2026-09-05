@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,9 +12,12 @@ from sqlalchemy.orm import Session
 from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
+    SourceCapability,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
+    default_capabilities_for,
 )
 from contentos.sources.models import Source, SourceLifecycleEvent
 from contentos.sources.repository import SourceRepository
@@ -68,6 +72,33 @@ class InvalidLifecycleTransitionError(SourceRegistryError):
     """The requested lifecycle transition is not allowed."""
 
 
+def normalize_capabilities(
+    values: Iterable[SourceCapability | str] | None,
+    *,
+    role: SourceRole,
+) -> list[str]:
+    """Validated, deduplicated, canonically ordered capability VALUES.
+
+    ``None`` means "the operator stated nothing" and yields the role's
+    default set; an explicit empty list is an error because a source that
+    may produce no signal family has no editorial purpose.
+    """
+    if values is None:
+        return [capability.value for capability in default_capabilities_for(role)]
+    resolved: set[SourceCapability] = set()
+    for value in values:
+        try:
+            resolved.add(SourceCapability(value))
+        except ValueError:
+            raise InvalidSourceDefinitionError(
+                f"unknown source capability '{value}'; expected one of "
+                + ", ".join(member.value for member in SourceCapability)
+            ) from None
+    if not resolved:
+        raise InvalidSourceDefinitionError("a source needs at least one capability")
+    return [member.value for member in SourceCapability if member in resolved]
+
+
 class SourceRegistryService:
     """Registration and lifecycle for governed sources.
 
@@ -96,6 +127,8 @@ class SourceRegistryService:
         fetch_policy: dict[str, Any] | None = None,
         terms_notes: str | None = None,
         metadata: dict[str, Any] | None = None,
+        primary_role: SourceRole = SourceRole.INSPIRATION,
+        capabilities: Iterable[SourceCapability | str] | None = None,
     ) -> Source:
         """Idempotently register a source.
 
@@ -116,6 +149,8 @@ class SourceRegistryService:
             fetch_policy=fetch_policy,
             terms_notes=terms_notes,
             metadata=metadata,
+            primary_role=primary_role,
+            capabilities=capabilities,
         )
 
         existing = self._find_existing(definition)
@@ -135,6 +170,8 @@ class SourceRegistryService:
             fetch_policy=definition["fetch_policy"],
             terms_notes=definition["terms_notes"],
             metadata_json=definition["metadata"],
+            primary_role=definition["primary_role"],
+            capabilities=definition["capabilities"],
         )
         try:
             self._repository.add(source)
@@ -154,11 +191,66 @@ class SourceRegistryService:
                 source_id=source.id,
                 previous_state=None,
                 new_state=source.lifecycle_state,
-                reason="registered",
+                reason="registered; " + _purpose_summary(source),
                 origin=LifecycleChangeOrigin.OPERATOR,
             )
         )
         return source
+
+    def update_source_purpose(
+        self,
+        source_id: uuid.UUID,
+        *,
+        primary_role: SourceRole,
+        capabilities: Iterable[SourceCapability | str] | None = None,
+        origin: LifecycleChangeOrigin = LifecycleChangeOrigin.OPERATOR,
+    ) -> Source:
+        """Change WHY a source is read without touching HOW it is acquired.
+
+        The change is audited as a same-state lifecycle event so the source's
+        history shows when its editorial purpose moved. An unchanged purpose
+        is a no-op (no event).
+        """
+        if not isinstance(primary_role, SourceRole):
+            raise InvalidSourceDefinitionError("primary_role must be a known source role")
+        source = self._repository.get_by_id(source_id)
+        if source is None:
+            raise SourceNotFoundError(f"no source with id {source_id}")
+        resolved = normalize_capabilities(capabilities, role=primary_role)
+        if source.primary_role is primary_role and list(source.capabilities) == resolved:
+            return source
+        source.primary_role = primary_role
+        source.capabilities = resolved
+        self._repository.add_lifecycle_event(
+            SourceLifecycleEvent(
+                source_id=source.id,
+                previous_state=source.lifecycle_state,
+                new_state=source.lifecycle_state,
+                reason="purpose updated; " + _purpose_summary(source),
+                origin=origin,
+            )
+        )
+        return source
+
+    @staticmethod
+    def capabilities_for(source: Source) -> frozenset[SourceCapability]:
+        """Typed capability set; a persisted value outside the enum is ignored."""
+        known = {member.value: member for member in SourceCapability}
+        return frozenset(known[value] for value in source.capabilities if value in known)
+
+    @classmethod
+    def has_capability(cls, source: Source, capability: SourceCapability) -> bool:
+        return capability in cls.capabilities_for(source)
+
+    @staticmethod
+    def evidence_allowed(source: Source) -> bool:
+        """Community sources NEVER become ResearchEvidence sources.
+
+        Their raw text is never persisted and their signals are PII-free
+        normalized needs, not facts; this is the single predicate every
+        evidence writer must consult.
+        """
+        return source.primary_role is not SourceRole.COMMUNITY_INTENT
 
     def transition_source_state(
         self,
@@ -214,6 +306,8 @@ class SourceRegistryService:
         fetch_policy: dict[str, Any] | None,
         terms_notes: str | None,
         metadata: dict[str, Any] | None,
+        primary_role: SourceRole,
+        capabilities: Iterable[SourceCapability | str] | None,
     ) -> dict[str, Any]:
         cleaned_slug = slug.strip()
         if not _SLUG_PATTERN.fullmatch(cleaned_slug):
@@ -229,6 +323,8 @@ class SourceRegistryService:
             raise InvalidSourceDefinitionError(
                 f"source kind '{kind.value}' requires an explicit discovery_strategy"
             )
+        if not isinstance(primary_role, SourceRole):
+            raise InvalidSourceDefinitionError("primary_role must be a known source role")
 
         return {
             "slug": cleaned_slug,
@@ -243,6 +339,8 @@ class SourceRegistryService:
             "fetch_policy": fetch_policy or {},
             "terms_notes": terms_notes,
             "metadata": metadata or {},
+            "primary_role": primary_role,
+            "capabilities": normalize_capabilities(capabilities, role=primary_role),
         }
 
     def _find_existing(self, definition: dict[str, Any]) -> Source | None:
@@ -284,5 +382,11 @@ class SourceRegistryService:
             ("fetch_policy", existing.fetch_policy, definition["fetch_policy"]),
             ("terms_notes", existing.terms_notes, definition["terms_notes"]),
             ("metadata", existing.metadata_json, definition["metadata"]),
+            ("primary_role", existing.primary_role, definition["primary_role"]),
+            ("capabilities", list(existing.capabilities), definition["capabilities"]),
         ]
         return [field for field, current, proposed in comparisons if current != proposed]
+
+
+def _purpose_summary(source: Source) -> str:
+    return f"primary_role={source.primary_role.value}; capabilities={','.join(source.capabilities)}"

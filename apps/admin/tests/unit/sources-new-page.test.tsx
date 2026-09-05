@@ -47,6 +47,67 @@ describe("Register source page", () => {
     expect(screen.getByRole("button", { name: "Kaynak kaydet" })).toBeTruthy();
   });
 
+  it("asks what the source is for with Turkish role and capability choices", async () => {
+    await renderPage();
+
+    expect(screen.getByText("Bu kaynak ne için kullanılsın?")).toBeTruthy();
+
+    const roleSelect = screen.getByLabelText(
+      "Birincil rol",
+    ) as HTMLSelectElement;
+    expect(Array.from(roleSelect.options).map((o) => o.value)).toEqual([
+      "inspiration",
+      "turkish_editorial",
+      "community_intent",
+      "competitor",
+      "taxonomy",
+      "trend",
+      "search",
+    ]);
+    expect(Array.from(roleSelect.options).map((o) => o.textContent)).toEqual([
+      "Fikir / İlham",
+      "Türk editoryal",
+      "Topluluk / kullanıcı niyeti",
+      "Rakip",
+      "Taksonomi / pazar",
+      "Trend sinyali",
+      "Arama sinyali",
+    ]);
+    expect(roleSelect.value).toBe("inspiration");
+
+    const boxes = Array.from(
+      document.querySelectorAll('input[type="checkbox"][name="capabilities"]'),
+    ) as HTMLInputElement[];
+    expect(boxes.map((box) => box.value)).toEqual([
+      "inspiration",
+      "community_need",
+      "market",
+      "competition",
+      "taxonomy",
+      "search",
+      "trend",
+      "visual_trend",
+    ]);
+    expect(
+      boxes.filter((box) => box.defaultChecked).map((b) => b.value),
+    ).toEqual(["inspiration"]);
+    for (const label of [
+      "Fikir / İlham",
+      "Türkiye Pazar Sinyali",
+      "Kullanıcı İhtiyacı",
+      "Rakip / İçerik Karşılaştırması",
+      "Taksonomi",
+      "Trend",
+      "Görsel Trend",
+      "Arama Sinyali",
+    ]) {
+      expect(screen.getByLabelText(label)).toBeTruthy();
+    }
+    // Internal enum values never show as operator text.
+    expect(screen.queryByText("visual_trend")).toBeNull();
+    expect(screen.queryByText("turkish_editorial")).toBeNull();
+  });
+
   it("shows a bounded error notice from the redirect param", async () => {
     await renderPage({ error: "conflict" });
 

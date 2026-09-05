@@ -13,6 +13,7 @@ from celery import Celery
 
 from contentos.core.config import Settings
 from contentos.queue.celery import create_celery_app
+from contentos.worker.autopilot_tasks import AUTOPILOT_STEP_TASK, AUTOPILOT_SWEEP_TASK
 from contentos.worker.editorial_tasks import (
     ANALYZE_SEARCH_INTENT_TASK,
     BUILD_EVIDENCE_PACK_TASK,
@@ -26,6 +27,7 @@ from contentos.worker.editorial_tasks import (
     PUBLISH_PACKAGE_TASK,
     RUN_QA_GATES_TASK,
 )
+from contentos.worker.performance_tasks import SYNC_ALL_TASK
 from contentos.worker.research_tasks import (
     DISCOVER_SOURCE_TASK,
     FETCH_DISCOVERY_ITEM_TASK,
@@ -168,6 +170,12 @@ class EditorialControlDispatcher(Protocol):
 
     def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None: ...
 
+    def enqueue_autopilot_sweep(self, *, request_id: str | None = None) -> None: ...
+
+    def enqueue_autopilot_step(
+        self, work_item_id: str, *, request_id: str | None = None
+    ) -> None: ...
+
     def enqueue_generate_media_image(
         self,
         work_item_id: str,
@@ -178,6 +186,8 @@ class EditorialControlDispatcher(Protocol):
     ) -> None: ...
 
     def enqueue_publish(self, work_item_id: str, *, request_id: str | None = None) -> None: ...
+
+    def enqueue_performance_sync(self, *, request_id: str | None = None) -> list[str]: ...
 
 
 class CeleryEditorialControlDispatcher:
@@ -358,3 +368,15 @@ class CeleryEditorialControlDispatcher:
 
     def enqueue_publish(self, work_item_id: str, *, request_id: str | None = None) -> None:
         self._send(PUBLISH_PACKAGE_TASK, {"work_item_id": work_item_id}, request_id)
+
+    def enqueue_autopilot_sweep(self, *, request_id: str | None = None) -> None:
+        """Arm the ADR 0012 autopilot sweep (idempotent: it stops itself when OFF)."""
+        self._send(AUTOPILOT_SWEEP_TASK, {}, request_id)
+
+    def enqueue_autopilot_step(self, work_item_id: str, *, request_id: str | None = None) -> None:
+        self._send(AUTOPILOT_STEP_TASK, {"work_item_id": work_item_id}, request_id)
+
+    def enqueue_performance_sync(self, *, request_id: str | None = None) -> list[str]:
+        """Operator "sync now": the whole performance chain as ONE bounded job."""
+        self._send(SYNC_ALL_TASK, {}, request_id)
+        return [SYNC_ALL_TASK]

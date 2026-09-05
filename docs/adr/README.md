@@ -15,3 +15,5 @@ later ADRs amend earlier scope only where they say so explicitly.
 | 0008 | Defer the vector-similarity duplicate signal until justified |
 | 0009 | OpenAI as the first structured-generation provider adapter |
 | 0010 | Named operator override of the commissioning score gate |
+| 0011 | Subcontractor AI gateway as a selectable generation provider |
+| 0012 | Autopilot: bounded autonomous advancement of the editorial line |

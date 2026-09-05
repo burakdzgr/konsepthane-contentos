@@ -42,8 +42,10 @@ from contentos.operations.service import OperationsService
 from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
+    SourceCapability,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
 )
 from contentos.sources.repository import SourceRepository
@@ -94,6 +96,9 @@ class SourceRegistrationRequest(BaseModel):
     locale: str = Field(default="tr-TR", min_length=2, max_length=20)
     market: str = Field(default="TR", min_length=2, max_length=2)
     terms_notes: str | None = Field(default=None, max_length=MAX_TERMS_NOTES_LENGTH)
+    # Editorial purpose; omitted = inspiration with the role's default set.
+    primary_role: SourceRole = SourceRole.INSPIRATION
+    capabilities: list[SourceCapability] | None = Field(default=None, max_length=16)
 
     @field_validator("kind")
     @classmethod
@@ -111,6 +116,15 @@ class SourceLifecycleRequest(BaseModel):
 
     new_state: SourceLifecycleState
     reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
+
+
+class SourcePurposeRequest(BaseModel):
+    """Change the editorial purpose only; kind/URL/trust never move here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    primary_role: SourceRole
+    capabilities: list[SourceCapability] | None = Field(default=None, max_length=16)
 
 
 class DiscoveryRejectRequest(BaseModel):
@@ -140,6 +154,15 @@ class SourceLifecycleResponse(BaseModel):
     status: Literal["updated"]
     source_id: uuid.UUID
     lifecycle_state: SourceLifecycleState
+
+
+class SourcePurposeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["updated"]
+    source_id: uuid.UUID
+    primary_role: SourceRole
+    capabilities: list[SourceCapability]
 
 
 class DiscoveryItemMutationResponse(BaseModel):
@@ -208,6 +231,8 @@ def register_research_source(
             locale=body.locale,
             market=body.market,
             terms_notes=body.terms_notes,
+            primary_role=body.primary_role,
+            capabilities=body.capabilities,
         )
     except InvalidSourceDefinitionError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
@@ -218,6 +243,30 @@ def register_research_source(
         status="existing" if existed_before else "registered",
         source_id=source.id,
         lifecycle_state=source.lifecycle_state,
+    )
+
+
+@router.post("/sources/{source_id}/purpose", response_model=SourcePurposeResponse)
+def update_research_source_purpose(
+    session: Annotated[Session, Depends(get_db_session)],
+    source_id: uuid.UUID,
+    body: SourcePurposeRequest,
+) -> SourcePurposeResponse:
+    """Update WHY a source is read (role + capabilities); audited, no network."""
+    try:
+        source = SourceRegistryService(session).update_source_purpose(
+            source_id, primary_role=body.primary_role, capabilities=body.capabilities
+        )
+    except SourceNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    except InvalidSourceDefinitionError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    return SourcePurposeResponse(
+        status="updated",
+        source_id=source.id,
+        primary_role=source.primary_role,
+        capabilities=[SourceCapability(value) for value in source.capabilities],
     )
 
 

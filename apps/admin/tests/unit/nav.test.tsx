@@ -51,6 +51,46 @@ describe("AppNav", () => {
     ).toBe("/firsatlar");
   });
 
+  it("lists the operator's path in flow order, then the system section", () => {
+    usePathnameMock.mockReturnValue("/");
+    render(<AppNav badges={{ calisma: 2, firsatlar: 5 }} />);
+
+    const labels = screen
+      .getAllByRole("link")
+      .map((link) => link.textContent?.replace(/\d+$/, "").trim());
+    expect(labels).toEqual([
+      "Kontrol Merkezi",
+      "Çalışmalar",
+      "Kaynaklar",
+      "Fikirler",
+      "İçerikler",
+      "Benden Bekleyenler",
+      "Strateji",
+      "Performans",
+      "Entegrasyonlar",
+      "Sistem Sağlığı",
+      "Canlı Operasyon",
+      "Gelişmiş Motor",
+      "Teknik Görünümler",
+    ]);
+    expect(
+      screen.getByRole("link", { name: "Fikirler" }).getAttribute("href"),
+    ).toBe("/fikirler");
+    expect(
+      screen.getByRole("link", { name: "Performans" }).getAttribute("href"),
+    ).toBe("/performans");
+    expect(
+      screen.getByRole("link", { name: "Entegrasyonlar" }).getAttribute("href"),
+    ).toBe("/entegrasyonlar");
+    // Badges: live runs and genuine human decisions only.
+    expect(
+      screen.getByRole("link", { name: /Çalışmalar/ }).textContent,
+    ).toContain("2");
+    expect(
+      screen.getByRole("link", { name: /Benden Bekleyenler/ }).textContent,
+    ).toContain("5");
+  });
+
   it("moves technical operations under the system section", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
@@ -60,6 +100,11 @@ describe("AppNav", () => {
     expect(
       screen.getByRole("link", { name: "Teknik Görünümler" }),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Canlı Operasyon" })
+        .getAttribute("href"),
+    ).toBe("/operasyon");
   });
 
   it("marks only the current page with aria-current", () => {

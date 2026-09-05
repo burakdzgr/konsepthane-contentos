@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/dashboard-api", async () => {
@@ -24,6 +24,17 @@ vi.mock("@/lib/editorial-api", async () => {
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
+
+vi.mock("@/lib/performance-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/performance-api")>(
+    "@/lib/performance-api",
+  );
+  return {
+    ...actual,
+    fetchRefreshOpportunities: vi.fn(),
+    fetchStrategySuggestions: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/intake-api", async () => {
   const actual =
@@ -53,8 +64,14 @@ import {
   fetchIntakeRuns,
   type IntakeRunView,
 } from "@/lib/intake-api";
+import {
+  fetchRefreshOpportunities,
+  fetchStrategySuggestions,
+} from "@/lib/performance-api";
 import { queuePage, queueRow } from "./editorial-fixtures";
 
+const refreshMock = vi.mocked(fetchRefreshOpportunities);
+const suggestionMock = vi.mocked(fetchStrategySuggestions);
 const summaryMock = vi.mocked(fetchDashboardSummary);
 const agentsMock = vi.mocked(fetchDashboardAgents);
 const activityMock = vi.mocked(fetchDashboardActivity);
@@ -91,6 +108,7 @@ function summary(overrides: Partial<DashboardSummary> = {}): DashboardSummary {
       },
     },
     ai: {
+      provider: "openai",
       text_provider_configured: true,
       image_provider_configured: true,
       attempts_today: 12,
@@ -184,6 +202,8 @@ beforeEach(() => {
     requestId: null,
   });
   runDetailMock.mockResolvedValue({ kind: "unreachable" });
+  refreshMock.mockResolvedValue({ kind: "ok", data: [], requestId: null });
+  suggestionMock.mockResolvedValue({ kind: "ok", data: [], requestId: null });
 });
 
 describe("Kontrol Merkezi page", () => {
@@ -257,7 +277,7 @@ describe("Kontrol Merkezi page", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: "Kara's Party Ideas — Research Run #1f1e",
+        name: "Kara's Party Ideas — Araştırma Çalışması #1f1e",
       }),
     ).toBeTruthy();
     expect(screen.getByText("ÇALIŞIYOR")).toBeTruthy();
@@ -276,15 +296,15 @@ describe("Kontrol Merkezi page", () => {
     expect(screen.getByText("İçerik Üretim Kontrol Merkezi")).toBeTruthy();
     expect(screen.getByText("Çalışma İstatistikleri")).toBeTruthy();
     expect(screen.getByText("Keşfedilen URL")).toBeTruthy();
-    expect(screen.getByText("Fetch Edilen")).toBeTruthy();
-    // The control center groups the durable workflow into the nine visual
-    // stages used by the operations-console design.
+    expect(screen.getByText("Getirilen Sayfa")).toBeTruthy();
+    // The control center groups the durable workflow into nine Turkish
+    // stages; no technical stage vocabulary (fetch, normalize) leaks.
     for (const label of [
       "Keşif",
       "Ön Eleme",
-      "Fetch",
-      "Normalize",
-      "Analiz",
+      "Getirme",
+      "Anlama",
+      "Gruplama",
       "Fırsat",
       "Kanıt",
       "SEO / Niyet",
@@ -292,14 +312,16 @@ describe("Kontrol Merkezi page", () => {
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
+    expect(screen.queryByText(/Fetch|Normalize/)).toBeNull();
     expect(screen.getAllByText("1 hata").length).toBeGreaterThan(0);
   });
 
   it("shows the agent card with honest status and controls", async () => {
     await renderPage();
 
-    expect(screen.getByText("Writer Agent")).toBeTruthy();
-    expect(screen.getByText("RUNNING")).toBeTruthy();
+    expect(screen.getByText("Yazar ajanı")).toBeTruthy();
+    expect(screen.getByText("AKTİF")).toBeTruthy();
+    expect(screen.queryByText(/RUNNING|IDLE|PAUSED|ERROR/)).toBeNull();
     expect(screen.getByText("openai/gpt-5")).toBeTruthy();
     expect(screen.getByText(/%75/)).toBeTruthy();
     expect(
@@ -320,7 +342,7 @@ describe("Kontrol Merkezi page", () => {
 
     await renderPage();
 
-    expect(screen.getByText("PAUSED")).toBeTruthy();
+    expect(screen.getByText("DURDURULDU")).toBeTruthy();
     expect(screen.getByText(/Motor durduruldu: acil bakım/)).toBeTruthy();
     expect(screen.getByText(/acil bakım/)).toBeTruthy();
     expect(
@@ -356,7 +378,7 @@ describe("Kontrol Merkezi page", () => {
     expect(screen.getByRole("link", { name: "İncele" })).toBeTruthy();
   });
 
-  it("surfaces alerts from real counts only", async () => {
+  it("lists only the four genuine human decisions with real counts", async () => {
     summaryMock.mockResolvedValue({
       kind: "ok",
       data: summary({
@@ -365,17 +387,78 @@ describe("Kontrol Merkezi page", () => {
           blocked: 2,
           awaiting_human_review: 0,
         },
+        attention: {
+          production_decisions: 4,
+          awaiting_human_review: 0,
+          approval_expired: 1,
+          changes_requested: 0,
+          refresh_decisions: 3,
+          strategy_suggestions: 1,
+        },
       }),
       requestId: null,
     });
 
     await renderPage();
 
-    const blocked = screen.getByRole("link", { name: /Bloke içerik 2/ });
+    const panel = screen.getByRole("region", { name: "Benden bekleyenler" });
+    const links = within(panel).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("aria-label"))).toEqual([
+      "Üretim kararı 4",
+      "Yayın onayı 0",
+      "Güncelleme kararı 3",
+      "Strateji önerisi 1",
+    ]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/firsatlar",
+      "/firsatlar#yayin-onayi",
+      "/firsatlar#guncelleme",
+      "/firsatlar#strateji",
+    ]);
+    // Counts came with the summary: no extra performance reads.
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(suggestionMock).not.toHaveBeenCalled();
+    // Blocked content is a health fact, not a decision.
+    expect(within(panel).queryByText(/Bloke|Engellenen/)).toBeNull();
+    const blocked = screen.getByRole("link", { name: "2 içerik" });
     expect(blocked.getAttribute("href")).toBe("/editorial?state=blocked");
+  });
+
+  it("falls back to the performance lists when the summary lacks the counts", async () => {
+    refreshMock.mockResolvedValue({
+      kind: "ok",
+      data: [
+        {
+          id: "3f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+          published_content_id: "4f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+          work_item_id: "5f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+          title_working_label: "Düşen içerik",
+          current_state: "published",
+          status: "proposed",
+          trigger_assessment_id: "6f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+          window_days: 28,
+          diagnosis: {},
+          recommendation: "Güncelle",
+          proposed_at: AT,
+          decided_at: null,
+          decided_by_display_name: null,
+          decision_reason: null,
+        },
+      ],
+      requestId: null,
+    });
+    suggestionMock.mockResolvedValue({ kind: "unreachable" });
+
+    await renderPage();
+
     expect(
-      screen.queryByRole("link", { name: /İnsan onayı bekleyen/ }),
-    ).toBeNull();
+      screen.getByRole("link", { name: "Güncelleme kararı 1" }),
+    ).toBeTruthy();
+    // An unreadable count is said so, never shown as zero.
+    expect(
+      screen.getByRole("link", { name: "Strateji önerisi okunamadı" })
+        .textContent,
+    ).toContain("sayı şu anda okunamıyor");
   });
 
   it("renders honest empty and unavailable states", async () => {

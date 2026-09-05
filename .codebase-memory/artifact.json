@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "010ce9af944327957fafe1affb89e5ecd7ed13d4",
-    "indexed_at": "2026-09-04T01:45:57Z",
+    "commit": "35ac0ad024c01710b8cbbdadf50e4ea50c4ea187",
+    "indexed_at": "2026-09-05T02:44:40Z",
     "project": "C-Users-BURAK-Projects-konsepthane-contentos",
-    "nodes": 7527,
-    "edges": 41671,
-    "original_size": 40370176,
-    "compressed_size": 5984339,
+    "nodes": 9459,
+    "edges": 54688,
+    "original_size": 50200576,
+    "compressed_size": 7486283,
     "compression_level": 3
 }

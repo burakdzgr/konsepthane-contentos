@@ -99,6 +99,7 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
     import contentos.ideas.models  # noqa: F401
     import contentos.inspiration.models  # noqa: F401
     import contentos.intake.models  # noqa: F401
+    import contentos.intelligence.models  # noqa: F401
     import contentos.media.models  # noqa: F401
     import contentos.normalization.models  # noqa: F401
     import contentos.operations.models  # noqa: F401
@@ -161,6 +162,17 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "publication_attempts",
         "operational_pauses",
         "operational_pause_events",
+        "autopilot_settings",
+        "autopilot_events",
+        "published_contents",
+        "content_performance_snapshots",
+        "performance_assessments",
+        "refresh_opportunities",
+        "strategy_suggestions",
+        "integration_status",
+        "provider_request_log",
+        "provider_cache",
+        "intelligence_signals",
         "intake_runs",
         "intake_run_events",
         "audience_strategies",

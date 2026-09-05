@@ -57,6 +57,347 @@ that state). The rule now lives in ONE place:
   fresh evaluation. Existing v1 evaluations stay durable until the next
   `evaluate_opportunity` run.
 
+### Source roles and capabilities (2026-09-05)
+
+- `SourceKind` stays TECHNICAL (how content is acquired). Migration
+  `0031` adds the EDITORIAL PURPOSE to `sources`: `primary_role`
+  (`inspiration | turkish_editorial | community_intent | competitor |
+  taxonomy | trend | search`, CHECK constraint, default `inspiration`)
+  and `capabilities` (JSON list of `inspiration | community_need |
+  market | competition | taxonomy | search | trend | visual_trend`,
+  default `["inspiration"]`). Existing rows are unchanged in meaning.
+- `contentos.sources.enums`: `SourceRole`, `SourceCapability`,
+  `default_capabilities_for(role)`. `SourceRegistryService`:
+  `register_source(primary_role=, capabilities=)`,
+  `update_source_purpose(id, primary_role=, capabilities=)` (audited as
+  a same-state lifecycle event), `capabilities_for(source)`,
+  `has_capability(source, cap)`, `evidence_allowed(source)`;
+  `normalize_capabilities()` validates/dedupes/orders (typed
+  `InvalidSourceDefinitionError`). Re-registering with a different
+  purpose is a 409 conflict like any other definition change.
+- API: `POST /internal/research/sources` accepts optional
+  `primary_role`/`capabilities` (422 on unknown values);
+  `POST /internal/research/sources/{id}/purpose` updates them; source
+  list and pipeline-detail read models expose both.
+- Evidence rule: `community_intent` sources NEVER produce
+  `ResearchEvidence` — `ResearchEvidenceService.record_evidence` refuses
+  them via `SourceRegistryService.evidence_allowed`; Agent B's community
+  extractor and any future evidence writer must call the same predicate.
+- Admin: `/sources/new` and a per-row "Amacı düzenle" editor on
+  `/sources` ask "Bu kaynak ne için kullanılsın?" (Turkish capability
+  checkboxes + "Birincil rol" select, shared `purpose-fields.tsx`);
+  the list shows role/capability badges. Labels in
+  `src/lib/source-purpose.ts` (+ `tr-labels.ts` keys); client
+  `updateSourcePurpose` in `research-control-api.ts`.
+- Docs: `docs/INTAKE_ORCHESTRATION.md` "Source purpose" section.
+- Operational prerequisite: `alembic upgrade head` (0031).
+
+### Intelligence signals: role-aware extraction store (2026-09-05)
+
+- `contentos.intelligence` (migration `0032`, table `intelligence_signals`):
+  ONE bounded, PII-free store for the non-inspiration signal families
+  (`SignalFamily`: inspiration, community_need, market, competition,
+  taxonomy, search, trend, visual_trend, historical_performance). Row
+  identity is `observation_hash` = sha256(family|concept_key|provider|
+  source_id|normalized_document_id) with a UNIQUE constraint, so
+  re-extraction bumps `occurrence_count` / `last_observed_at` instead of
+  duplicating. `value` JSON is bounded (max 40 keys, strings ≤ 300 chars).
+- Deterministic extractors (`extractors.py`, no AI) run only for the
+  families in the source's `capabilities` (Agent A contract; default
+  `inspiration` → nothing extracted here): `community-need-extractor/1`
+  (question/need sentences with Turkish cues, category guess, PII-scrubbed
+  pattern ≤ 300 chars — the paragraph is never stored), `taxonomy-extractor/1`
+  (theme|product|category terms from title/headings, navigation words
+  skipped), `market-context-extractor/1` (`StrategyService.context_for_text`
+  clusters/keywords; no match → no row, never an empty market signal),
+  `competition-extractor/1` (title pattern + url host + published_at).
+  Vocabularies are natural Turkish normalized at import with
+  `normalize_phrase` (dotless `ı` survives normalization; ASCII lists would
+  silently miss).
+- `privacy.py`: `scrub_pii` / `is_pii_free` / `bounded_pattern` replace
+  e-mails, Turkish phone numbers, `@handles`, query-string URLs and names
+  after cues (`adım`, `ismim`, `kızım`, `oğlum`, `eşim`, ...) with neutral
+  tokens (`[e-posta]`, `[telefon]`, `[hesap]`, `[bağlantı]`, `[ad]`).
+- Worker hook: `contentos.research.normalize_fetch` calls
+  `_extract_intelligence_signals` AFTER the normalization commit and BEFORE
+  dispatching duplicate evaluation; any extractor error is logged, rolled
+  back and never fails normalization. Never runs in the API.
+- Contract for opportunity intelligence:
+  `contentos.intelligence.service.signal_bands_for_opportunity(session,
+  opportunity_id) -> dict[SignalFamily, Band]` (`strong|moderate|weak|
+  unknown`) over rows linked to the opportunity's research documents,
+  pinned rows, and concept-key matches with the topic summary. Thresholds:
+  STRONG ≥ 6 occurrences AND ≥ 2 sources; MODERATE ≥ 3 occurrences OR ≥ 2
+  sources; else WEAK; no row → UNKNOWN (never 0). Families stored elsewhere
+  (inspiration, provider search/trend) stay UNKNOWN here — consumers
+  combine stores; community interest is never treated as search demand.
+- Read API (operator-guarded, GET only): `GET /internal/intelligence/signals
+  ?family=&opportunity_id=&limit=` (≤ 200, 404 for unknown opportunity) and
+  `GET /internal/intelligence/summary` (per family: row count, occurrence
+  total, distinct sources, last observed or null). No admin page yet.
+- Docs: `docs/INTELLIGENCE_SIGNALS.md`. Tests: `tests/unit/test_intelligence.py`
+  (24). Operational prerequisite: `alembic upgrade head` (≥ `0032`).
+
+### External intelligence providers + Entegrasyonlar (2026-09-05)
+
+- `contentos.integrations`: adapters over OFFICIAL APIs only — Semrush
+  Analytics v3 (`phrase_these`, `phrase_related`, `domain_organic`; units
+  check for the connection test), Google Search Console Search Analytics,
+  GA4 Data API `runReport` (key events ONLY from `CONTENTOS_GA4_KEY_EVENTS`),
+  Google Trends (activates ONLY with an alpha/allow-listed API key, else
+  `access_required`; never scraped), Pinterest API v5 trends (`trends:read`,
+  else `access_required`). Shared service-account JWT-bearer flow
+  (`google_auth.py`, google-auth signer + httpx exchange; JSON content or
+  file path). States: `healthy | not_configured | access_required |
+  rate_limited | degraded | error`; errors are bounded classes such as
+  `semrush_http_401`, `gsc_timeout`, `<provider>_daily_budget`.
+- Cost control (migration `0033`: `integration_status`,
+  `provider_request_log` UNIQUE(provider, day), `provider_cache`
+  UNIQUE(provider, sha256 key)): per-provider daily budget (defaults
+  semrush 200, gsc 500, ga4 500, trends 200, pinterest 200), response cache
+  TTL (72h / 12h / 12h / 24h / 24h), in-process dedupe, backoff retry (max
+  2) on 429/5xx/timeouts honouring `Retry-After`. Stores use the caller's
+  bound session (`sessions.bind_session`) or open their own.
+- Observations → `SearchSignal` rows (`observations.py`): `search_volume`
+  for Semrush (only when the volume is KNOWN), `trend` with
+  `relative: true` for Google Trends / Pinterest; provenance in `value`
+  (provider, basis, metrics, observed_at); idempotent via observation_hash;
+  `freshness_for(session, provider, subject)`.
+- API: `GET /internal/integrations` (state, verified, detail, last
+  success/check, last error class, freshness = last_sync_at, requests
+  today / daily budget, env NAMES), `POST /internal/integrations/{name}/test`
+  (one cheap real call, persisted). `IntegrationRegistry` /
+  `create_integration_registry(settings, session_factory)` for the worker;
+  `record_success` / `record_error` update the durable status. No periodic
+  tasks registered here.
+- Admin `/entegrasyonlar` ("Entegrasyonlar", nav under Sistem): one card
+  per provider, Turkish state badges (Bağlı, Yapılandırılmadı, API erişimi
+  gerekli, Kota sınırında, Kısıtlı, Hata, Henüz doğrulanmadı), facts, env
+  hints (names only), "Bağlantıyı Test Et" server action.
+- Env: `CONTENTOS_SEMRUSH_API_KEY|DATABASE|DAILY_BUDGET|CACHE_HOURS`,
+  `CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON`, `CONTENTOS_GSC_SITE_URL|
+  DAILY_BUDGET|CACHE_HOURS`, `CONTENTOS_GA4_PROPERTY_ID|KEY_EVENTS|
+  DAILY_BUDGET|CACHE_HOURS`, `CONTENTOS_GOOGLE_TRENDS_API_KEY|API_URL|
+  DAILY_BUDGET|CACHE_HOURS`, `CONTENTOS_PINTEREST_ACCESS_TOKEN|REGION|
+  DAILY_BUDGET|CACHE_HOURS`, `CONTENTOS_INTEGRATIONS_HTTP_TIMEOUT_SECONDS`
+  (all passed through compose). Dependency added: `google-auth`. See
+  `docs/INTEGRATIONS.md`.
+
+### Performance loop: Measure → Learn → Improve (2026-09-05)
+
+- `contentos.performance` (migration `0034`, tables `published_contents`,
+  append-only `content_performance_snapshots` + `performance_assessments`,
+  `refresh_opportunities`, `strategy_suggestions`). PUBLISHED = measurement
+  started: the `publish_package` task records the published content
+  fail-safe after the success commit; `PerformanceService.backfill_published`
+  registers older successes (also run by `POST /internal/performance/sync`).
+  `canonical_url` only when the remote ref is an absolute URL, else NULL
+  ("Yayın adresi bilinmiyor").
+- Pure classifier (`performance-classifier/1`): 7/28/90-day windows vs the
+  previous equal window from Search Console daily snapshots; thresholds in
+  Settings (`CONTENTOS_PERFORMANCE_MIN_IMPRESSIONS=100`, `_MIN_DAYS=7`,
+  `_DECLINE_PCT=0.25`, `_RISE_PCT=0.25`, `_VOLATILITY_PCT=0.5`); statuses
+  `unknown | insufficient_data | rising | stable | declining | volatile`; a
+  new content is never "declining".
+- Historical signal: `HistoricalPerformanceService.aggregate` writes
+  `IntelligenceSignal(family=historical_performance)` per cluster/audience/
+  theme/format grain; `historical_signal_for(session, *, cluster_id,
+  audience_id, theme_key, content_format) -> HistoricalSignal(band, outcome,
+  basis)` is PRIORITY ONLY, never a filter.
+- Refresh: `declining` (28/90) → one proposed refresh with a computed-only
+  diagnosis; `approve` (named user + reason) moves the item through the
+  canonical `PUBLISHED → MEASURING → REFRESH_CANDIDATE` transitions and
+  never publishes; next step `REFRESH_CANDIDATE → RESEARCHING` is human/
+  autopilot. Strategy suggestions need ≥ 3 publications with real metrics;
+  `accept` applies ONE bounded change via `StrategyService`.
+- Worker `contentos.worker.performance_tasks` (7 tasks + `sync_all`),
+  provider errors classified and persisted through the integration
+  registry; Celery beat schedule in `create_celery_app` guarded by
+  `CONTENTOS_PERFORMANCE_SCHEDULE_ENABLED` (03:00/04:00 UTC); new compose
+  service `beat` (`python -m contentos.worker.main beat`).
+- API `/internal/performance/*` (overview, contents/{work_item_id},
+  refresh-opportunities + approve/dismiss, strategy-suggestions +
+  accept/ignore, sync); dashboard attention gains `refresh_decisions` and
+  `strategy_suggestions`. Admin `/performans` + `/performans/[workItemId]`
+  (inline SVG sparklines, Turkish statuses), nav entry "Performans", two
+  "Benden Bekleyenler" items. Docs: `docs/PERFORMANCE_LOOP.md`.
+
+### Opportunity Intelligence: enrichment + explainable Turkish sections (2026-09-05)
+
+- `contentos.inspiration.enrichment.enrich_opportunity(session, opportunity_id,
+  *, registry=None, context=None, now=None)` gathers, bounded and fail-safe,
+  every signal family and provider for one opportunity: keyword set (≤ 8
+  natural-Turkish phrases: strategy keywords → topic → inspiration concepts),
+  Semrush `keyword_overview` (one batched call → potential band from
+  volume/KD thresholds, stored via `record_keyword_metrics`), Google Trends
+  `summary` (direction), Pinterest `keyword_trend` (growth band), Agent B
+  family bands with occurrence/source counts, `historical_signal_for` (lazy
+  import; ImportError/None → unknown), latest `cannibalization_status`,
+  independent source count and distinct known family count. Every provider
+  call is wrapped: `ProviderError` → `registry.record_provider_error`, any
+  other exception → `record_error(kind=ERROR)`; the value stays UNKNOWN.
+  Without a registry (API process) the durable `search_signals` history is
+  read (`state = stored`) or the provider is `not_requested`.
+- Engine `inspiration-quality` is now version **5**: `input_snapshot`
+  carries the `intelligence` block with provenance (provider, state,
+  error_class, observed_at, region); `search_opportunity` = base component
+  when KNOWN else Semrush band; `trend_state` KNOWN when Trends/Pinterest
+  reported; `missing_signals` adds `community_need`, `competition`,
+  `historical_performance`. Identity hash strips provider timestamps and
+  treats `stored` as `healthy`, so an unchanged-facts re-run is a reuse.
+  `recommendation_for(..., historical_positive=)`: known-WEAK search never
+  yields PRODUCE; a positive history lifts HUMAN_REVIEW → PRODUCE only for
+  HIGH + evidence + commissionable + search not weak. Community need is not
+  a policy input. Rationale is Turkish with concrete bases and provider
+  freshness ("Semrush: hacim 1.900, zorluk 32 (tr, bugün)").
+- Worker `evaluate_opportunity` passes
+  `create_integration_registry(runtime.settings, runtime.create_session)`;
+  `InspirationIntelligenceService.evaluate(..., registry=None)` elsewhere.
+- Read models: `WorkQueueRow.intelligence` and `WorkItemDetail.inspiration`
+  (`InspirationEvaluationView` incl. `intelligence`): `content_value`,
+  `search_intelligence` (+ `provider_freshness`), `konsepthane_data`,
+  `research`, `recommendation`, `why`, `factor_bands` — one band vocabulary
+  `IntelligenceBand` (very_high/high/medium/low/unknown); pre-v5 rows
+  project as unknown/null, never 0.
+- Admin: `apps/admin/src/app/firsatlar/intelligence.tsx`
+  (`OpportunityIntelligence`) renders İçerik Değeri / Arama İstihbaratı /
+  Konsepthane Verisi / Araştırma, Sistem Önerisi + "Neden?", and a folded
+  "Ayrıntı" with the ten factor bands; used by the `/firsatlar` card and the
+  detail "Fırsat ve skor". New `tr-labels` entries (very_high, rising,
+  falling, stable, sufficient, positive/neutral/negative, not_requested,
+  stored, no_data); `.intel-*` CSS. No migration, no endpoint, no env var.
+  Tests: `tests/unit/test_opportunity_intelligence.py` (19, real adapters
+  over scripted HTTP), admin page tests extended. See
+  `docs/IDEA_INTELLIGENCE.md`.
+
+### Operator UI simplification (2026-09-05)
+
+- Navigation (`apps/admin/src/app/nav.tsx`) follows the operator's path:
+  Kontrol Merkezi, Çalışmalar, Kaynaklar, Fikirler, İçerikler, Benden
+  Bekleyenler, Strateji, Performans, Entegrasyonlar; "Sistem" holds Sistem
+  Sağlığı, Canlı Operasyon, Gelişmiş Motor, Teknik Görünümler. The
+  "Benden Bekleyenler" badge sums the four genuine human decisions
+  (production, publication approval, refresh, strategy suggestion).
+- New `/fikirler` ("Fikirler"): every open opportunity in `idea_scoring`
+  plus commissioned items up to `briefing`, grouped from the backend's own
+  verdicts (`ideaGroupOf`: not evaluated → "Araştırma sürüyor"; eliminate →
+  "Elenenler"; produce or inspiration high/very_high → "Güçlü fikirler";
+  continue_research → "Araştırma sürüyor"; else "İncelenmeli"), each card
+  with the Turkish intelligence sections (`OpportunityIntelligence`), the
+  selected idea title and originality. Read-only; no new endpoint.
+- `/firsatlar` is the human inbox: above the production inbox it shows
+  "Yayın onayı bekleyen" (awaiting_human_review work items), "Güncelleme
+  kararı bekleyen" (proposed refresh opportunities, decided in place) and
+  "Strateji önerileri" (proposed suggestions) only while non-empty; counts
+  in the tab row. `performans/actions.ts` accepts `return_to=/firsatlar`.
+- Kontrol Merkezi "Benden Bekleyenler" lists ONLY the four decisions with
+  real counts (`refresh_decisions` / `strategy_suggestions` from the
+  dashboard summary, falling back to the performance lists on an older
+  backend; an unreadable count reads "okunamadı", never 0). Blocked content
+  moved to the health card as a fact. Agent names, stage names and run
+  statuses are Turkish (no Fetch/Normalize/RUNNING/PAUSED); the raw score
+  number gave way to the recommendation label.
+- Live run experience: shared `apps/admin/src/app/calisma/stages.tsx`
+  (`buildLineStages`, `LineStageList`) renders the full Turkish line as a
+  vertical list on `/calisma/[id]` and under each live run on
+  `/operasyon`: Kaynak taranıyor → URL'ler keşfediliyor → Ön eleme →
+  İçerikler getiriliyor → İçerik anlaşılıyor → Fikirler çıkarılıyor →
+  Benzer fikirler gruplanıyor → Topluluk sinyali → Pazar sinyali →
+  Strateji eşleşmesi → Semrush → Google Trends → Pinterest Trends →
+  Konsepthane geçmiş verisi → Fırsat. Intake stages come from the run
+  view; signal stages from `GET /internal/intelligence/summary?run_id=`
+  (new bounded filter: tallies over the run's own dispatched documents via
+  `read_models/intake.run_document_ids`; 404 for an unknown run; admin
+  client `apps/admin/src/lib/intelligence-api.ts`); provider stages from
+  `/internal/integrations` ("API erişimi bekleniyor", "Yapılandırılmadı",
+  freshness). A stage with nothing behind it shows "veri yok" /
+  "bekleniyor".
+- Freshness vocabulary `apps/admin/src/lib/freshness.ts`
+  (`freshnessLabel`, `describeFreshness`, `isStale`): "Semrush · 2 gün
+  önce", "Search Console · son veri 2026-09-03", "Google Trends · API
+  erişimi gerekli"; data older than 2× the provider cache TTL is
+  "eski veri". Used by the intelligence cards, Performans, Entegrasyonlar
+  and the stage list.
+- Vocabulary audit: engine identities, pinned ids and content hashes on
+  the editorial detail moved into `<details class="detail-fold">`
+  "Gelişmiş" blocks (facts kept); the gateway's account/job ids on
+  `/operasyon` likewise; "Yapılandırılmamış" → "Yapılandırılmadı",
+  "Erişim gerekli" → "API erişimi gerekli"; `trLabel` gained
+  running/completed/stopped/idle/historical_performance. Kaynak kaydet:
+  kinds render through `trLabel`, and the address field explains that an
+  RSS source needs the FEED address (kind-driven placeholder + hint,
+  `sources/address-fields.tsx`). Duplicate `case "ai_unconfigured"` in
+  `editorial/[id]/actions.ts` removed.
+- Tests: `fikirler-page`, `freshness`, `intelligence-api` (new);
+  nav / firsatlar / kontrol / calisma-run / operasyon / performans-page
+  updated; backend `test_summary_bounded_to_one_intake_run`.
+
+### Autopilot (ADR 0012) + Canlı Operasyon page (2026-09-05)
+
+- `contentos.autopilot`: durable singleton mode (`off | supervised |
+  autonomous`, migration `0030`, tables `autopilot_settings` and the
+  append-only `autopilot_events`), a pure planner (`planner.plan` maps a
+  durable-fact `Snapshot` + mode to ONE `Action`), and a runner that
+  performs acceptances through the existing domain services (commission,
+  select idea, accept brief, accept review, bounded rework, resolve
+  changes, assemble, schedule) recording the enabling operator as actor and
+  `autopilot="true"` in artifact refs, or enqueues the existing editorial
+  tasks for production steps (ideas, pack from ALL eligible evidence,
+  intent, brief, draft, review, QA, one image per open media need).
+- Worker: `contentos.autopilot.step` (one item) and the self-re-arming
+  `contentos.autopilot.sweep` (20 s, stops when OFF, re-armed by the API on
+  mode change and by the worker on `worker_ready`). In-flight guard: the
+  same action within 15 min is never re-enqueued. No Celery beat.
+- Gates that ALWAYS wait for a human: commissioning gate refused,
+  `awaiting_human_review` (ADR 0004), media satisfaction (v1), rework
+  limit (2 cycles), insufficient/conflicted pack, blocked.
+- API: `GET /internal/autopilot`, `PUT /internal/autopilot/mode` (named,
+  reasoned; switching on arms the sweep), `POST /internal/autopilot/sweep`;
+  `GET /internal/operations/live` (autopilot state, running intake runs,
+  editorial line items with the autopilot's last word, merged feed of
+  autopilot/workflow/AI events, and the gateway's `/api/status` read
+  server-side with `CONTENTOS_SUBCONTRACTOR_ADMIN_TOKEN`).
+- Admin `/operasyon` ("Canlı Operasyon"): mode switch with reason, gateway
+  card (accounts, queue, running job phase), editorial line table, intake
+  runs, feed; 5 s polling.
+- Live browser in the grid: the gateway gained `GET /api/screenshot`
+  (admin-token protected; one JPEG of the connected ChatGPT session's page
+  via puppeteer, view-only — local change in the contentos-gateway clone).
+  Backend `GET /internal/operations/screenshot` fetches it server-side;
+  admin `/operasyon/screenshot` proxies bytes; `browser-view.tsx` refreshes
+  the frame every 3 s. The Nstbrowser window stays open on the host but no
+  longer needs to be in front; true background needs a Linux virtual
+  display (gateway docs/SUNUCU.md), headless is detected by ChatGPT.
+- Operational prerequisite: `alembic upgrade head` (0030) before the new
+  images start.
+
+### Subcontractor AI gateway provider (ADR 0011, 2026-09-04)
+
+- `CONTENTOS_AI_PROVIDER=subcontractor` routes EVERY AI job (ideas, intent,
+  brief, draft, editor review, media image) to the self-hosted
+  `subcontractor-ai` gateway (github.com/OktayCennetoglu/subcontractor-ai)
+  instead of OpenAI. Adapter: `contentos.ai.providers.subcontractor_provider`
+  — submit `POST /v1/jobs` (type text|image, model chatgpt|claude|…), poll
+  `GET /v1/jobs/{id}` until succeeded|failed, bounded by
+  `CONTENTOS_SUBCONTRACTOR_TIMEOUT_SECONDS` (default 420 s).
+- The gateway cannot enforce JSON schemas, so the adapter embeds the output
+  schema as an explicit prompt contract and extracts the single JSON object
+  from the reply (code fences / prose tolerated); the AI boundary's schema
+  validation still decides, so a non-conforming reply is a durable
+  `validation_failed` attempt. Images: first produced image is downloaded
+  from the gateway and returned as the `image_base64` envelope.
+- Failures map to bounded classes `subcontractor_*` (timeout, rate_limit,
+  auth, connection, api_error, malformed, no_image, `job_<code>`); no
+  gateway text, URL or key is persisted.
+- Settings: `subcontractor_base_url`, `subcontractor_api_key`,
+  `subcontractor_model` (chatgpt), `subcontractor_image_model` (chatgpt),
+  timeout, poll interval. `Settings.text_provider_configured` /
+  `image_provider_configured` now follow the SELECTED provider; the API
+  guard, dashboard `ai.provider` and admin notices name the right env vars.
+  compose passes the variables through and adds
+  `host.docker.internal:host-gateway` so containers reach the gateway on
+  the host (`http://host.docker.internal:8090`).
+
 ### AI provider configuration is visible and fail-fast (2026-09-04)
 
 - Root cause found in operation: "Fikir adayları üret" did nothing because
@@ -118,6 +459,34 @@ that state). The rule now lives in ONE place:
   publication statuses, …). The editorial queue, `/firsatlar` and the
   work-item detail render ONLY Turkish labels; backend values remain the
   wire/filter contract. An untranslated value is humanized, never hidden.
+
+## Idea & Content Intelligence Engine — closed loop (2026-09-05)
+
+ContentOS now implements Discover → Understand → Evaluate → Produce →
+Publish → Measure → Learn → Improve as one governed loop. Concept map and
+invariants: `docs/INTELLIGENCE_ENGINE.md` ("External content is a signal,
+not a template to reproduce." / "Strategic keywords guide discovery and
+editorial planning; they are not keyword-stuffing instructions."). Pieces,
+each with its own block below: source roles/capabilities (0031),
+intelligence signals with PII-free community patterns (0032), external
+providers Semrush / Search Console / GA4 / Google Trends / Pinterest Trends
+with budgets, caches, states and the Entegrasyonlar screen (0033),
+opportunity intelligence engine v5 with explainable Turkish sections,
+performance snapshots / assessments / refresh opportunities / strategy
+suggestions with Celery beat (0034), autopilot (0030) and the Canlı
+Operasyon page, and the operator UI simplification (Fikirler, Performans,
+Entegrasyonlar, Sistem). Migration head: `0034`. Without credentials every
+provider reports Yapılandırılmadı / API erişimi gerekli and the line keeps
+running with UNKNOWN; credentials are the only thing left for the operator
+(`docs/INTEGRATIONS.md`).
+
+Real local verification (2026-09-05): Kara's Party Ideas sitemap run →
+20 opportunities → engine v5 intelligence with honest unknowns and provider
+freshness states; Catch My Party feed discovery works (30 URLs) but its
+article pages block non-browser clients (bot protection: our honest UA
+hangs, generic UA gets 403), so fetches record `fetch_failed` truthfully —
+ContentOS does not spoof. RSS sources must be registered with the FEED
+address as `base_url` (form hint added).
 
 ## Current phase
 

@@ -81,10 +81,7 @@ class AiSummaryView(_FrozenModel):
     remaining_budget: int | None
     # Configuration truth: without these the worker cannot run ANY AI
     # task, so the admin must say so before an operator clicks.
-    text_provider_configured: bool
-    image_provider_configured: bool
-    # Configuration truth: without these the worker cannot run ANY AI
-    # task, so the admin must say so before an operator clicks.
+    provider: str
     text_provider_configured: bool
     image_provider_configured: bool
 
@@ -114,6 +111,9 @@ class AttentionSummaryView(_FrozenModel):
     awaiting_human_review: int
     approval_expired: int
     changes_requested: int
+    # Performance loop (agent E): named decisions waiting on an operator.
+    refresh_decisions: int
+    strategy_suggestions: int
 
 
 class DashboardSummary(_FrozenModel):
@@ -327,6 +327,7 @@ def _ai_summary(
     session: Session,
     daily_budget: int | None,
     *,
+    provider: str,
     text_provider_configured: bool,
     image_provider_configured: bool,
 ) -> AiSummaryView:
@@ -349,6 +350,7 @@ def _ai_summary(
         failures_today=failures,
         daily_budget=daily_budget,
         remaining_budget=remaining,
+        provider=provider,
         text_provider_configured=text_provider_configured,
         image_provider_configured=image_provider_configured,
     )
@@ -433,11 +435,32 @@ def _attention_summary(session: Session, states: dict[str, int]) -> AttentionSum
         )
         or 0
     )
+    from contentos.performance.enums import RefreshStatus, SuggestionStatus
+    from contentos.performance.models import RefreshOpportunity, StrategySuggestion
+
+    refresh_decisions = int(
+        session.scalar(
+            select(func.count())
+            .select_from(RefreshOpportunity)
+            .where(RefreshOpportunity.status == RefreshStatus.PROPOSED)
+        )
+        or 0
+    )
+    strategy_suggestions = int(
+        session.scalar(
+            select(func.count())
+            .select_from(StrategySuggestion)
+            .where(StrategySuggestion.status == SuggestionStatus.PROPOSED)
+        )
+        or 0
+    )
     return AttentionSummaryView(
         production_decisions=production_decisions,
         awaiting_human_review=states.get("awaiting_human_review", 0),
         approval_expired=states.get("approval_expired", 0),
         changes_requested=states.get("changes_requested", 0),
+        refresh_decisions=refresh_decisions,
+        strategy_suggestions=strategy_suggestions,
     )
 
 
@@ -457,6 +480,7 @@ def load_summary(
     *,
     daily_budget: int | None,
     queue_depth: int | None,
+    provider: str = "openai",
     text_provider_configured: bool = False,
     image_provider_configured: bool = False,
 ) -> DashboardSummary:
@@ -471,6 +495,7 @@ def load_summary(
         ai=_ai_summary(
             session,
             daily_budget,
+            provider=provider,
             text_provider_configured=text_provider_configured,
             image_provider_configured=image_provider_configured,
         ),

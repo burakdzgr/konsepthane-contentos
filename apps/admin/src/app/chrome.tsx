@@ -15,10 +15,15 @@ type HeaderChromeProps = {
 
 const SEARCH_DESTINATIONS = [
   { label: "Kontrol Merkezi", href: "/kontrol" },
-  { label: "Aktif Çalışmalar", href: "/calisma" },
+  { label: "Çalışmalar", href: "/calisma" },
   { label: "Kaynaklar", href: "/sources" },
-  { label: "Fırsatlar", href: "/firsatlar" },
+  { label: "Fikirler", href: "/fikirler" },
+  { label: "Benden Bekleyenler", href: "/firsatlar" },
   { label: "İçerikler", href: "/editorial" },
+  { label: "Strateji", href: "/strateji" },
+  { label: "Performans", href: "/performans" },
+  { label: "Entegrasyonlar", href: "/entegrasyonlar" },
+  { label: "Canlı Operasyon", href: "/operasyon" },
   { label: "Briefler", href: "/editorial?state=briefing" },
   { label: "Taslaklar", href: "/editorial?state=drafting" },
   {
@@ -42,10 +47,15 @@ function normalizeSearch(value: string): string {
 function routeTitle(pathname: string): string {
   if (pathname === "/kontrol") return "Kontrol Merkezi";
   if (pathname.startsWith("/calisma/")) return "Çalışma Detayı";
-  if (pathname === "/calisma") return "Aktif Çalışmalar";
+  if (pathname === "/calisma") return "Çalışmalar";
   if (pathname.startsWith("/sources")) return "Kaynaklar";
-  if (pathname.startsWith("/firsatlar")) return "Fırsatlar";
-  if (pathname.startsWith("/editorial")) return "İçerik Pipeline";
+  if (pathname.startsWith("/fikirler")) return "Fikirler";
+  if (pathname.startsWith("/firsatlar")) return "Benden Bekleyenler";
+  if (pathname.startsWith("/editorial")) return "İçerikler";
+  if (pathname.startsWith("/strateji")) return "Strateji";
+  if (pathname.startsWith("/performans")) return "Performans";
+  if (pathname.startsWith("/entegrasyonlar")) return "Entegrasyonlar";
+  if (pathname.startsWith("/operasyon")) return "Canlı Operasyon";
   if (pathname.startsWith("/motor")) return "Motor Kontrolü";
   if (pathname.startsWith("/research")) return "Araştırma";
   if (pathname === "/login") return "Giriş";

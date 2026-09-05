@@ -247,6 +247,16 @@ class FakeEditorialControlDispatcher:
     def enqueue_run_qa(self, work_item_id: str, *, request_id: str | None = None) -> None:
         self.calls.append(("run_qa_gates", {"work_item_id": work_item_id}, request_id))
 
+    def enqueue_autopilot_sweep(self, *, request_id: str | None = None) -> None:
+        self.calls.append(("autopilot_sweep", {}, request_id))
+
+    def enqueue_autopilot_step(self, work_item_id: str, *, request_id: str | None = None) -> None:
+        self.calls.append(("autopilot_step", {"work_item_id": work_item_id}, request_id))
+
+    def enqueue_performance_sync(self, *, request_id: str | None = None) -> list[str]:
+        self.calls.append(("performance_sync", {}, request_id))
+        return ["contentos.performance.sync_all"]
+
     def enqueue_generate_media_image(
         self,
         work_item_id: str,
@@ -398,6 +408,14 @@ class Harness:
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         return self.request("POST", path, json_body=json_body, headers=headers)
+
+    def put(
+        self,
+        path: str,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        return self.request("PUT", path, json_body=json_body, headers=headers)
 
     def session(self) -> Session:
         return self.session_factory()

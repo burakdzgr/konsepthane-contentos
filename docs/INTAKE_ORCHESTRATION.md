@@ -63,9 +63,28 @@ Operator-guarded under `/internal/intake`:
 
 ## Admin
 
+Navigation (operator's path, then the system section): Kontrol Merkezi
+(`/kontrol`), Çalışmalar (`/calisma`), Kaynaklar (`/sources`), Fikirler
+(`/fikirler`), İçerikler (`/editorial`), Benden Bekleyenler
+(`/firsatlar`), Strateji (`/strateji`), Performans (`/performans`),
+Entegrasyonlar (`/entegrasyonlar`); Sistem: Sistem Sağlığı (`/`), Canlı
+Operasyon (`/operasyon`), Gelişmiş Motor (`/motor`), Teknik Görünümler
+(`/research`).
+
 - `Çalışmalar` (`/calisma`): run history; `/calisma/{id}` is the live
-  operation view (stage timeline, Turkish event feed, results,
-  controls; 5-second bounded polling via server re-render).
+  operation view: the full Turkish line as a vertical stage list
+  (Kaynak taranıyor → URL'ler keşfediliyor → Ön eleme → İçerikler
+  getiriliyor → İçerik anlaşılıyor → Fikirler çıkarılıyor → Benzer
+  fikirler gruplanıyor → Topluluk sinyali → Pazar sinyali → Strateji
+  eşleşmesi → Semrush → Google Trends → Pinterest Trends → Konsepthane
+  geçmiş verisi → Fırsat; intake stages from the run view, signal stages
+  from `GET /internal/intelligence/summary?run_id=`, provider stages from
+  `/internal/integrations`; no data → "veri yok" / "bekleniyor"), the
+  Turkish event feed, results and controls; 5-second bounded polling via
+  server re-render.
+- `Fikirler` (`/fikirler`): what the system found — open and commissioned
+  ideas grouped as Güçlü fikirler / İncelenmeli / Araştırma sürüyor /
+  Elenenler with the explainable intelligence sections; read-only.
 - `Kaynaklar`: "Keşfi başlat" starts a run and opens it immediately;
   a live run shows as "Aktif çalışmayı aç".
 - `Fırsat İncelemesi` (`/firsatlar`): scored open opportunities with
@@ -84,10 +103,56 @@ Operator-guarded under `/internal/intake`:
   shared reason — each card still goes through its own backend command,
   and commissioning is only sent for `commission_eligible` cards. All
   status vocabulary is rendered in Turkish (`tr-labels.ts`).
-- Kontrol Merkezi: "Benden Bekleyenler" (real human decisions only)
-  and "Aktif Çalışmalar" cards.
+- `Canlı Operasyon` (`/operasyon`): the ADR 0012 autopilot mode switch, the
+  AI gateway's health and running job, running intake runs, the editorial
+  line with the autopilot's last word per item, and one merged feed;
+  5-second polling.
+- Kontrol Merkezi: "Benden Bekleyenler" lists only the four genuine
+  human decisions (üretim kararı, yayın onayı, güncelleme kararı, strateji
+  önerisi) with real counts; `/firsatlar` hosts all four.
 - Raw discovery-item accept/fetch controls remain ONLY on the
   research (advanced) detail pages as a debug capability.
+
+## Source purpose: kind (technical) vs role / capabilities (editorial)
+
+A source carries two orthogonal descriptions (migration `0031`):
+
+- `kind` + `discovery_strategy` are TECHNICAL: how content is acquired
+  (`rss_feed`/feed, `sitemap`/sitemap, `manual`/manual, provider
+  placeholders). Discovery, fetching and robots handling depend only on
+  these; nothing here changed.
+- `primary_role` + `capabilities` are the EDITORIAL PURPOSE: why we read
+  the source and which signal families it may yield. Roles:
+  `inspiration`, `turkish_editorial`, `community_intent`, `competitor`,
+  `taxonomy`, `trend`, `search`. Capabilities: `inspiration`,
+  `community_need`, `market`, `competition`, `taxonomy`, `search`,
+  `trend`, `visual_trend`. A source is never locked into one role: the
+  role picks a default capability set
+  (`default_capabilities_for(role)`, e.g. `turkish_editorial` →
+  inspiration + market + competition + taxonomy) and the operator may
+  widen or narrow it. Capabilities are validated (known values only,
+  non-empty), deduplicated and stored in canonical enum order.
+- Existing rows became `inspiration` / `["inspiration"]` through server
+  defaults; registration without the fields keeps that behaviour.
+- API: `POST /internal/research/sources` accepts optional `primary_role`
+  and `capabilities`; `POST /internal/research/sources/{id}/purpose`
+  changes them later (audited as a same-state `source_lifecycle_events`
+  row whose reason names the new role and capabilities). The source list
+  and pipeline-detail read models expose both fields.
+- Admin `/sources/new` and the per-row "Amacı düzenle" editor ask
+  "Bu kaynak ne için kullanılsın?" with Turkish checkboxes and a
+  "Birincil rol" select; the list shows role + capability badges.
+- Consumers ask `SourceRegistryService.capabilities_for(source)` /
+  `has_capability(source, capability)` rather than reading the JSON.
+
+Community-source evidence rule: a source whose `primary_role` is
+`community_intent` (the `community_need` family) NEVER becomes a
+`ResearchEvidence` source. `SourceRegistryService.evidence_allowed(source)`
+is the single predicate; `ResearchEvidenceService.record_evidence`
+refuses such documents with `ResearchDocumentNotEligibleError` before any
+row exists, and every future evidence writer (including the community
+signal extractor) must call the same predicate. Community raw text is
+never persisted; only PII-free normalized signals are.
 
 ## Honest limits (deliberate)
 

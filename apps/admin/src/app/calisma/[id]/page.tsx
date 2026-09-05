@@ -10,10 +10,13 @@ import {
 } from "@/lib/intake-api";
 import { fetchDashboardAgents, type AgentView } from "@/lib/dashboard-api";
 import { formatUtcTimestamp } from "@/lib/format";
+import { fetchIntelligenceSummary } from "@/lib/intelligence-api";
+import { fetchIntegrations } from "@/lib/integrations-api";
 import { firstParam, type RawSearchParams } from "@/lib/search-params";
 import { ControlNotice } from "../../notices";
 import { AutoRefresh } from "../../kontrol/refresh";
 import { controlIntakeRunAction } from "../actions";
+import { buildLineStages, LineStageList, stageProgress } from "../stages";
 
 // One run's live operation view: real durable stage state, the
 // append-only event timeline, and the audited lifecycle controls.
@@ -44,27 +47,29 @@ const RUN_STATUS_TONES: Record<IntakeRunView["status"], string> = {
   failed: "bad",
 };
 
+// Event-feed badges per intake stage (the stage list itself is the shared
+// Turkish line view in ../stages).
 const STAGE_LABELS: Record<IntakeStageView["key"], string> = {
   discovery: "Keşif",
   prefilter: "Ön Eleme",
-  fetch: "Fetch",
-  normalize: "Normalize",
+  fetch: "Getirme",
+  normalize: "Anlama",
   duplicate: "Kopya Analizi",
   promote: "Fırsat",
 };
 
 const AGENT_NAMES: Record<string, string> = {
-  research: "Research Agent",
-  opportunity: "Opportunity Agent",
-  ideas: "Fikir Agent",
-  evidence: "Evidence Agent",
-  intent: "SEO / Niyet Agent",
-  brief: "Brief Agent",
-  writer: "Writer Agent",
-  editor: "Editor Agent",
-  qa: "QA Agent",
-  media: "Medya Agent",
-  publisher: "Publisher Agent",
+  research: "Araştırma ajanı",
+  opportunity: "Fırsat ajanı",
+  ideas: "Fikir ajanı",
+  evidence: "Kanıt ajanı",
+  intent: "SEO / Niyet ajanı",
+  brief: "Brief ajanı",
+  writer: "Yazar ajanı",
+  editor: "Editör ajanı",
+  qa: "Kalite ajanı",
+  media: "Medya ajanı",
+  publisher: "Yayın ajanı",
 };
 
 function elapsed(run: IntakeRunView): string {
@@ -148,43 +153,6 @@ function describeEvent(event: IntakeEventView): string {
     default:
       return event.kind;
   }
-}
-
-function stagePrimaryCount(stage: IntakeStageView): string {
-  switch (stage.key) {
-    case "discovery":
-      return String(
-        (stage.counts["new"] ?? 0) + (stage.counts["rediscovered"] ?? 0),
-      );
-    case "prefilter":
-      return `${stage.counts["accepted"] ?? 0} uygun`;
-    case "fetch":
-      return `${stage.counts["fetched"] ?? 0} / ${stage.counts["dispatched"] ?? 0}`;
-    case "normalize":
-      return String(stage.counts["succeeded"] ?? 0);
-    case "duplicate":
-      return String(stage.counts["evaluated"] ?? 0);
-    case "promote":
-      return String(stage.counts["opportunities"] ?? 0);
-    default:
-      return "";
-  }
-}
-
-function RunPipeline({ stages }: { stages: IntakeStageView[] }) {
-  return (
-    <ol className="run-pipeline" aria-label="Aşama ilerlemesi">
-      {stages.map((stage, index) => (
-        <li key={stage.key} data-state={stage.state}>
-          <span className="run-node">
-            {stage.state === "done" ? "✓" : index + 1}
-          </span>
-          <span className="run-node-label">{STAGE_LABELS[stage.key]}</span>
-          <span className="run-node-count">{stagePrimaryCount(stage)}</span>
-        </li>
-      ))}
-    </ol>
-  );
 }
 
 function ControlForm({
@@ -275,10 +243,13 @@ function RunStats({
     },
     { label: "Ön elemeden geçen", value: String(run.prefilter_accepted) },
     { label: "Makine reddi", value: String(run.prefilter_rejected) },
-    { label: "Fetch edilen", value: `${run.fetched}/${run.fetch_dispatched}` },
-    { label: "Fetch hatası", value: String(run.fetch_failed) },
-    { label: "Normalize edilen", value: String(chain.normalized_succeeded) },
-    { label: "Normalize hatası", value: String(chain.normalized_failed) },
+    {
+      label: "Getirilen sayfa",
+      value: `${run.fetched}/${run.fetch_dispatched}`,
+    },
+    { label: "Getirme hatası", value: String(run.fetch_failed) },
+    { label: "Anlaşılan içerik", value: String(chain.normalized_succeeded) },
+    { label: "Anlama hatası", value: String(chain.normalized_failed) },
     { label: "Kopya analizi", value: String(chain.duplicates_evaluated) },
     { label: "Fırsat oluşturulan", value: String(run.opportunities_created) },
     { label: "Sıradaki aday", value: String(run.remaining_accepted) },
@@ -304,10 +275,13 @@ export default async function RunDetailPage({
 }) {
   const { id } = await params;
   const query = searchParams === undefined ? {} : await searchParams;
-  const [result, agentsResult] = await Promise.all([
-    fetchIntakeRunDetail(id),
-    fetchDashboardAgents(),
-  ]);
+  const [result, agentsResult, signalsResult, integrationsResult] =
+    await Promise.all([
+      fetchIntakeRunDetail(id),
+      fetchDashboardAgents(),
+      fetchIntelligenceSummary(id),
+      fetchIntegrations(),
+    ]);
   if (result.kind === "not_found") {
     notFound();
   }
@@ -321,6 +295,17 @@ export default async function RunDetailPage({
   }
   const { run, chain, stages, events } = result.data;
   const agents = agentsResult.kind === "ok" ? agentsResult.data.agents : null;
+  const lineStages = buildLineStages({
+    run,
+    chain,
+    stages,
+    signals: signalsResult.kind === "ok" ? signalsResult.data : null,
+    integrations:
+      integrationsResult.kind === "ok"
+        ? integrationsResult.data.providers
+        : null,
+  });
+  const progress = stageProgress(lineStages);
   const live = run.status === "running" || run.status === "paused";
   const errorEvents = events.filter(
     (event) =>
@@ -394,17 +379,13 @@ export default async function RunDetailPage({
       />
 
       <section className="run-progress-panel" aria-label="Çalışma ilerlemesi">
-        <RunPipeline stages={stages} />
+        <div className="panel-block-heading">
+          <h2>Hat aşamaları</h2>
+          <span className="muted">%{progress} tamamlandı</span>
+        </div>
+        <LineStageList stages={lineStages} label="Çalışma aşamaları" />
         <div className="run-overall-progress" aria-hidden="true">
-          <span
-            style={{
-              width: `${Math.round(
-                (stages.filter((stage) => stage.state === "done").length /
-                  Math.max(stages.length, 1)) *
-                  100,
-              )}%`,
-            }}
-          />
+          <span style={{ width: `${progress}%` }} />
         </div>
       </section>
 

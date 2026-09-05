@@ -1,6 +1,7 @@
 """Typed application settings."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -78,6 +79,19 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
     openai_image_model: str | None = Field(default=None, min_length=1)
     openai_image_timeout_seconds: float = Field(default=120.0, ge=1.0, le=600.0)
+    # Which adapter backs StructuredGenerationProvider (ADR 0011). The
+    # Subcontractor gateway relays prompts to licensed browser sessions
+    # behind an API key; jobs are submitted and polled.
+    ai_provider: Literal["openai", "subcontractor"] = "openai"
+    subcontractor_base_url: str | None = Field(default=None, min_length=1)
+    subcontractor_api_key: SecretStr | None = None
+    subcontractor_model: str = Field(default="chatgpt", min_length=1)
+    subcontractor_image_model: str = Field(default="chatgpt", min_length=1)
+    subcontractor_timeout_seconds: float = Field(default=420.0, ge=10.0, le=1800.0)
+    subcontractor_poll_interval_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+    # Gateway ADMIN token: lets the live operations page read /api/status
+    # (accounts, queue, running jobs) server-side; never exposed to browsers.
+    subcontractor_admin_token: SecretStr | None = None
 
     @property
     def openai_text_provider_configured(self) -> bool:
@@ -89,13 +103,31 @@ class Settings(BaseSettings):
         return self.openai_api_key is not None and self.openai_image_model is not None
 
     @property
-    def openai_text_provider_configured(self) -> bool:
-        """Both values the OpenAI text adapter refuses to construct without."""
-        return self.openai_api_key is not None and self.openai_model is not None
+    def subcontractor_configured(self) -> bool:
+        return self.subcontractor_base_url is not None and self.subcontractor_api_key is not None
 
     @property
-    def openai_image_provider_configured(self) -> bool:
-        return self.openai_api_key is not None and self.openai_image_model is not None
+    def text_provider_configured(self) -> bool:
+        """Can the selected adapter run a text/structured job right now?"""
+        if self.ai_provider == "subcontractor":
+            return self.subcontractor_configured
+        return self.openai_text_provider_configured
+
+    @property
+    def image_provider_configured(self) -> bool:
+        if self.ai_provider == "subcontractor":
+            return self.subcontractor_configured
+        return self.openai_image_provider_configured
+
+    def ai_provider_required_env(self, *, image: bool = False) -> str:
+        """The exact variables an operator must set for the selected adapter."""
+        if self.ai_provider == "subcontractor":
+            return "CONTENTOS_SUBCONTRACTOR_BASE_URL ve CONTENTOS_SUBCONTRACTOR_API_KEY"
+        return (
+            "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_IMAGE_MODEL"
+            if image
+            else "CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL"
+        )
 
     # Autonomous intake orchestration bounds (per-run and per-source).
     # Every limit is a hard cap the orchestrator can only stay under;
@@ -113,12 +145,69 @@ class Settings(BaseSettings):
     publishing_api_key: SecretStr | None = None
     publishing_timeout_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
 
+    # --- external intelligence providers (agent C) ---
+    # Every provider is optional: without its credentials it reports an honest
+    # `not_configured` / `access_required` state and the rest of ContentOS
+    # keeps working. Per-provider daily budgets and cache TTLs bound spend.
+    semrush_api_key: SecretStr | None = None
+    semrush_database: str = Field(default="tr", min_length=2, max_length=8)
+    semrush_daily_budget: int = Field(default=200, ge=1, le=100_000)
+    semrush_cache_hours: int = Field(default=72, ge=1, le=720)
+    # Google service account: the JSON key content itself OR a path to the
+    # key file (both accepted). Grant it Search Console property access and
+    # GA4 property Viewer; the same account serves both Google providers.
+    google_service_account_json: SecretStr | None = None
+    gsc_site_url: str | None = Field(default=None, min_length=1)
+    gsc_daily_budget: int = Field(default=500, ge=1, le=100_000)
+    gsc_cache_hours: int = Field(default=12, ge=1, le=720)
+    ga4_property_id: str | None = Field(default=None, min_length=1)
+    # Comma-separated GA4 key event names; key events are reported ONLY
+    # when configured (never invented for events Konsepthane does not have).
+    ga4_key_events: str | None = Field(default=None, min_length=1)
+    ga4_daily_budget: int = Field(default=500, ge=1, le=100_000)
+    ga4_cache_hours: int = Field(default=12, ge=1, le=720)
+    # Google Trends has no generally available official API; the adapter
+    # only activates with an (alpha/allow-listed) API key. Never scraped.
+    google_trends_api_key: SecretStr | None = None
+    google_trends_api_url: str | None = Field(default=None, min_length=1)
+    google_trends_daily_budget: int = Field(default=200, ge=1, le=100_000)
+    google_trends_cache_hours: int = Field(default=24, ge=1, le=720)
+    pinterest_access_token: SecretStr | None = None
+    pinterest_region: str = Field(default="TR", min_length=2, max_length=8)
+    pinterest_daily_budget: int = Field(default=200, ge=1, le=100_000)
+    pinterest_cache_hours: int = Field(default=24, ge=1, le=720)
+    integrations_http_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
+
+    # --- performance loop (agent E) ---
+    # Classifier thresholds (pure policy, snapshotted into every assessment
+    # basis) and the Celery beat schedule for the daily Measure -> Learn loop.
+    performance_min_impressions: int = Field(default=100, ge=1, le=1_000_000)
+    performance_min_days: int = Field(default=7, ge=1, le=90)
+    performance_decline_pct: float = Field(default=0.25, ge=0.01, le=1.0)
+    performance_rise_pct: float = Field(default=0.25, ge=0.01, le=10.0)
+    performance_volatility_pct: float = Field(default=0.5, ge=0.01, le=1.0)
+    performance_schedule_enabled: bool = True
+    performance_sync_hour_utc: int = Field(default=3, ge=0, le=23)
+    performance_learn_hour_utc: int = Field(default=4, ge=0, le=23)
+    performance_market_interval_hours: int = Field(default=24, ge=1, le=168)
+
     @field_validator(
         "openai_api_key",
         "openai_model",
         "openai_image_model",
+        "subcontractor_base_url",
+        "subcontractor_api_key",
+        "subcontractor_admin_token",
         "publishing_api_url",
         "publishing_api_key",
+        "semrush_api_key",
+        "google_service_account_json",
+        "gsc_site_url",
+        "ga4_property_id",
+        "ga4_key_events",
+        "google_trends_api_key",
+        "google_trends_api_url",
+        "pinterest_access_token",
         mode="before",
     )
     @classmethod

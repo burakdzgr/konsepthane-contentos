@@ -61,3 +61,54 @@ class LifecycleChangeOrigin(StrEnum):
 
     OPERATOR = "operator"
     SYSTEM = "system"
+
+
+class SourceRole(StrEnum):
+    """Editorial PURPOSE of a source (why we read it), orthogonal to SourceKind.
+
+    ``SourceKind`` stays technical (how content is acquired); the role says
+    what the editorial pipeline expects from the source. A source is never
+    locked into one role: ``capabilities`` widen it.
+    """
+
+    INSPIRATION = "inspiration"
+    TURKISH_EDITORIAL = "turkish_editorial"
+    COMMUNITY_INTENT = "community_intent"
+    COMPETITOR = "competitor"
+    TAXONOMY = "taxonomy"
+    TREND = "trend"
+    SEARCH = "search"
+
+
+class SourceCapability(StrEnum):
+    """Signal families a source MAY yield. Persisted as a JSON list of values."""
+
+    INSPIRATION = "inspiration"
+    COMMUNITY_NEED = "community_need"
+    MARKET = "market"
+    COMPETITION = "competition"
+    TAXONOMY = "taxonomy"
+    SEARCH = "search"
+    TREND = "trend"
+    VISUAL_TREND = "visual_trend"
+
+
+_DEFAULT_CAPABILITIES: dict[SourceRole, tuple[SourceCapability, ...]] = {
+    SourceRole.INSPIRATION: (SourceCapability.INSPIRATION,),
+    SourceRole.TURKISH_EDITORIAL: (
+        SourceCapability.INSPIRATION,
+        SourceCapability.MARKET,
+        SourceCapability.COMPETITION,
+        SourceCapability.TAXONOMY,
+    ),
+    SourceRole.COMMUNITY_INTENT: (SourceCapability.COMMUNITY_NEED,),
+    SourceRole.COMPETITOR: (SourceCapability.COMPETITION, SourceCapability.MARKET),
+    SourceRole.TAXONOMY: (SourceCapability.TAXONOMY, SourceCapability.MARKET),
+    SourceRole.TREND: (SourceCapability.TREND, SourceCapability.VISUAL_TREND),
+    SourceRole.SEARCH: (SourceCapability.SEARCH,),
+}
+
+
+def default_capabilities_for(role: SourceRole) -> tuple[SourceCapability, ...]:
+    """The capability set a role implies when the operator states none."""
+    return _DEFAULT_CAPABILITIES[role]

@@ -14,9 +14,12 @@ from contentos.sources.enums import (
     DiscoveryStrategy,
     LifecycleChangeOrigin,
     RobotsPolicy,
+    SourceCapability,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
+    default_capabilities_for,
 )
 from contentos.sources.models import Source
 from contentos.sources.repository import SourceRepository
@@ -27,6 +30,7 @@ from contentos.sources.service import (
     SourceRegistrationConflictError,
     SourceRegistryError,
     SourceRegistryService,
+    normalize_capabilities,
 )
 from contentos.sources.urls import InvalidSourceUrlError, normalize_base_url
 
@@ -374,3 +378,205 @@ class TestRepository:
         )
         assert repository.get_by_slug("yok") is None
         assert repository.get_by_id(uuid.uuid4()) is None
+
+
+class TestPurposeVocabulary:
+    def test_role_and_capability_values_are_stable(self) -> None:
+        assert [r.value for r in SourceRole] == [
+            "inspiration",
+            "turkish_editorial",
+            "community_intent",
+            "competitor",
+            "taxonomy",
+            "trend",
+            "search",
+        ]
+        assert [c.value for c in SourceCapability] == [
+            "inspiration",
+            "community_need",
+            "market",
+            "competition",
+            "taxonomy",
+            "search",
+            "trend",
+            "visual_trend",
+        ]
+
+    def test_every_role_has_a_non_empty_default_capability_set(self) -> None:
+        for role in SourceRole:
+            defaults = default_capabilities_for(role)
+            assert defaults, role
+            assert all(isinstance(c, SourceCapability) for c in defaults)
+        assert default_capabilities_for(SourceRole.TURKISH_EDITORIAL) == (
+            SourceCapability.INSPIRATION,
+            SourceCapability.MARKET,
+            SourceCapability.COMPETITION,
+            SourceCapability.TAXONOMY,
+        )
+        assert default_capabilities_for(SourceRole.COMMUNITY_INTENT) == (
+            SourceCapability.COMMUNITY_NEED,
+        )
+        assert default_capabilities_for(SourceRole.TREND) == (
+            SourceCapability.TREND,
+            SourceCapability.VISUAL_TREND,
+        )
+
+    def test_normalize_capabilities_dedupes_orders_and_validates(self) -> None:
+        assert normalize_capabilities(None, role=SourceRole.COMPETITOR) == [
+            "competition",
+            "market",
+        ]
+        assert normalize_capabilities(
+            ["trend", SourceCapability.INSPIRATION, "trend", "market"],
+            role=SourceRole.INSPIRATION,
+        ) == ["inspiration", "market", "trend"]
+        with pytest.raises(InvalidSourceDefinitionError, match="unknown source capability"):
+            normalize_capabilities(["telepathy"], role=SourceRole.INSPIRATION)
+        with pytest.raises(InvalidSourceDefinitionError, match="at least one"):
+            normalize_capabilities([], role=SourceRole.INSPIRATION)
+
+
+class TestPurposeRegistration:
+    def test_defaults_to_inspiration_with_inspiration_capability(self, session: Session) -> None:
+        source = register_default(SourceRegistryService(session))
+
+        assert source.primary_role is SourceRole.INSPIRATION
+        assert source.capabilities == ["inspiration"]
+        event = SourceRepository(session).list_lifecycle_events(source.id)[0]
+        assert event.reason.startswith("registered")
+        assert "primary_role=inspiration" in event.reason
+        assert "capabilities=inspiration" in event.reason
+
+    def test_role_without_capabilities_uses_role_defaults(self, session: Session) -> None:
+        source = register_default(
+            SourceRegistryService(session), primary_role=SourceRole.TURKISH_EDITORIAL
+        )
+
+        assert source.primary_role is SourceRole.TURKISH_EDITORIAL
+        assert source.capabilities == ["inspiration", "market", "competition", "taxonomy"]
+
+    def test_explicit_capabilities_are_validated_and_canonical(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        source = register_default(
+            service,
+            primary_role=SourceRole.COMPETITOR,
+            capabilities=["market", "competition", "market", SourceCapability.INSPIRATION],
+        )
+        assert source.capabilities == ["inspiration", "market", "competition"]
+
+        with pytest.raises(InvalidSourceDefinitionError):
+            register_default(service, slug="bozuk", capabilities=["nope"])
+        with pytest.raises(InvalidSourceDefinitionError):
+            register_default(service, slug="bos", capabilities=[])
+        with pytest.raises(InvalidSourceDefinitionError):
+            register_default(service, slug="rolsuz", primary_role="inspiration")  # type: ignore[arg-type]
+
+    def test_repeat_registration_with_a_different_purpose_conflicts(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        register_default(service)
+
+        with pytest.raises(SourceRegistrationConflictError) as excinfo:
+            register_default(service, primary_role=SourceRole.COMPETITOR)
+        assert excinfo.value.conflicting_fields == ["primary_role", "capabilities"]
+        # Identical purpose stays idempotent.
+        assert register_default(service, capabilities=["inspiration"]).slug == "ornek-kaynak"
+
+
+class TestPurposeUpdate:
+    def test_update_changes_purpose_and_audits_without_touching_state(
+        self, session: Session
+    ) -> None:
+        service = SourceRegistryService(session)
+        source = register_default(service)
+
+        updated = service.update_source_purpose(
+            source.id,
+            primary_role=SourceRole.TREND,
+            capabilities=["visual_trend", "trend", "inspiration"],
+        )
+
+        assert updated.id == source.id
+        assert updated.primary_role is SourceRole.TREND
+        assert updated.capabilities == ["inspiration", "trend", "visual_trend"]
+        assert updated.lifecycle_state is SourceLifecycleState.ACTIVE
+        assert updated.kind is SourceKind.RSS_FEED
+        events = SourceRepository(session).list_lifecycle_events(source.id)
+        assert len(events) == 2
+        assert events[-1].previous_state is SourceLifecycleState.ACTIVE
+        assert events[-1].new_state is SourceLifecycleState.ACTIVE
+        assert events[-1].reason == (
+            "purpose updated; primary_role=trend; capabilities=inspiration,trend,visual_trend"
+        )
+        assert events[-1].origin is LifecycleChangeOrigin.OPERATOR
+
+    def test_update_without_capabilities_uses_role_defaults(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        source = register_default(service)
+
+        service.update_source_purpose(source.id, primary_role=SourceRole.COMMUNITY_INTENT)
+
+        assert source.capabilities == ["community_need"]
+
+    def test_unchanged_purpose_is_a_no_op(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        source = register_default(service)
+
+        service.update_source_purpose(
+            source.id, primary_role=SourceRole.INSPIRATION, capabilities=["inspiration"]
+        )
+
+        assert len(SourceRepository(session).list_lifecycle_events(source.id)) == 1
+
+    def test_update_errors_are_typed(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        source = register_default(service)
+
+        with pytest.raises(SourceNotFoundError):
+            service.update_source_purpose(uuid.uuid4(), primary_role=SourceRole.SEARCH)
+        with pytest.raises(InvalidSourceDefinitionError):
+            service.update_source_purpose(
+                source.id, primary_role=SourceRole.SEARCH, capabilities=["bogus"]
+            )
+        with pytest.raises(InvalidSourceDefinitionError):
+            service.update_source_purpose(
+                source.id, primary_role=SourceRole.SEARCH, capabilities=[]
+            )
+        assert source.primary_role is SourceRole.INSPIRATION
+
+
+class TestPurposePredicates:
+    def test_capabilities_for_and_has_capability(self, session: Session) -> None:
+        source = register_default(
+            SourceRegistryService(session),
+            primary_role=SourceRole.TAXONOMY,
+            capabilities=["taxonomy", "market"],
+        )
+
+        assert SourceRegistryService.capabilities_for(source) == frozenset(
+            {SourceCapability.TAXONOMY, SourceCapability.MARKET}
+        )
+        assert SourceRegistryService.has_capability(source, SourceCapability.MARKET)
+        assert not SourceRegistryService.has_capability(source, SourceCapability.COMMUNITY_NEED)
+
+    def test_unknown_persisted_capability_value_is_ignored_not_fatal(
+        self, session: Session
+    ) -> None:
+        source = register_default(SourceRegistryService(session))
+        source.capabilities = ["inspiration", "legacy_value"]
+
+        assert SourceRegistryService.capabilities_for(source) == frozenset(
+            {SourceCapability.INSPIRATION}
+        )
+
+    def test_only_community_intent_sources_are_barred_from_evidence(self, session: Session) -> None:
+        service = SourceRegistryService(session)
+        for role in SourceRole:
+            source = register_default(
+                service,
+                slug=f"rol-{role.value.replace('_', '-')}",
+                base_url=f"https://{role.value.replace('_', '-')}.example.test/feed.xml",
+                primary_role=role,
+            )
+            assert SourceRegistryService.evidence_allowed(source) is (
+                role is not SourceRole.COMMUNITY_INTENT
+            ), role

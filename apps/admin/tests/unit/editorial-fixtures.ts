@@ -26,6 +26,8 @@ import type {
   EligibleEvidenceItem,
   EligibleEvidencePage,
   IdeaView,
+  InspirationEvaluationView,
+  IntelligenceView,
   IntentAnalysisView,
   PackView,
   ScoreView,
@@ -55,6 +57,106 @@ export const REVIEW_ID = "ad111111-2222-4333-8444-555555555555";
 export const QA_REPORT_ID = "b0111111-2222-4333-8444-555555555555";
 
 const AT = "2026-09-01T12:00:00+00:00";
+export const INSPIRATION_EVALUATION_ID = "b1111111-2222-4333-8444-555555555555";
+
+const FACTOR_NAMES = [
+  "novelty",
+  "usefulness",
+  "specificity",
+  "visual_potential",
+  "shareability",
+  "emotional_impact",
+  "audience_fit",
+  "turkish_market_applicability",
+  "variation_potential",
+  "strategic_fit",
+] as const;
+
+// Default: providers unconfigured / access-gated, families unknown — the
+// honest state of a fresh installation. Only inspiration, strategy fit and
+// the research counts are known.
+export function intelligenceView(
+  overrides: Partial<IntelligenceView> = {},
+): IntelligenceView {
+  return {
+    engine_version: "5",
+    content_value: {
+      inspiration_band: "high",
+      audience_fit_band: "medium",
+      strategy_fit_band: "very_high",
+      market_band: "unknown",
+      community_need_band: "unknown",
+    },
+    search_intelligence: {
+      semrush_potential_band: "unknown",
+      search_keyword: null,
+      search_volume: null,
+      keyword_difficulty: null,
+      google_trends_direction: "unknown",
+      pinterest_trend_band: "unknown",
+      competition_band: "unknown",
+      provider_freshness: {
+        semrush: {
+          state: "not_configured",
+          observed_at: null,
+          error_class: null,
+          region: null,
+        },
+        google_trends: {
+          state: "access_required",
+          observed_at: null,
+          error_class: "google_trends_access_required",
+          region: null,
+        },
+        pinterest_trends: {
+          state: "access_required",
+          observed_at: null,
+          error_class: "pinterest_trends_access_required",
+          region: null,
+        },
+      },
+    },
+    konsepthane_data: {
+      similar_content_performance_band: "unknown",
+      cannibalization_status: "unknown",
+      historical_outcome: null,
+    },
+    research: {
+      independent_sources: 2,
+      signal_families: 2,
+      evidence_state: "sufficient",
+    },
+    recommendation: "produce",
+    why: "İlham değeri yüksek ve stratejik konu eşleşti. Dayanaklar — Semrush: yapılandırılmadı; Google Trends: erişim gerekli.",
+    factor_bands: FACTOR_NAMES.map((factor) => ({
+      factor,
+      band: factor === "strategic_fit" ? "very_high" : "medium",
+      basis:
+        "Kaynak başlığı, bölüm sinyalleri ve strateji eşleşmesine göre orta editoryal değerlendirme.",
+    })),
+    ...overrides,
+  };
+}
+
+export function inspirationEvaluationView(
+  overrides: Partial<InspirationEvaluationView> = {},
+): InspirationEvaluationView {
+  return {
+    id: INSPIRATION_EVALUATION_ID,
+    engine_name: "inspiration-quality",
+    engine_version: "5",
+    inspiration_band: "high",
+    search_opportunity: "unknown",
+    trend_state: "unknown",
+    recommendation: "produce",
+    rationale: "İlham değeri yüksek ve stratejik konu eşleşti.",
+    missing_signals: ["measured_search_demand", "trend_signal"],
+    strategy_context: {},
+    evaluated_at: AT,
+    intelligence: intelligenceView(),
+    ...overrides,
+  };
+}
 
 export function queueRow(overrides: Partial<WorkQueueRow> = {}): WorkQueueRow {
   return {
@@ -97,6 +199,7 @@ export function queueRow(overrides: Partial<WorkQueueRow> = {}): WorkQueueRow {
     },
     inspiration_signal_count: 6,
     inspiration_concept_count: 4,
+    intelligence: intelligenceView(),
     selected_idea_id: IDEA_ID,
     selected_idea_title: "Balon temalı plan",
     selected_idea_originality: "passed",
@@ -464,6 +567,7 @@ export function workItemDetail(
     total_briefs: 1,
     briefs_truncated: false,
     ai_attempts: [attemptView()],
+    inspiration: inspirationEvaluationView(),
     ...overrides,
   };
 }

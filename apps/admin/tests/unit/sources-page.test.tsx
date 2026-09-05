@@ -70,18 +70,63 @@ describe("Sources page", () => {
     expect(itemsLink.getAttribute("href")).toBe(
       "/research?source=11111111-2222-4333-8444-555555555555",
     );
-    // Controls are the GET filter submit plus one lifecycle form per row;
-    // neither manual source is eligible for "Keşfi başlat".
+    // Controls are the GET filter submit plus one lifecycle form and one
+    // purpose editor per row; neither manual source is eligible for
+    // "Keşfi başlat".
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
       "Uygula",
       "Durumu uygula",
+      "Amacı kaydet",
       "Durumu uygula",
+      "Amacı kaydet",
     ]);
     expect(screen.queryByRole("button", { name: "Keşfi başlat" })).toBeNull();
     expect(
       screen.getByRole("link", { name: "Kaynak kaydet" }).getAttribute("href"),
     ).toBe("/sources/new");
+  });
+
+  it("shows the editorial purpose as Turkish badges and a per-row editor", async () => {
+    fetchMock.mockResolvedValue({
+      kind: "ok",
+      data: sourcePage([
+        sourceItem({
+          slug: "forum-kaynak",
+          primary_role: "community_intent",
+          capabilities: ["community_need", "market"],
+        }),
+      ]),
+      requestId: null,
+    });
+
+    await renderPage();
+
+    expect(badge("Topluluk / kullanıcı niyeti")).toBeTruthy();
+    expect(badge("Kullanıcı İhtiyacı")).toBeTruthy();
+    expect(badge("Türkiye Pazar Sinyali")).toBeTruthy();
+    // Internal enum values never reach the operator.
+    expect(screen.queryByText("community_intent")).toBeNull();
+    expect(screen.queryByText("community_need")).toBeNull();
+
+    expect(screen.getByText("Amacı düzenle")).toBeTruthy();
+    expect(screen.getByText("Bu kaynak ne için kullanılsın?")).toBeTruthy();
+    const roleSelect = screen.getByLabelText(
+      "Birincil rol (forum-kaynak)",
+    ) as HTMLSelectElement;
+    expect(roleSelect.value).toBe("community_intent");
+    expect(
+      (
+        screen.getByLabelText(
+          "Kullanıcı İhtiyacı (forum-kaynak)",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText("Görsel Trend (forum-kaynak)") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(screen.getByText(/asla araştırma kanıtı üretmez/)).toBeTruthy();
   });
 
   it("shows Keşfi başlat only for active automated sources", async () => {

@@ -135,3 +135,13 @@ Phase 0 does not decide detailed database tables, endpoint URLs, deployment
 topology beyond Docker Compose, authentication product/protocol, crawler vendor,
 analytics providers, scoring formulas, budget values, or model selection. Those
 choices require implementation context and, where architectural, follow-up ADRs.
+
+## Architecture invariants (Idea & Content Intelligence Engine, 2026-09-05)
+
+- **External content is a signal, not a template to reproduce.**
+- **Strategic keywords guide discovery and editorial planning; they are not
+  keyword-stuffing instructions.**
+- Community interest is never search demand; inspiration quality is never
+  search opportunity; UNKNOWN is never 0; provider estimates are never shown
+  as Search Console truth; PUBLISHED = measurement started, not done.
+  See `docs/INTELLIGENCE_ENGINE.md`.

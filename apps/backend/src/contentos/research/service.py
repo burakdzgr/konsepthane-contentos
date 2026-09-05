@@ -35,6 +35,7 @@ from contentos.research.validation import (
     validate_optional_text,
     validate_source_locator,
 )
+from contentos.sources.service import SourceRegistryService
 
 DEFAULT_EXTRACTOR_NAME = "deterministic-evidence"
 DEFAULT_EXTRACTOR_VERSION = "1"
@@ -121,6 +122,13 @@ class ResearchEvidenceService:
             )
         if provenance.snapshot.final_url is None:
             raise ResearchProvenanceMissingError("successful provenance has no final source URL")
+        if not SourceRegistryService.evidence_allowed(provenance.source):
+            # Community sources yield PII-free needs, never facts (see
+            # docs/INTAKE_ORCHESTRATION.md, "Source purpose").
+            raise ResearchDocumentNotEligibleError(
+                "community sources never produce research evidence "
+                f"(source role '{provenance.source.primary_role.value}')"
+            )
 
         clean_statement = validate_bounded_text("statement", statement, MAX_STATEMENT_LENGTH)
         clean_extractor_name = validate_bounded_text(

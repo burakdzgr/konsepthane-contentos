@@ -29,4 +29,14 @@ def create_celery_app(settings: Settings) -> Celery:
         # Keep the structured logging foundation authoritative in workers.
         worker_hijack_root_logger=False,
     )
+    if getattr(settings, "performance_schedule_enabled", False):
+        # The performance loop is the ONLY beat-driven work (agent E); the
+        # autopilot keeps its self-re-arming sweep. Lazy import: the worker
+        # module must not be pulled in by every producer.
+        from contentos.worker.performance_tasks import performance_beat_schedule
+
+        app.conf.beat_schedule = {
+            **dict(app.conf.beat_schedule or {}),
+            **performance_beat_schedule(settings),
+        }
     return app

@@ -9,6 +9,7 @@ import {
   runSourceDiscovery,
   startDiscoveryItemFetch,
   transitionSourceLifecycle,
+  updateSourcePurpose,
 } from "@/lib/research-control-api";
 
 const SOURCE_ID = "11111111-2222-4333-8444-555555555555";
@@ -73,6 +74,37 @@ describe("registerSource", () => {
       base_url: "https://ornek.example.test/feed",
       trust_tier: "general",
       terms_notes: "kullanım şartları incelendi",
+    });
+  });
+
+  it("sends the editorial purpose only when given", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "registered",
+        source_id: SOURCE_ID,
+        lifecycle_state: "active",
+      }),
+    );
+
+    await registerSource({
+      slug: "forum",
+      name: "Forum",
+      kind: "manual",
+      baseUrl: "https://forum.example.test/",
+      trustTier: "general",
+      primaryRole: "community_intent",
+      capabilities: ["community_need", "market"],
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      slug: "forum",
+      name: "Forum",
+      kind: "manual",
+      base_url: "https://forum.example.test/",
+      trust_tier: "general",
+      primary_role: "community_intent",
+      capabilities: ["community_need", "market"],
     });
   });
 
@@ -184,6 +216,70 @@ describe("lifecycle and admission clients", () => {
     expect((await requeueDiscoveryItem(ITEM_ID, "kaynak düzeldi")).kind).toBe(
       "ok",
     );
+  });
+});
+
+describe("updateSourcePurpose", () => {
+  it("posts the purpose and parses the response", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        source_id: SOURCE_ID,
+        primary_role: "trend",
+        capabilities: ["trend", "visual_trend"],
+      }),
+    );
+
+    const result = await updateSourcePurpose(SOURCE_ID, "trend", [
+      "visual_trend",
+      "trend",
+    ]);
+
+    expect(result).toEqual({
+      kind: "ok",
+      data: {
+        status: "updated",
+        source_id: SOURCE_ID,
+        primary_role: "trend",
+        capabilities: ["trend", "visual_trend"],
+      },
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(String(url)).toBe(
+      `http://127.0.0.1:8000/internal/research/sources/${SOURCE_ID}/purpose`,
+    );
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      primary_role: "trend",
+      capabilities: ["visual_trend", "trend"],
+    });
+  });
+
+  it("omits capabilities when none are given so the role default applies", async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, {
+        status: "updated",
+        source_id: SOURCE_ID,
+        primary_role: "search",
+        capabilities: ["search"],
+      }),
+    );
+
+    await updateSourcePurpose(SOURCE_ID, "search");
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ primary_role: "search" });
+  });
+
+  it("maps failures and refuses junk ids without calling the backend", async () => {
+    const fetchMock = stubFetch(async () => jsonResponse(422, {}));
+    expect(await updateSourcePurpose(SOURCE_ID, "search")).toEqual({
+      kind: "invalid",
+    });
+    expect(await updateSourcePurpose("junk", "search")).toEqual({
+      kind: "not_found",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

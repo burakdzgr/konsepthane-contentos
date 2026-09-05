@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -22,6 +22,7 @@ from contentos.sources.enums import (
     LifecycleChangeOrigin,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
 )
 from contentos.sources.models import Source, SourceLifecycleEvent
@@ -705,6 +706,7 @@ class TestApiSurface:
             "/internal/research/discovery-items": {"get"},
             "/internal/research/discovery-items/{discovery_item_id}": {"get"},
             "/internal/research/sources/{source_id}/lifecycle": {"post"},
+            "/internal/research/sources/{source_id}/purpose": {"post"},
             "/internal/research/sources/{source_id}/discover": {"post"},
             "/internal/research/discovery-items/{discovery_item_id}/accept": {"post"},
             "/internal/research/discovery-items/{discovery_item_id}/reject": {"post"},
@@ -739,3 +741,125 @@ class TestApiSurface:
         with harness.session() as session:
             item = session.execute(select(DiscoveryItem)).scalar_one()
             assert item.lifecycle_state is DiscoveryLifecycleState.DISCOVERED
+
+
+class TestSourcePurpose:
+    def test_registration_without_purpose_defaults_to_inspiration(self) -> None:
+        harness = Harness()
+        payload = harness.post("/internal/research/sources", registration_body()).json()
+
+        with harness.session() as session:
+            source = session.get(Source, uuid.UUID(payload["source_id"]))
+            assert source is not None
+            assert source.primary_role is SourceRole.INSPIRATION
+            assert source.capabilities == ["inspiration"]
+
+    def test_registration_accepts_role_and_capabilities(self) -> None:
+        harness = Harness()
+        response = harness.post(
+            "/internal/research/sources",
+            registration_body(
+                primary_role="turkish_editorial",
+                capabilities=["market", "inspiration", "market"],
+            ),
+        )
+        assert response.status_code == 200, response.text
+
+        with harness.session() as session:
+            source = session.get(Source, uuid.UUID(response.json()["source_id"]))
+            assert source is not None
+            assert source.primary_role is SourceRole.TURKISH_EDITORIAL
+            assert source.capabilities == ["inspiration", "market"]
+
+    def test_registration_role_alone_uses_role_defaults(self) -> None:
+        harness = Harness()
+        response = harness.post(
+            "/internal/research/sources", registration_body(primary_role="competitor")
+        )
+        assert response.status_code == 200, response.text
+        with harness.session() as session:
+            source = session.get(Source, uuid.UUID(response.json()["source_id"]))
+            assert source is not None
+            assert source.capabilities == ["competition", "market"]
+
+    def test_unknown_role_or_capability_is_422(self) -> None:
+        harness = Harness()
+        for body in (
+            registration_body(primary_role="oracle"),
+            registration_body(capabilities=["telepathy"]),
+            registration_body(capabilities=[]),
+        ):
+            response = harness.post("/internal/research/sources", body)
+            assert response.status_code == 422, body
+            assert response.json()["error"]["code"] == "validation_error"
+        with harness.session() as session:
+            assert session.scalar(select(func.count()).select_from(Source)) == 0
+
+    def test_purpose_update_is_audited_and_leaves_lifecycle_alone(self) -> None:
+        harness = Harness()
+        source_id = seed_source(harness, "amac")
+
+        response = harness.post(
+            f"/internal/research/sources/{source_id}/purpose",
+            {"primary_role": "trend", "capabilities": ["visual_trend", "trend"]},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "status": "updated",
+            "source_id": str(source_id),
+            "primary_role": "trend",
+            "capabilities": ["trend", "visual_trend"],
+        }
+        with harness.session() as session:
+            source = session.get(Source, source_id)
+            assert source is not None
+            assert source.lifecycle_state is SourceLifecycleState.ACTIVE
+            events = list(
+                session.execute(
+                    select(SourceLifecycleEvent)
+                    .where(SourceLifecycleEvent.source_id == source_id)
+                    .order_by(SourceLifecycleEvent.id)
+                ).scalars()
+            )
+            assert len(events) == 2
+            assert events[-1].previous_state is SourceLifecycleState.ACTIVE
+            assert events[-1].new_state is SourceLifecycleState.ACTIVE
+            assert "primary_role=trend" in events[-1].reason
+
+    def test_purpose_update_refuses_bad_input_and_missing_source(self) -> None:
+        harness = Harness()
+        source_id = seed_source(harness, "amac-hata")
+
+        assert (
+            harness.post(
+                f"/internal/research/sources/{uuid.uuid4()}/purpose",
+                {"primary_role": "search"},
+            ).status_code
+            == 404
+        )
+        for body in (
+            {"primary_role": "search", "capabilities": []},
+            {"primary_role": "search", "capabilities": ["nope"]},
+            {"primary_role": "search", "kind": "manual"},
+            {},
+        ):
+            response = harness.post(f"/internal/research/sources/{source_id}/purpose", body)
+            assert response.status_code == 422, body
+        with harness.session() as session:
+            source = session.get(Source, source_id)
+            assert source is not None
+            assert source.primary_role is SourceRole.INSPIRATION
+
+    def test_purpose_is_exposed_by_the_source_list(self) -> None:
+        harness = Harness()
+        source_id = seed_source(harness, "listede")
+        harness.post(
+            f"/internal/research/sources/{source_id}/purpose",
+            {"primary_role": "community_intent"},
+        )
+
+        rows = harness.request("GET", "/internal/research/sources").json()["items"]
+        row = next(item for item in rows if item["id"] == str(source_id))
+        assert row["primary_role"] == "community_intent"
+        assert row["capabilities"] == ["community_need"]

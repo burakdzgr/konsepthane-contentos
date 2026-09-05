@@ -52,8 +52,10 @@ from contentos.normalization.models import NormalizedDocument
 from contentos.research.models import ResearchEvidence
 from contentos.sources.enums import (
     DiscoveryStrategy,
+    SourceCapability,
     SourceKind,
     SourceLifecycleState,
+    SourceRole,
     TrustTier,
 )
 from contentos.sources.models import Source
@@ -77,6 +79,8 @@ class SourceListItem(_FrozenModel):
     slug: str
     name: str
     kind: SourceKind
+    primary_role: SourceRole
+    capabilities: list[SourceCapability]
     locale: str
     market: str
     lifecycle_state: SourceLifecycleState
@@ -140,6 +144,8 @@ class SourceSummary(_FrozenModel):
     slug: str
     name: str
     kind: SourceKind
+    primary_role: SourceRole
+    capabilities: list[SourceCapability]
     locale: str
     market: str
     lifecycle_state: SourceLifecycleState
@@ -227,6 +233,12 @@ class PipelineDetail(_FrozenModel):
     evidence: EvidenceSummary
 
 
+def _capabilities(source: Source) -> list[SourceCapability]:
+    """Typed capabilities in canonical enum order; unknown persisted values dropped."""
+    present = set(source.capabilities)
+    return [member for member in SourceCapability if member.value in present]
+
+
 def _lifecycle_count(state: DiscoveryLifecycleState) -> Any:
     return func.sum(case((DiscoveryItem.lifecycle_state == state, 1), else_=0))
 
@@ -294,6 +306,8 @@ def list_sources(
             slug=source.slug,
             name=source.name,
             kind=source.kind,
+            primary_role=source.primary_role,
+            capabilities=_capabilities(source),
             locale=source.locale,
             market=source.market,
             lifecycle_state=source.lifecycle_state,
@@ -663,6 +677,8 @@ def get_pipeline_detail(session: Session, discovery_item_id: uuid.UUID) -> Pipel
             slug=source.slug,
             name=source.name,
             kind=source.kind,
+            primary_role=source.primary_role,
+            capabilities=_capabilities(source),
             locale=source.locale,
             market=source.market,
             lifecycle_state=source.lifecycle_state,

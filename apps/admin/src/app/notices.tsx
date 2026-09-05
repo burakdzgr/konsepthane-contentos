@@ -8,7 +8,7 @@ export const CONTROL_ERROR_MESSAGES: Record<string, string> = {
   "not-found": "Kayıt bulunamadı.",
   "queue-failed": "Görev kuyruğa alınamadı. Hiçbir şey değiştirilmedi.",
   "ai-unconfigured":
-    "Yapay zeka sağlayıcısı yapılandırılmamış: .env dosyasına CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL ekleyip api ve worker konteynerlerini yeniden başlatın. Görev kuyruğa alınmadı.",
+    "Yapay zeka sağlayıcısı yapılandırılmamış. .env dosyasında CONTENTOS_AI_PROVIDER için gereken değişkenleri (Subcontractor gateway: CONTENTOS_SUBCONTRACTOR_BASE_URL ve CONTENTOS_SUBCONTRACTOR_API_KEY; OpenAI: CONTENTOS_OPENAI_API_KEY ve CONTENTOS_OPENAI_MODEL) tanımlayıp api ve worker konteynerlerini yeniden başlatın. Görev kuyruğa alınmadı.",
   unreachable: "Backend API'ye şu anda erişilemiyor.",
   malformed: "Backend API beklenmedik veri döndürdü.",
 };

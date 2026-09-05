@@ -464,6 +464,8 @@ class OpportunityCommissioningService:
         reason: str,
         request_id: str | None = None,
         override_gate: bool = False,
+        actor_user_id: uuid.UUID | None = None,
+        extra_artifact_refs: dict[str, str] | None = None,
     ) -> CommissionResult:
         cleaned_reason = _validate_required_text("reason", reason, MAX_OVERRIDE_REASON_LENGTH)
         if request_id is not None and not is_valid_request_id(request_id):
@@ -504,7 +506,9 @@ class OpportunityCommissioningService:
             WorkflowState.EVIDENCE_BUILDING,
             actor_origin=WorkflowActorOrigin.OPERATOR,
             reason=cleaned_reason,
+            actor_user_id=actor_user_id,
             artifact_refs={
+                **(extra_artifact_refs or {}),
                 "opportunity_id": str(opportunity.id),
                 "opportunity_score_id": str(score.id),
                 # ADR 0010: the gate verdict the human overrode stays visible

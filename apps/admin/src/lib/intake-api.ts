@@ -20,7 +20,7 @@ export const RUN_STATUSES = [
 
 const timestampSchema = z.string().min(1);
 
-const runSchema = z.object({
+export const intakeRunSchema = z.object({
   id: z.string().uuid(),
   source_id: z.string().uuid(),
   source_slug: z.string(),
@@ -70,7 +70,7 @@ const eventSchema = z.object({
 
 const runsPageSchema = z.object({
   generated_at: timestampSchema,
-  runs: z.array(runSchema),
+  runs: z.array(intakeRunSchema),
 });
 
 const chainSchema = z.object({
@@ -83,7 +83,7 @@ const chainSchema = z.object({
 
 const runDetailSchema = z.object({
   generated_at: timestampSchema,
-  run: runSchema,
+  run: intakeRunSchema,
   chain: chainSchema,
   stages: z.array(stageSchema),
   events: z.array(eventSchema),
@@ -100,7 +100,7 @@ const runControlSchema = z.object({
   run_status: z.enum(RUN_STATUSES),
 });
 
-export type IntakeRunView = z.infer<typeof runSchema>;
+export type IntakeRunView = z.infer<typeof intakeRunSchema>;
 export type IntakeStageView = z.infer<typeof stageSchema>;
 export type IntakeChainView = z.infer<typeof chainSchema>;
 export type IntakeEventView = z.infer<typeof eventSchema>;
