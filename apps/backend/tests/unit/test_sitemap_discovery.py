@@ -25,7 +25,6 @@ from contentos.discovery.sitemap import (
     SitemapFetchTerminalError,
     SitemapParseError,
     SitemapSourceNotEligibleError,
-    SitemapTraversalLimitExceededError,
     UnsupportedSitemapContentError,
 )
 from contentos.fetching.models import (
@@ -416,18 +415,21 @@ class TestLimitsAndParserSecurity:
     ) -> None:
         source = make_source(session)
         monkeypatch.setattr(sitemap_module, "MAX_SITEMAP_INDEX_ENTRIES", 1)
-        body = sitemap_index(
-            "https://www.example.test/one.xml",
-            "https://www.example.test/two.xml",
+        one = "https://www.example.test/one.xml"
+        body = sitemap_index(one, "https://www.example.test/two.xml")
+        fetcher = FakeFetchClient(
+            {
+                SITEMAP_URL: successful_fetch(SITEMAP_URL, body),
+                one: successful_fetch(one, urlset(("https://www.example.test/a", None))),
+            }
         )
 
-        with pytest.raises(SitemapTraversalLimitExceededError) as captured:
-            SitemapDiscoveryStrategy(
-                session,
-                FakeFetchClient({SITEMAP_URL: successful_fetch(SITEMAP_URL, body)}),
-            ).execute(source.id)
+        # A capacity bound: the first entries are used, the rest recorded.
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
 
-        assert captured.value.limit_name == "sitemap-index entry count"
+        assert fetcher.calls == [SITEMAP_URL, one]
+        assert result.admitted_new == 1
+        assert "index_entries_truncated" in result.parse_warnings
 
     def test_per_document_url_entry_limit_is_enforced(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -439,13 +441,13 @@ class TestLimitsAndParserSecurity:
             ("https://www.example.test/two", None),
         )
 
-        with pytest.raises(SitemapTraversalLimitExceededError) as captured:
-            SitemapDiscoveryStrategy(
-                session,
-                FakeFetchClient({SITEMAP_URL: successful_fetch(SITEMAP_URL, body)}),
-            ).execute(source.id)
+        result = SitemapDiscoveryStrategy(
+            session,
+            FakeFetchClient({SITEMAP_URL: successful_fetch(SITEMAP_URL, body)}),
+        ).execute(source.id)
 
-        assert captured.value.limit_name == "URL entries"
+        assert result.admitted_new == 1
+        assert "url_entries_truncated" in result.parse_warnings
 
     def test_depth_limit_is_enforced_before_fetching_deeper_child(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -461,11 +463,12 @@ class TestLimitsAndParserSecurity:
             }
         )
 
-        with pytest.raises(SitemapTraversalLimitExceededError) as captured:
-            SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
 
-        assert captured.value.limit_name == "depth"
+        # The too-deep child is skipped and recorded; never fetched.
         assert fetcher.calls == [SITEMAP_URL, child]
+        assert result.skipped_child_sitemaps == 1
+        assert "depth_limit_child_skipped" in result.parse_warnings
 
     def test_document_limit_is_enforced(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -482,11 +485,12 @@ class TestLimitsAndParserSecurity:
             }
         )
 
-        with pytest.raises(SitemapTraversalLimitExceededError) as captured:
-            SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
 
-        assert captured.value.limit_name == "document count"
+        # Capacity bound: traversal stops after the cap and says so.
         assert fetcher.calls == [SITEMAP_URL, first]
+        assert result.sitemap_documents_fetched == 2
+        assert "document_limit_truncated" in result.parse_warnings
 
     def test_total_url_limit_is_enforced(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -584,6 +588,53 @@ class TestLimitsAndParserSecurity:
                 FakeFetchClient({SITEMAP_URL: successful_fetch(SITEMAP_URL, body)}),
             ).execute(source.id)
 
+    def test_legacy_google_namespace_is_accepted(self, session: Session) -> None:
+        source = make_source(session)
+        body = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n'
+            b"<urlset xmlns='http://www.google.com/schemas/sitemap/0.84'>"
+            b"<url><loc>https://www.example.test/legacy</loc><lastmod>2026-09-06</lastmod>"
+            b"<changefreq>monthly</changefreq><priority>0.5</priority></url></urlset>"
+        )
+
+        result = SitemapDiscoveryStrategy(
+            session,
+            FakeFetchClient({SITEMAP_URL: successful_fetch(SITEMAP_URL, body)}),
+        ).execute(source.id)
+
+        assert result.admitted_new == 1
+
+    def test_terminal_child_failures_and_bad_children_are_skipped(self, session: Session) -> None:
+        source = make_source(session)
+        too_large = "https://www.example.test/huge.xml"
+        html = "https://www.example.test/html.xml"
+        broken = "https://www.example.test/broken.xml"
+        good = "https://www.example.test/good.xml"
+        fetcher = FakeFetchClient(
+            {
+                SITEMAP_URL: successful_fetch(
+                    SITEMAP_URL, sitemap_index(too_large, html, broken, good)
+                ),
+                too_large: failed_fetch(
+                    too_large, FetchOutcome.TOO_LARGE, RetryClassification.TERMINAL
+                ),
+                html: successful_fetch(html, b"<html>no</html>", content_type="text/html"),
+                broken: successful_fetch(broken, b"<urlset><url><loc>x</loc>"),
+                good: successful_fetch(good, urlset(("https://www.example.test/ok", None))),
+            }
+        )
+
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+
+        assert fetcher.calls == [SITEMAP_URL, too_large, html, broken, good]
+        assert result.admitted_new == 1
+        assert result.skipped_child_sitemaps == 3
+        assert {
+            "child_sitemap_fetch_skipped",
+            "child_sitemap_unsupported_skipped",
+            "child_sitemap_unparseable_skipped",
+        } <= set(result.parse_warnings)
+
 
 class TestFetchOutcomeMapping:
     @pytest.mark.parametrize(
@@ -680,6 +731,22 @@ class TestFetchOutcomeMapping:
 
         with pytest.raises(UnsupportedSitemapContentError):
             SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+
+    def test_octet_stream_xml_is_sniffed(self, session: Session) -> None:
+        source = make_source(session)
+        fetcher = FakeFetchClient(
+            {
+                SITEMAP_URL: successful_fetch(
+                    SITEMAP_URL,
+                    urlset(("https://www.example.test/sniffed", None)),
+                    content_type="application/octet-stream",
+                )
+            }
+        )
+
+        result = SitemapDiscoveryStrategy(session, fetcher).execute(source.id)
+
+        assert result.admitted_new == 1
 
     @pytest.mark.parametrize("content_type", ["application/xml; charset=utf-8", "text/xml"])
     def test_supported_xml_media_types_reach_parser(

@@ -21,7 +21,9 @@ from contentos.sources.service import SourceNotFoundError
 # Aligned with the fetch layer's body cap (fetch_max_body_bytes, 5 MiB
 # default): real split sitemaps from large sites routinely exceed 1 MB.
 MAX_SITEMAP_DOCUMENT_BYTES = 5_242_880
-MAX_SITEMAP_ELEMENTS = 20_000
+# XML-bomb guard over an already byte-capped body (a 5 MB urlset with
+# loc/lastmod/changefreq/priority per URL is ~30k elements).
+MAX_SITEMAP_ELEMENTS = 100_000
 MAX_SITEMAP_DEPTH = 3
 MAX_SITEMAP_DOCUMENTS = 50
 MAX_SITEMAP_INDEX_ENTRIES = 50
@@ -30,7 +32,29 @@ MAX_SITEMAP_URLS = 5_000
 MAX_SITEMAP_URL_LENGTH = 2_000
 
 _SITEMAP_NAMESPACE = "http://www.sitemaps.org/schemas/sitemap/0.9"
+# Real sites still publish the legacy Google 0.84 schema (and a trailing
+# slash variant); the element vocabulary is identical.
+_ACCEPTED_SITEMAP_NAMESPACES = frozenset(
+    {
+        "",
+        _SITEMAP_NAMESPACE,
+        "http://www.sitemaps.org/schemas/sitemap/0.9/",
+        "http://www.google.com/schemas/sitemap/0.84",
+    }
+)
 _ACCEPTED_SITEMAP_CONTENT_TYPES = frozenset({"application/xml", "text/xml"})
+# Media types that say nothing about the body: accept only when the body
+# itself sniffs as sitemap XML.
+_SNIFFABLE_CONTENT_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
+_XML_SNIFF_PREFIXES = (b"<?xml", b"<urlset", b"<sitemapindex")
+# Warnings recorded when a CHILD sitemap is skipped instead of failing the run.
+WARNING_CHILD_FETCH_SKIPPED = "child_sitemap_fetch_skipped"
+WARNING_CHILD_UNSUPPORTED = "child_sitemap_unsupported_skipped"
+WARNING_CHILD_UNPARSEABLE = "child_sitemap_unparseable_skipped"
+WARNING_DEPTH_SKIPPED = "depth_limit_child_skipped"
+WARNING_DOCUMENT_LIMIT = "document_limit_truncated"
+WARNING_INDEX_ENTRIES_TRUNCATED = "index_entries_truncated"
+WARNING_URL_ENTRIES_TRUNCATED = "url_entries_truncated"
 _PROHIBITED_XML_DECLARATIONS = (b"<!DOCTYPE", b"<!ENTITY")
 
 
@@ -106,6 +130,9 @@ class SitemapDiscoveryResult:
     skipped_cross_origin_sitemap: int
     parse_warnings: tuple[str, ...]
     fetch_outcomes: tuple[FetchOutcome, ...]
+    # Child sitemaps skipped for a bounded reason (terminal fetch failure,
+    # unsupported content, unparseable XML, depth); the run still completes.
+    skipped_child_sitemaps: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,23 +176,42 @@ class SitemapDiscoveryStrategy:
         skipped_cross_origin_sitemap = 0
         warnings: list[str] = []
         fetch_outcomes: list[FetchOutcome] = []
+        skipped_child_sitemaps = 0
         url_limit_reached = False
 
         while pending and not url_limit_reached:
             if documents_fetched >= MAX_SITEMAP_DOCUMENTS:
-                raise SitemapTraversalLimitExceededError("document count")
+                # A CAPACITY bound (like the URL cap below): keep what was
+                # admitted, say so, stop — never fail a big site's run.
+                _add_warning(warnings, WARNING_DOCUMENT_LIMIT)
+                break
 
             requested_url, depth = pending.popleft()
+            is_root_document = documents_fetched == 0
             fetch_result = self._fetch_client.fetch(requested_url)
             fetch_outcomes.append(fetch_result.outcome)
             if not fetch_result.is_success:
-                self._raise_fetch_error(source.id, requested_url, fetch_result)
-            _require_xml_content(fetch_result)
+                if is_root_document or fetch_result.retry is RetryClassification.RETRYABLE:
+                    # The root must be readable; a retryable child failure
+                    # (timeout, network) is the intake step's retry to take.
+                    self._raise_fetch_error(source.id, requested_url, fetch_result)
+                # A terminal child failure (too large, 404, robots, media
+                # type) removes ONE child from the traversal, not the run.
+                skipped_child_sitemaps += 1
+                _add_warning(warnings, WARNING_CHILD_FETCH_SKIPPED)
+                continue
+            try:
+                _require_xml_content(fetch_result)
+            except UnsupportedSitemapContentError:
+                if is_root_document:
+                    raise
+                skipped_child_sitemaps += 1
+                _add_warning(warnings, WARNING_CHILD_UNSUPPORTED)
+                continue
             if fetch_result.body is None:
                 raise SitemapParseError("successful sitemap fetch did not provide a body")
 
             document_url = fetch_result.final_url or requested_url
-            is_root_document = documents_fetched == 0
             if is_root_document:
                 root_sitemap_url = document_url
                 allowed_origin = _origin(document_url)
@@ -176,7 +222,14 @@ class SitemapDiscoveryStrategy:
                 _add_warning(warnings, "cross_origin_sitemap_redirect_skipped")
                 continue
 
-            parsed = _parse_sitemap(fetch_result.body)
+            try:
+                parsed = _parse_sitemap(fetch_result.body)
+            except (SitemapParseError, UnsupportedSitemapContentError):
+                if is_root_document:
+                    raise
+                skipped_child_sitemaps += 1
+                _add_warning(warnings, WARNING_CHILD_UNPARSEABLE)
+                continue
             for warning in parsed.warnings:
                 _add_warning(warnings, warning)
 
@@ -203,7 +256,11 @@ class SitemapDiscoveryStrategy:
                         skipped_duplicate_sitemap += 1
                         continue
                     if depth >= MAX_SITEMAP_DEPTH:
-                        raise SitemapTraversalLimitExceededError("depth")
+                        # Deeper nesting is not traversed; the child is
+                        # skipped and the truncation recorded.
+                        skipped_child_sitemaps += 1
+                        _add_warning(warnings, WARNING_DEPTH_SKIPPED)
+                        continue
                     scheduled.add(child_key)
                     pending.append((child_url, depth + 1))
                 continue
@@ -248,6 +305,7 @@ class SitemapDiscoveryStrategy:
             skipped_cross_origin_sitemap=skipped_cross_origin_sitemap,
             parse_warnings=tuple(warnings),
             fetch_outcomes=tuple(fetch_outcomes),
+            skipped_child_sitemaps=skipped_child_sitemaps,
         )
 
     @staticmethod
@@ -269,8 +327,19 @@ class SitemapDiscoveryStrategy:
 
 def _require_xml_content(result: FetchResult) -> None:
     media_type = (result.content_type or "").partition(";")[0].strip().casefold()
-    if media_type not in _ACCEPTED_SITEMAP_CONTENT_TYPES:
-        raise UnsupportedSitemapContentError("fetched content is not application/xml or text/xml")
+    if media_type in _ACCEPTED_SITEMAP_CONTENT_TYPES:
+        return
+    if media_type in _SNIFFABLE_CONTENT_TYPES and _looks_like_sitemap_xml(result.body):
+        # Servers that hand XML out as octet-stream: the body decides.
+        return
+    raise UnsupportedSitemapContentError("fetched content is not application/xml or text/xml")
+
+
+def _looks_like_sitemap_xml(body: bytes | None) -> bool:
+    if not body:
+        return False
+    head = body[:256].lstrip(b"\xef\xbb\xbf \t\r\n")
+    return head.startswith(_XML_SNIFF_PREFIXES)
 
 
 def _parse_sitemap(body: bytes) -> _ParsedSitemap:
@@ -290,7 +359,7 @@ def _parse_sitemap(body: bytes) -> _ParsedSitemap:
             raise SitemapParseError("sitemap XML exceeds the element limit")
 
     namespace, root_name = _split_tag(root.tag)
-    if namespace not in {"", _SITEMAP_NAMESPACE}:
+    if namespace not in _ACCEPTED_SITEMAP_NAMESPACES:
         raise UnsupportedSitemapContentError("sitemap XML uses an unsupported namespace")
     if root_name not in {"urlset", "sitemapindex"}:
         raise UnsupportedSitemapContentError("XML root is not a sitemap urlset or sitemapindex")
@@ -303,12 +372,18 @@ def _parse_sitemap(body: bytes) -> _ParsedSitemap:
     entry_limit = (
         MAX_SITEMAP_INDEX_ENTRIES if root_name == "sitemapindex" else MAX_SITEMAP_URL_ENTRIES
     )
-    if len(items) > entry_limit:
-        limit_name = "sitemap-index entry count" if root_name == "sitemapindex" else "URL entries"
-        raise SitemapTraversalLimitExceededError(limit_name)
-
     entries: list[_SitemapEntry] = []
     warnings: list[str] = []
+    if len(items) > entry_limit:
+        # Capacity bound: the first `entry_limit` entries (document order)
+        # are used and the truncation is recorded; nothing fails.
+        _add_warning(
+            warnings,
+            WARNING_INDEX_ENTRIES_TRUNCATED
+            if root_name == "sitemapindex"
+            else WARNING_URL_ENTRIES_TRUNCATED,
+        )
+        items = items[:entry_limit]
     for item in items:
         lastmod_text = _child_text(item, qualified_lastmod)
         last_modified = _parse_lastmod(lastmod_text)

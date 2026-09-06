@@ -460,6 +460,33 @@ that state). The rule now lives in ONE place:
   work-item detail render ONLY Turkish labels; backend values remain the
   wire/filter contract. An untranslated value is humanized, never hidden.
 
+## Sitemap discovery made bounded, not brittle (2026-09-06)
+
+Registering the operator's real source list (PartiAVM, Düğün.com,
+PartySlate, AnnelerToplandık, Kadınlar Kulübü) failed five runs on the
+sitemap strategy for reasons that are capacity, not safety: legacy Google
+`sitemap/0.84` namespace, XML served as `application/octet-stream`, >50
+index entries, >20k elements, a 7 MB child sitemap. `discovery/sitemap.py`
+now keeps every hard safety cap (5 MB body, element guard raised to 100k,
+prohibited DTD/entities, cross-origin, depth) but treats capacity limits
+as bounded truncation with recorded warnings (`index_entries_truncated`,
+`url_entries_truncated`, `document_limit_truncated`,
+`depth_limit_child_skipped`) and skips a CHILD sitemap that fails
+terminally / is unsupported / is unparseable (`child_sitemap_*_skipped`,
+`skipped_child_sitemaps` on the result) instead of failing the run. The
+root sitemap must still be readable; retryable child fetch failures still
+raise for the intake step's retry. Legacy namespace accepted; octet-stream
+accepted only when the body sniffs as sitemap XML.
+
+Local operations learned the hard way (see `docs/INTAKE_ORCHESTRATION.md`
+for the pipeline itself): the subcontractor gateway runs as the
+`konsept-gateway` container next to `konsept-rabbitmq` and must be started
+with `docker compose --env-file .docker.env up -d` (the plain `.env` points
+Nstbrowser at 127.0.0.1, which inside the container is the container);
+Nstbrowser is a desktop app on the host; ContentOS attempt identity includes
+`retry_number`, so a re-trigger after failed attempts needs an unused
+retry number or the provider is never called again.
+
 ## Google Trends — BigQuery Public Dataset trend discovery (2026-09-05)
 
 While the official Google Trends API (alpha) stays `access_required`, the
