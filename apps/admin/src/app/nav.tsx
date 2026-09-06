@@ -45,7 +45,6 @@ const NAV_SECTIONS: NavSection[] = [
         badge: "calisma",
       },
       { href: "/sources", label: "Kaynaklar", icon: "source" },
-      { href: "/fikirler", label: "Fikirler", icon: "spark" },
       { href: "/editorial", label: "İçerikler", icon: "content" },
       {
         href: "/firsatlar",
@@ -54,13 +53,15 @@ const NAV_SECTIONS: NavSection[] = [
         badge: "firsatlar",
       },
       { href: "/strateji", label: "Strateji", icon: "spark" },
-      { href: "/performans", label: "Performans", icon: "activity" },
-      { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: "health" },
+      { href: "/baslangic", label: "Nasıl Kullanırım?", icon: "home" },
     ],
   },
   {
     title: "Sistem",
     entries: [
+      { href: "/fikirler", label: "Fikirler", icon: "spark" },
+      { href: "/performans", label: "Performans", icon: "activity" },
+      { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: "health" },
       { href: "/", label: "Sistem Sağlığı", icon: "health" },
       { href: "/operasyon", label: "Canlı Operasyon", icon: "activity" },
       { href: "/motor", label: "Gelişmiş Motor", icon: "motor" },
@@ -103,36 +104,55 @@ function SidebarLinks({ badges }: { badges: NavBadges }) {
   const stateParam = searchParams?.get("state") ?? null;
   return (
     <nav className="app-nav" aria-label="Birincil">
-      {NAV_SECTIONS.map((section) => (
-        <div key={section.title} className="nav-section">
-          <span className="nav-section-title">{section.title}</span>
-          {section.entries.map((entry) => {
-            if (entry.disabled) {
-              return (
-                <span key={entry.label} className="nav-entry-disabled">
-                  <AppIcon name={entry.icon} size={16} />
-                  <span>{entry.label}</span>
-                </span>
-              );
-            }
-            const count =
-              entry.badge !== undefined ? (badges[entry.badge] ?? 0) : 0;
-            return (
-              <Link
-                key={entry.href}
-                href={entry.href}
-                aria-current={
-                  isCurrent(entry, pathname, stateParam) ? "page" : undefined
+      {NAV_SECTIONS.map((section) => {
+        const Container = section.title === "Sistem" ? "details" : "div";
+        return (
+          <Container
+            key={section.title}
+            className="nav-section"
+            {...(section.title === "Sistem"
+              ? {
+                  open: section.entries.some((entry) =>
+                    isCurrent(entry, pathname, stateParam),
+                  ),
                 }
-              >
-                <AppIcon name={entry.icon} size={16} />
-                <span className="nav-entry-label">{entry.label}</span>
-                {count > 0 && <span className="nav-badge">{count}</span>}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+              : {})}
+          >
+            {section.title === "Sistem" ? (
+              <summary className="nav-section-title">
+                Sistem ve ayrıntılar
+              </summary>
+            ) : (
+              <span className="nav-section-title">{section.title}</span>
+            )}
+            {section.entries.map((entry) => {
+              if (entry.disabled) {
+                return (
+                  <span key={entry.label} className="nav-entry-disabled">
+                    <AppIcon name={entry.icon} size={16} />
+                    <span>{entry.label}</span>
+                  </span>
+                );
+              }
+              const count =
+                entry.badge !== undefined ? (badges[entry.badge] ?? 0) : 0;
+              return (
+                <Link
+                  key={entry.href}
+                  href={entry.href}
+                  aria-current={
+                    isCurrent(entry, pathname, stateParam) ? "page" : undefined
+                  }
+                >
+                  <AppIcon name={entry.icon} size={16} />
+                  <span className="nav-entry-label">{entry.label}</span>
+                  {count > 0 && <span className="nav-badge">{count}</span>}
+                </Link>
+              );
+            })}
+          </Container>
+        );
+      })}
     </nav>
   );
 }

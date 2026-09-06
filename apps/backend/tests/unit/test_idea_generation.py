@@ -274,7 +274,7 @@ class TestSuccessfulGeneration:
             attempt = result.attempt
             assert attempt.purpose is GenerationPurpose.IDEA_CANDIDATES
             assert attempt.template_name == "idea-candidates"
-            assert attempt.template_version == "1"
+            assert attempt.template_version == "2"
             refs = attempt.input_refs
             assert refs["schema"] == GENERATION_INPUT_REFS_SCHEMA
             assert refs["opportunity_id"] == str(opportunity_id)
@@ -413,11 +413,11 @@ class TestIdempotency:
             engine = IdeaGenerationEngine(session)
             first = engine.generate_candidates(opportunity_id, provider=provider)
             session.commit()
-            monkeypatch.setattr(generation_module, "IDEA_TEMPLATE_VERSION", "2")
+            monkeypatch.setattr(generation_module, "IDEA_TEMPLATE_VERSION", "next-test-version")
             second = engine.generate_candidates(opportunity_id, provider=provider)
             session.commit()
             assert second.attempt.id != first.attempt.id
-            assert second.attempt.template_version == "2"
+            assert second.attempt.template_version == "next-test-version"
 
     def test_provider_identity_change_changes_identity(
         self, session_factory: sessionmaker[Session]

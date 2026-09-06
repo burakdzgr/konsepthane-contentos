@@ -40,7 +40,7 @@ const NOTICES: Record<string, string> = {
   "mode-supervised":
     "Otopilot denetimli modda: çıktılar kendiliğinden üretilir, kabuller sizde.",
   "mode-autonomous":
-    "Otopilot otonom modda: nihai yayın onayı dışında her adım kendiliğinden ilerler.",
+    "Otomatik üretim açık. Kaynak ve kalite sorunları, görsel seçimi ve nihai yayın onayı gerektiğinde sizden karar beklenir.",
 };
 
 function shortTime(iso: string): string {
@@ -51,7 +51,7 @@ function ModeCard({ live }: { live: LiveOperations }) {
   const current = live.autopilot.mode;
   return (
     <section className="ops-card" data-span="8" aria-labelledby="ops-mode">
-      <h2 id="ops-mode">Otopilot</h2>
+      <h2 id="ops-mode">Otomatik içerik hazırlama</h2>
       <p className="muted">{AUTOPILOT_MODE_HINTS[current]}</p>
       <dl className="ops-facts">
         <div>
@@ -471,11 +471,14 @@ export default async function LiveOperationsPage({
       {result.kind === "ok" && (
         <div className="ops-grid">
           <ModeCard live={result.data} />
-          <GatewayCard gateway={result.data.gateway} />
           <LineCard items={result.data.items} />
           <IntakeCard live={result.data} stageMap={stageMap} />
-          <BrowserCard gateway={result.data.gateway} />
-          <FeedCard feed={result.data.feed} />
+          <details className="ops-card detail-fold" data-span="12">
+            <summary>Teknik durum, tarayıcı ve ayrıntılı olaylar</summary>
+            <GatewayCard gateway={result.data.gateway} />
+            <BrowserCard gateway={result.data.gateway} />
+            <FeedCard feed={result.data.feed} />
+          </details>
         </div>
       )}
     </section>

@@ -244,7 +244,7 @@ describe("Canlı Operasyon page", () => {
 
     expect(screen.getByText(/Erişilemiyor \(ConnectError\)/)).toBeTruthy();
     expect(screen.getByText("Hatta iş öğesi yok.")).toBeTruthy();
-    expect(screen.getByText(/otonom modda/)).toBeTruthy();
+    expect(screen.getByText(/Otomatik üretim açık/)).toBeTruthy();
   });
 
   it("reports the backend being unreachable", async () => {

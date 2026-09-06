@@ -1079,6 +1079,11 @@ export default async function KontrolPage({
       aria-labelledby="kontrol-title"
     >
       <ConsoleHeader run={focusRun} />
+      <p className="muted">
+        <Link href="/baslangic">Nereden başlamalıyım?</Link> ·{" "}
+        <Link href="/operasyon">Otomasyon ayarları</Link> ·{" "}
+        <Link href="/firsatlar">Kararlarımı aç</Link>
+      </p>
       <ControlNotice
         notice={firstParam(query.notice)}
         error={firstParam(query.error)}

@@ -26,7 +26,7 @@ export const AUTOPILOT_MODE_HINTS: Record<AutopilotMode, string> = {
   supervised:
     "Makine her çıktıyı kendiliğinden üretir; fikir seçimi, brief ve editör kabulü, görsel bağlama, nihai onay ve yayın sende kalır.",
   autonomous:
-    "Kabuller de otopilotta: en iyi fikir seçilir, brief ve geçen değerlendirme kabul edilir, düzelt kararı sınırlı yeniden çalışmaya gider, onaydan sonra paket-zamanlama-yayın kendiliğinden. Nihai onay yine sende (ADR 0004).",
+    "Uygun fikirler seçilir; yazım planı, taslak ve kontroller otomatik ilerler. Kaynak veya kalite sorunu ve görsel seçimi gerektiğinde durur. Son yayın onayı sizdedir; onaydan sonra yayın gönderimi otomatik yapılır.",
 };
 
 const autopilotEventKindSchema = z.enum([
@@ -134,6 +134,14 @@ export type LineItem = z.infer<typeof lineItemSchema>;
 export type FeedEntry = z.infer<typeof feedEntrySchema>;
 export type GatewayView = z.infer<typeof gatewaySchema>;
 export type AutopilotState = z.infer<typeof autopilotStateSchema>;
+
+export async function fetchAutopilotState(): Promise<
+  BackendResult<AutopilotState>
+> {
+  const response = await requestBackend("/internal/autopilot");
+  if (response === null) return { kind: "unreachable" };
+  return parseBackendResponse(response, autopilotStateSchema, [200]);
+}
 
 export async function fetchLiveOperations(): Promise<
   BackendResult<LiveOperations>

@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from contentos.ai.dto import GenerationRequest
+from contentos.ai.editorial_mission import KONSEPTHANE_EDITORIAL_MISSION
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
 from contentos.ai.protocol import StructuredGenerationProvider
@@ -89,7 +90,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 BRIEF_COMPOSITION_TEMPLATE_NAME = "brief-composition"
-BRIEF_COMPOSITION_TEMPLATE_VERSION = "4"
+BRIEF_COMPOSITION_TEMPLATE_VERSION = "5"
 
 # Deterministic bounded evidence-projection policy (option B of the
 # accepted contract): items are ordered by pack role priority, then claim
@@ -612,7 +613,7 @@ class BriefCompositionEngine:
             input_projection=input_projection,
             generation_bounds={"max_output_tokens": MAX_OUTPUT_TOKENS},
             retry_number=retry_number,
-            instructions=_TEMPLATE_V1,
+            instructions=_TEMPLATE_V1 + KONSEPTHANE_EDITORIAL_MISSION,
         )
 
     def _build_draft_input(

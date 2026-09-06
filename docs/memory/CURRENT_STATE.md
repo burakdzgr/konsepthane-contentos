@@ -1,6 +1,17 @@
 ﻿# Konsepthane ContentOS - Current State
 
-Last updated: 2026-09-03
+Last updated: 2026-09-06
+
+## Operator and editorial direction increment (2026-09-06)
+
+Seven everyday navigation links; technical/analysis screens collapse under
+Sistem ve ayrıntılar. `/baslangic` reads real autopilot mode and explains the
+source-to-approval workflow. Control Center links to the guide and automation.
+Operations folds gateway/browser/feed diagnostics. Mode copy names actual
+source/quality/media waits. Shared `ai/editorial_mission.py` adds Turkish
+audiences, practical celebration ideas and honest community prompts to idea,
+brief and Writer requests (versions 2/5/6); Writer remains brief-bound.
+No migration. See `docs/OPERATOR_REVIEW_2026_09_06.md` for before/after and gaps.
 
 ## Idea Intelligence and operator experience increment
 

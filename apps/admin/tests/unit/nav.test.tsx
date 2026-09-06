@@ -62,10 +62,11 @@ describe("AppNav", () => {
       "Kontrol Merkezi",
       "Çalışmalar",
       "Kaynaklar",
-      "Fikirler",
       "İçerikler",
       "Benden Bekleyenler",
       "Strateji",
+      "Nasıl Kullanırım?",
+      "Fikirler",
       "Performans",
       "Entegrasyonlar",
       "Sistem Sağlığı",
@@ -95,7 +96,7 @@ describe("AppNav", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
 
-    expect(screen.getByText("Sistem")).toBeTruthy();
+    expect(screen.getByText("Sistem ve ayrıntılar")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Gelişmiş Motor" })).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Teknik Görünümler" }),

@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from contentos.ai.dto import GenerationRequest
+from contentos.ai.editorial_mission import KONSEPTHANE_EDITORIAL_MISSION
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
 from contentos.ai.protocol import StructuredGenerationProvider
@@ -87,7 +88,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 WRITER_DRAFT_TEMPLATE_NAME = "writer-draft"
-WRITER_DRAFT_TEMPLATE_VERSION = "5"
+WRITER_DRAFT_TEMPLATE_VERSION = "6"
 
 MAX_EVIDENCE_STATEMENT_CHARS = 500
 MAX_OUTPUT_TOKENS = 16_000
@@ -291,7 +292,11 @@ class WriterEngine:
             input_projection=context.projection,
             generation_bounds={"max_output_tokens": MAX_OUTPUT_TOKENS},
             retry_number=retry_number,
-            instructions=_TEMPLATE_V1,
+            instructions=_TEMPLATE_V1 + KONSEPTHANE_EDITORIAL_MISSION + (
+                "\nYazar olarak yalnızca kabul edilmiş brief içinde planlanmış "
+                "önerileri, bölümleri ve topluluk davetini işle; yeni bölüm "
+                "veya iddia ekleme."
+            ),
         )
         brief = context.brief
         spec: StructuredOutputSpec[WriterDraftV1] = StructuredOutputSpec(

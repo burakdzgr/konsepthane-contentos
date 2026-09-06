@@ -15,6 +15,7 @@ type HeaderChromeProps = {
 
 const SEARCH_DESTINATIONS = [
   { label: "Kontrol Merkezi", href: "/kontrol" },
+  { label: "Nasıl Kullanırım?", href: "/baslangic" },
   { label: "Çalışmalar", href: "/calisma" },
   { label: "Kaynaklar", href: "/sources" },
   { label: "Fikirler", href: "/fikirler" },
@@ -45,6 +46,7 @@ function normalizeSearch(value: string): string {
 }
 
 function routeTitle(pathname: string): string {
+  if (pathname === "/baslangic") return "Nasıl Kullanırım?";
   if (pathname === "/kontrol") return "Kontrol Merkezi";
   if (pathname.startsWith("/calisma/")) return "Çalışma Detayı";
   if (pathname === "/calisma") return "Çalışmalar";

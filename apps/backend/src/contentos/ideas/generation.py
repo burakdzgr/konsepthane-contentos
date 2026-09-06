@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from contentos.ai.dto import GenerationRequest
+from contentos.ai.editorial_mission import KONSEPTHANE_EDITORIAL_MISSION
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
 from contentos.ai.protocol import StructuredGenerationProvider
@@ -70,7 +71,7 @@ from contentos.workflow.models import EditorialWorkItem
 IDEA_GENERATOR_NAME = "idea-generator"
 IDEA_GENERATOR_VERSION = "1"
 IDEA_TEMPLATE_NAME = "idea-candidates"
-IDEA_TEMPLATE_VERSION = "1"
+IDEA_TEMPLATE_VERSION = "2"
 GENERATION_INPUT_REFS_SCHEMA = "idea-generation/1"
 
 # Deterministic projection bounds. Over-bound artifacts are truncated by the
@@ -400,7 +401,7 @@ class IdeaGenerationEngine:
                 "max_output_tokens": MAX_OUTPUT_TOKENS,
             },
             retry_number=retry_number,
-            instructions=_TEMPLATE_V1,
+            instructions=_TEMPLATE_V1 + KONSEPTHANE_EDITORIAL_MISSION,
         )
 
     def _resolve_source(self, document: NormalizedDocument) -> Source | None:
