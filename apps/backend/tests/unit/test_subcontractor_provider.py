@@ -107,6 +107,41 @@ def test_extracts_the_single_json_object_from_free_text(text: str) -> None:
     assert extract_json_object(text) == {"title": "Balon"}
 
 
+def test_scratch_work_before_the_answer_does_not_shadow_it() -> None:
+    # A browser-driven model streams its validation code (with braces of
+    # its own) before the final object; the answer is the last complete
+    # top-level object, not "first '{' to last '}'".
+    leaked = "\n".join(
+        [
+            '"9f36f9e3-fae2-4a90-b141-5bcb681b11a4",',
+            '"a5b4436a-027f-427c-8d26-3b78f982cc92",',
+            "]",
+            "len(ids), all(len(x)==36 for x in ids)",
+            "",
+            'brief = {"draft": {"title": "eski"}}',
+            's=json.dumps(brief,ensure_ascii=False,separators=(",",":"))',
+            'checks.append((f"c{i}handling",len(c["handling"]),500))',
+            '{"title": "Balon", "claims": [{"key": "a"}, {"key": "b"}]}',
+        ]
+    )
+    assert extract_json_object(leaked) == {
+        "title": "Balon",
+        "claims": [{"key": "a"}, {"key": "b"}],
+    }
+
+
+def test_the_answer_may_be_followed_by_prose_but_not_by_a_later_object() -> None:
+    assert extract_json_object('{"title": "Balon"} — bitti.') == {"title": "Balon"}
+    assert extract_json_object('taslak {"title": "eski"} son: {"title": "yeni"}') == {
+        "title": "yeni"
+    }
+
+
+def test_partial_head_and_nested_braces_still_resolve_to_the_outer_object() -> None:
+    text = 'akkabı, balkabağı {"a": {"b": {"c": 1}}, "d": [{"e": 2}]}'
+    assert extract_json_object(text) == {"a": {"b": {"c": 1}}, "d": [{"e": 2}]}
+
+
 @pytest.mark.parametrize("text", ["", "sadece metin", "[1, 2]", "{broken"])
 def test_non_object_replies_are_malformed(text: str) -> None:
     with pytest.raises(ProviderFailureError) as info:

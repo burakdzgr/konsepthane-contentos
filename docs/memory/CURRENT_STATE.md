@@ -520,6 +520,24 @@ sources; and a brief whose model output echoes the mandatory acceptance
 criteria is accepted with the canonical text (template
 `brief-composition/2` also tells the model not to repeat them).
 
+### Reply parsing: the answer is the LAST complete JSON object (2026-09-06)
+
+Live brief composition failed five times in a row with
+`subcontractor_malformed_structured_output`. The gateway archive showed the
+real cause: a browser-driven ChatGPT session (reasoning "High" + Python tool)
+streams its own validation code and draft fragments *before* the final answer,
+and the gateway joins every message part into one `text`. The final object was
+complete every time; `extract_json_object` broke because it took "first `{` to
+last `}`". It now scans from the end for the last top-level JSON object that is
+followed only by whitespace (falling back to the last object followed by prose),
+so leaked scratch work can never shadow the answer. Verified against the five
+archived replies (12–30 claims each) and by retry 6 producing the brief live.
+Operational notes: the ContentOS gateway key allows 2 concurrent jobs (a third
+gets HTTP 429 → `subcontractor_rate_limit`, handled by task backoff); a worker
+restart while a task polls the gateway orphans that job until Redis redelivers
+the task (default visibility timeout 1 h) — the autopilot's 15-minute in-flight
+window re-enqueues sooner.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

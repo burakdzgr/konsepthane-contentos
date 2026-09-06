@@ -215,29 +215,47 @@ def build_structured_prompt(request: GenerationRequest, output_schema: ProviderO
 def extract_json_object(text: str) -> dict[str, Any]:
     """Pull the single JSON object out of a free-text reply.
 
-    Tolerates a fenced block and prose around the object; refuses anything
-    that is not exactly one JSON object."""
+    Tolerates a fenced block and prose around the object. Browser-driven
+    models also leak their own scratch work into the stream — reasoning
+    notes, the Python they ran to validate their answer — *before* the
+    final object; that scratch work carries braces of its own, so the
+    object is located as the LAST complete top-level JSON object in the
+    reply, never as "first '{' to last '}'". Anything that yields no
+    object, or a non-object value, is malformed."""
     candidate = text.strip()
     if not candidate:
         raise ProviderFailureError(ProviderFailureKind.PROVIDER_ERROR, ERROR_CLASS_MALFORMED)
     fenced = _FENCE.search(candidate)
     if fenced is not None:
         candidate = fenced.group(1).strip()
-    if not candidate.startswith("{"):
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ProviderFailureError(ProviderFailureKind.PROVIDER_ERROR, ERROR_CLASS_MALFORMED)
-        candidate = candidate[start : end + 1]
-    try:
-        payload = json.loads(candidate)
-    except json.JSONDecodeError:
-        raise ProviderFailureError(
-            ProviderFailureKind.PROVIDER_ERROR, ERROR_CLASS_MALFORMED
-        ) from None
-    if not isinstance(payload, dict):
+    payload = _last_top_level_object(candidate)
+    if payload is None:
         raise ProviderFailureError(ProviderFailureKind.PROVIDER_ERROR, ERROR_CLASS_MALFORMED)
     return payload
+
+
+def _last_top_level_object(candidate: str) -> dict[str, Any] | None:
+    """The last JSON object in `candidate` that is followed by nothing but
+    whitespace, else the last one that is followed by trailing prose.
+
+    Scanning from the end keeps a leaked draft or validation snippet from
+    shadowing the answer; a decode attempt fails at the first invalid
+    character, so trying every '{' stays cheap even for long replies."""
+    decoder = json.JSONDecoder()
+    trailing_prose: dict[str, Any] | None = None
+    position = candidate.rfind("{")
+    while position != -1:
+        try:
+            value, end = decoder.raw_decode(candidate, position)
+        except json.JSONDecodeError:
+            value, end = None, -1
+        if isinstance(value, dict):
+            if candidate[end:].strip() == "":
+                return value
+            if trailing_prose is None:
+                trailing_prose = value
+        position = candidate.rfind("{", 0, position)
+    return trailing_prose
 
 
 class SubcontractorStructuredProvider:
