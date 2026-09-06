@@ -27,6 +27,7 @@ import re
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -258,6 +259,28 @@ def _last_top_level_object(candidate: str) -> dict[str, Any] | None:
     return trailing_prose
 
 
+def image_location(image: Any) -> str | None:
+    """Where to download a produced image FROM THIS process.
+
+    The gateway advertises an absolute `url` built from its own public host
+    (a loopback address on Burak's machine), which is unreachable from a
+    container. Its `path` is the stable identity, so the download is always
+    resolved against the configured base URL: `/images/<path>`. A bare
+    absolute URL is used only when no path exists."""
+    if not isinstance(image, dict):
+        return None
+    path = image.get("path")
+    if isinstance(path, str) and path.strip():
+        return "/images/" + path.strip().lstrip("/")
+    url = image.get("url")
+    if isinstance(url, str) and url:
+        parsed = urlsplit(url)
+        if parsed.path.startswith("/images/"):
+            return parsed.path
+        return url
+    return None
+
+
 class SubcontractorStructuredProvider:
     """One gateway model (chatgpt, claude, …) behind the provider protocol.
 
@@ -332,8 +355,8 @@ class SubcontractorImageProvider:
         )
         images = record.get("images")
         first = images[0] if isinstance(images, list) and images else None
-        url = first.get("url") if isinstance(first, dict) else None
-        if not isinstance(url, str) or not url:
+        url = image_location(first)
+        if url is None:
             raise ProviderFailureError(ProviderFailureKind.PROVIDER_ERROR, ERROR_CLASS_NO_IMAGE)
         content = self._client.fetch_bytes(url)
         latency_ms = (time.monotonic() - started) * 1000.0

@@ -242,6 +242,29 @@ def test_image_job_downloads_the_first_image() -> None:
     assert gateway.submitted[0]["type"] == "image"
 
 
+def test_image_location_resolves_against_the_configured_gateway() -> None:
+    from contentos.ai.providers.subcontractor_provider import image_location
+
+    # The gateway advertises its own loopback host; the path is what counts.
+    assert (
+        image_location(
+            {
+                "path": "2026/09/06/job-0-abc.png",
+                "url": "http://127.0.0.1:8090/images/2026/09/06/job-0-abc.png",
+            }
+        )
+        == "/images/2026/09/06/job-0-abc.png"
+    )
+    assert (
+        image_location({"url": "http://127.0.0.1:8090/images/2026/09/06/x.png"})
+        == "/images/2026/09/06/x.png"
+    )
+    assert image_location({"url": "/images/2026/09/04/a.png"}) == "/images/2026/09/04/a.png"
+    assert image_location({"url": "https://cdn.example/x.png"}) == "https://cdn.example/x.png"
+    assert image_location({"path": "  "}) is None
+    assert image_location(None) is None
+
+
 def test_image_job_without_image_is_no_image() -> None:
     gateway = FakeGateway([{"status": "succeeded", "text": "sadece metin", "images": []}])
     provider = SubcontractorImageProvider(client=gateway.client(), model="chatgpt")

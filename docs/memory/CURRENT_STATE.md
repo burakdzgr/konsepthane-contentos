@@ -594,6 +594,16 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Gateway images are downloaded by path, not by advertised URL (2026-09-06)
+
+QA left two open media needs; the autopilot's `generate_image` produced images
+in the gateway every time but ContentOS recorded `subcontractor_connection_error`
+four times: the gateway advertises `url` as `http://127.0.0.1:8090/images/…`
+(its own public host), unreachable from the worker container. The image
+provider now resolves the download from the image's `path` against the
+configured base URL (`/images/<path>`), and only falls back to a bare absolute
+URL when no path exists.
+
 ### Writer template v5: coverage blocks for every handling id (2026-09-06)
 
 The template-v4 draft discharged 51 of 52 mandatory handling ids and failed
