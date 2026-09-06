@@ -323,7 +323,7 @@ class AutopilotRunner:
             return StepOutcome(work_item_id, mode, action, False, {"reason": action.reason})
         try:
             detail = (
-                self._perform_enqueue(action, state.actor_user_id)
+                self._perform_enqueue(action, state.actor_user_id, work_item.id)
                 if action.kind == "enqueue"
                 else self._perform_command(work_item, snapshot, action, state.actor_user_id)
             )
@@ -352,7 +352,9 @@ class AutopilotRunner:
 
     # --- enqueue --------------------------------------------------------------
 
-    def _perform_enqueue(self, action: Action, actor_user_id: uuid.UUID | None) -> dict[str, Any]:
+    def _perform_enqueue(
+        self, action: Action, actor_user_id: uuid.UUID | None, work_item_id: uuid.UUID
+    ) -> dict[str, Any]:
         if self._enqueue is None:
             raise RuntimeError("no enqueuer configured for autopilot production steps")
         task_name = TASK_BY_ACTION[action.name]
@@ -368,12 +370,14 @@ class AutopilotRunner:
             # Attempt identity includes the retry number: a re-enqueue after
             # a failed attempt must name a fresh one or the provider is never
             # called again (the stored failure would be "reused").
+            # Tasks keyed by another artifact (the writer takes a brief id)
+            # still belong to this work item: the attempt refs carry it.
             payload["retry_number"] = next_retry_number(
                 self._session,
                 purpose,
                 work_item_id=uuid.UUID(payload["work_item_id"])
                 if payload.get("work_item_id")
-                else None,
+                else work_item_id,
                 opportunity_id=uuid.UUID(payload["opportunity_id"])
                 if payload.get("opportunity_id")
                 else None,

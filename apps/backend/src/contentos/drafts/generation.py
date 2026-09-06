@@ -86,7 +86,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 WRITER_DRAFT_TEMPLATE_NAME = "writer-draft"
-WRITER_DRAFT_TEMPLATE_VERSION = "3"
+WRITER_DRAFT_TEMPLATE_VERSION = "4"
 
 MAX_EVIDENCE_STATEMENT_CHARS = 500
 MAX_OUTPUT_TOKENS = 16_000
@@ -101,10 +101,12 @@ Türkçe bir TASLAĞA dönüştürmek. Kurallar bağlayıcıdır:
 1. SADECE brief'teki iddiaları (claims) kullan. Kendi bilginden tarih,
    sayı, istatistik, fiyat veya doğrulanabilir olgu EKLEME. Sayı içeren
    her blok ilgili claim_refs ile bağlanmalı.
-2. source_assertion türü iddiaları daima kaynağa atıfla aktar ("...
-   kaynağa göre", "... belirtiyor"); asla çıplak gerçek gibi yazma.
-3. inference türü iddiaları çıkarım diliyle yaz ("olabilir",
-   "görünüyor"); kesinliğe çevirme.
+2. source_assertion türü iddiaları daima kaynağa atıfla aktar; bu
+   iddiaya bağlı HER blokta şu köklerden en az biri geçmeli:
+   {attribution}. Asla çıplak gerçek gibi yazma.
+3. inference türü iddiaları çıkarım diliyle yaz; bu iddiaya bağlı HER
+   blokta şu ifadelerden en az biri geçmeli: {hedging}. Kesinliğe
+   çevirme.
 4. required_handling listesindeki HER kaydı en az bir blokta
    uncertainty_refs ile karşıla; uyarıları asla yumuşatma veya silme.
 5. Bölüm anahtarları brief'in bölüm sözleşmesine uymalı; zorunlu her
@@ -127,10 +129,17 @@ Türkçe bir TASLAĞA dönüştürmek. Kurallar bağlayıcıdır:
     link_need_ref yalnızca internal_link_need bloğunda bulunur. Bir
     iddiayı görsel veya bağlantıya bağlamak istiyorsan onu ayrı bir
     paragraph/callout bloğunda claim_refs ile yaz.
-12. Bir blok içinde kanıt cümlesiyle 80 karakterden uzun birebir örtüşen
-    dizi olmasın; ifadeyi baştan kur.
+12. Hiçbir blok, başlık veya title_proposal bir kanıt cümlesiyle
+    {verbatim} karakterden uzun birebir örtüşen dizi içermesin; sıralamayı,
+    cümle yapısını ve sözcük seçimini değiştirerek ifadeyi baştan kur.
 Çıktı: yalnızca writer-draft/1 şemasına uyan JSON.
-"""
+""".format(
+    attribution=", ".join(
+        f'"{stem}"' for stem in DEFAULT_WRITER_VALIDATION_POLICY.attribution_markers
+    ),
+    hedging=", ".join(f'"{stem}"' for stem in DEFAULT_WRITER_VALIDATION_POLICY.hedging_markers),
+    verbatim=DEFAULT_WRITER_ORIGINALITY_POLICY.max_verbatim_chars,
+)
 
 
 @dataclass(frozen=True, slots=True)

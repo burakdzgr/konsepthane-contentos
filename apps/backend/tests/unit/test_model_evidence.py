@@ -529,6 +529,45 @@ class TestRetryNumbers:
         )
 
 
+class TestAutopilotRetryNumbers:
+    def test_draft_re_enqueue_uses_the_work_item_to_pick_a_fresh_retry(
+        self, session: Session
+    ) -> None:
+        from contentos.autopilot.planner import ACTION_GENERATE_DRAFT, Action
+        from contentos.autopilot.runner import AutopilotRunner
+
+        source = make_source(session, "ilham")
+        document = make_document(session, source, title="Unicorn Birthday Party")
+        opportunity = promote(session, document)
+        ModelEvidenceExtractor(session).extract(
+            document.id, provider=FakeStructuredProvider(failure=ProviderFailureKind.TIMEOUT)
+        )
+        session.commit()
+        attempt = session.scalar(select(AiGenerationAttempt))
+        assert attempt is not None
+        work_item_id = uuid.uuid4()
+        # A failed writer attempt names the work item in its refs even though
+        # the writer task itself is keyed by the brief.
+        attempt.purpose = GenerationPurpose.WRITER_DRAFT
+        attempt.retry_number = 2
+        attempt.input_refs = {**attempt.input_refs, "work_item_id": str(work_item_id)}
+        session.flush()
+
+        enqueued: list[tuple[str, dict[str, object]]] = []
+        runner = AutopilotRunner(
+            session, enqueue=lambda name, payload: enqueued.append((name, dict(payload)))
+        )
+        action = Action(
+            kind="enqueue",
+            name=ACTION_GENERATE_DRAFT,
+            reason="test",
+            payload={"content_brief_id": str(uuid.uuid4())},
+        )
+        runner._perform_enqueue(action, None, work_item_id)
+        assert enqueued[0][1]["retry_number"] == 3
+        del opportunity
+
+
 class TestOriginalityGuard:
     def test_only_passed_ideas_are_auto_selected_and_stale_ideas_regenerate(self) -> None:
         from contentos.autopilot.planner import ACTION_GENERATE_IDEAS, ACTION_SELECT_IDEA

@@ -594,6 +594,19 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Writer template v4 and autopilot draft retries (2026-09-06)
+
+The third live draft (rework cycle 2) failed the writer policies twice over:
+a block relayed a source assertion without any attribution stem, and one block
+overlapped an evidence statement by 81 characters (limit 80). The template now
+names the exact attribution/hedging stems and the verbatim limit from the
+policy objects themselves (built at import, so prompt and validator can never
+drift). Separately, the autopilot re-enqueued `generate_draft` with
+`retry_number` 0 every time because the writer payload carries only the brief
+id and `next_retry_number` had no work item to match; the runner now passes the
+stepped work item, so a failed draft attempt is followed by a fresh provider
+call instead of being "reused" forever.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

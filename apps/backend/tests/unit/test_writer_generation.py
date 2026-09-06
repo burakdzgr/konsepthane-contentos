@@ -295,6 +295,20 @@ class TestWriterGeneration:
 def test_template_v3_forbids_claim_refs_on_placeholder_blocks() -> None:
     from contentos.drafts.generation import _TEMPLATE_V1, WRITER_DRAFT_TEMPLATE_VERSION
 
-    assert WRITER_DRAFT_TEMPLATE_VERSION == "3"
+    assert WRITER_DRAFT_TEMPLATE_VERSION == "4"
     assert "YER TUTUCUDUR" in _TEMPLATE_V1
     assert "claim_refs" in _TEMPLATE_V1
+
+
+def test_template_names_the_exact_policy_markers_and_limit() -> None:
+    from contentos.drafts.generation import _TEMPLATE_V1
+    from contentos.drafts.policies import (
+        DEFAULT_WRITER_ORIGINALITY_POLICY,
+        DEFAULT_WRITER_VALIDATION_POLICY,
+    )
+
+    for stem in DEFAULT_WRITER_VALIDATION_POLICY.attribution_markers:
+        assert f'"{stem}"' in _TEMPLATE_V1
+    for stem in DEFAULT_WRITER_VALIDATION_POLICY.hedging_markers:
+        assert f'"{stem}"' in _TEMPLATE_V1
+    assert str(DEFAULT_WRITER_ORIGINALITY_POLICY.max_verbatim_chars) in _TEMPLATE_V1
