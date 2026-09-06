@@ -207,7 +207,7 @@ class TestModelAndVocabulary:
             "quote",
             "instruction",
         ]
-        assert [item.value for item in ExtractionMethod] == ["machine", "human"]
+        assert [item.value for item in ExtractionMethod] == ["machine", "human", "model_assisted"]
         assert [item.value for item in VerificationStatus] == [
             "unverified",
             "verified",

@@ -36,6 +36,7 @@ ACTION_COMMISSION = "commission"
 ACTION_GENERATE_IDEAS = "generate_ideas"
 ACTION_SELECT_IDEA = "select_idea"
 ACTION_BUILD_PACK = "build_pack"
+ACTION_EXTRACT_EVIDENCE = "extract_evidence"
 ACTION_ANALYZE_INTENT = "analyze_intent"
 ACTION_COMPOSE_BRIEF = "compose_brief"
 ACTION_ACCEPT_BRIEF = "accept_brief"
@@ -92,6 +93,10 @@ class Snapshot:
     latest_pack_id: uuid.UUID | None = None
     latest_pack_sufficiency: EvidencePackSufficiency | None = None
     eligible_evidence_count: int = 0
+    # Excerpt-grounded (VERIFIED) evidence rows: the only ones that can be
+    # key facts. Documents still owed a model-assisted extraction attempt.
+    verified_evidence_count: int = 0
+    documents_pending_model_evidence: tuple[uuid.UUID, ...] = ()
     intent_analysis_id: uuid.UUID | None = None
     latest_brief_id: uuid.UUID | None = None
     latest_brief_status: BriefStatus | None = None
@@ -183,6 +188,16 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
                 )
             return _wait("idea_selection", "fikir seçimi operatörde")
         if s.latest_pack_id is None:
+            if s.verified_evidence_count == 0 and s.documents_pending_model_evidence:
+                # Metadata observations alone never make a pack: extract
+                # facts from the admitted documents first (one attempt each).
+                return _enqueue(
+                    ACTION_EXTRACT_EVIDENCE,
+                    "olgu düzeyinde kanıt yok; model destekli kanıt çıkarımı",
+                    normalized_document_ids=[
+                        str(doc_id) for doc_id in s.documents_pending_model_evidence
+                    ],
+                )
             if s.eligible_evidence_count == 0:
                 return _wait("no_evidence", "seçilebilir kanıt yok; araştırma girdisi gerekli")
             return _enqueue(

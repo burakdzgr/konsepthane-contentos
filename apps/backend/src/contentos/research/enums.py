@@ -18,6 +18,7 @@ class ExtractionMethod(StrEnum):
 
     MACHINE = "machine"
     HUMAN = "human"
+    MODEL_ASSISTED = "model_assisted"
 
 
 class VerificationStatus(StrEnum):

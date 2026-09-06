@@ -540,7 +540,7 @@ class TestRegistration:
         app = create_worker_app(eager_settings())
         for name in RESEARCH_TASK_NAMES + EDITORIAL_TASK_NAMES:
             assert name in app.tasks
-        assert len(RESEARCH_TASK_NAMES) == 5
+        assert len(RESEARCH_TASK_NAMES) == 6
         assert len(EDITORIAL_TASK_NAMES) == 11
 
 

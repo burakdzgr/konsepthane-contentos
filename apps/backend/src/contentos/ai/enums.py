@@ -13,6 +13,7 @@ class GenerationPurpose(StrEnum):
     WRITER_DRAFT = "writer_draft"
     EDITOR_REVIEW = "editor_review"
     MEDIA_IMAGE = "media_image"
+    EVIDENCE_EXTRACTION = "evidence_extraction"
 
 
 class GenerationStatus(StrEnum):

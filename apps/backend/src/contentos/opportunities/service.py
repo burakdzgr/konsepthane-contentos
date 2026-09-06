@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -54,6 +55,8 @@ from contentos.sources.models import Source
 from contentos.workflow.enums import WorkflowActorOrigin, WorkflowState, WorkItemOrigin
 from contentos.workflow.repository import WorkflowRepository
 from contentos.workflow.service import WorkflowService
+
+_logger = structlog.get_logger(__name__)
 
 # ADR 0008 gate: automatic promotion eligibility by effective decision outcome.
 ELIGIBLE_OUTCOMES = frozenset(
@@ -144,7 +147,7 @@ class ResearchPromotionService:
             # identity is ever claimed.
             update_reference = f"update/refresh signal per duplicate decision {chain.decision.id}"
 
-        return self._create_promotion(
+        result = self._create_promotion(
             chain,
             promotion_kind=PROMOTION_KIND_RESEARCH,
             work_item_origin=WorkItemOrigin.RESEARCH_INTAKE,
@@ -159,6 +162,9 @@ class ResearchPromotionService:
             input_note=None,
             request_id=request_id,
         )
+        if result.created:
+            _link_related_inputs(self._session, result.opportunity_id)
+        return result
 
     def promote_duplicate_override(
         self,
@@ -526,6 +532,9 @@ class OpportunityCommissioningService:
             request_id=request_id,
         )
         self._session.flush()
+        # A commissioned opportunity is about to get ideas and a pack: give
+        # it its related documents from other sources first (bounded).
+        _link_related_inputs(self._session, opportunity.id)
         return CommissionResult(
             opportunity=opportunity, opportunity_score_id=score.id, commissioned=True
         )
@@ -643,3 +652,20 @@ class OpportunityRejectionService:
                 "not consistently record the rejection transition"
             )
         return RejectionResult(opportunity=opportunity, rejected=False)
+
+
+def _link_related_inputs(session: Session, opportunity_id: uuid.UUID) -> None:
+    """Best-effort cross-source research inputs right after promotion. A
+    failure here never undoes the promotion; the autopilot links again
+    before building the evidence pack."""
+    from contentos.opportunities.linking import link_related_research_inputs
+
+    try:
+        with session.begin_nested():
+            link_related_research_inputs(session, opportunity_id)
+    except Exception as error:  # noqa: BLE001 - linking is an enrichment, never a gate
+        _logger.warning(
+            "research_input_linking_failed",
+            opportunity_id=str(opportunity_id),
+            error_type=type(error).__name__,
+        )

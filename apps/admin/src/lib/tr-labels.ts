@@ -272,6 +272,9 @@ const LABELS: Record<string, string> = {
   not_requested: "Bu süreçte sorgulanmadı",
   stored: "Kayıtlı gözlem",
   no_data: "Veri yok",
+  // Model-assisted evidence layer
+  extract_evidence: "Model destekli kanıt çıkarımı",
+  evidence_extraction: "Kanıt çıkarımı",
   // Google Trends public dataset discovery (BigQuery)
   observed: "Gözlendi",
   not_observed: "Gözlenmedi",

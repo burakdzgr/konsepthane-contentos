@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from contentos.auth.models import User
@@ -26,6 +26,7 @@ from contentos.autopilot.planner import (
     ACTION_BUILD_PACK,
     ACTION_COMMISSION,
     ACTION_COMPOSE_BRIEF,
+    ACTION_EXTRACT_EVIDENCE,
     ACTION_GENERATE_DRAFT,
     ACTION_GENERATE_IDEAS,
     ACTION_GENERATE_IMAGE,
@@ -52,6 +53,7 @@ from contentos.ideas.repository import IdeaRepository
 from contentos.ideas.service import IdeaService
 from contentos.media.service import MediaService
 from contentos.media.store import MediaStore
+from contentos.opportunities.linking import link_related_research_inputs
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.opportunities.service import (
     OpportunityCommissioningService,
@@ -61,7 +63,8 @@ from contentos.publishing.assembler import PublicationAssembler
 from contentos.publishing.models import PublicationPackage
 from contentos.publishing.service import PublishingService
 from contentos.qa.repository import QaRepository
-from contentos.research.enums import VerificationStatus
+from contentos.research.enums import EvidenceType, VerificationStatus
+from contentos.research.pending import documents_pending_model_evidence
 from contentos.reviews.enums import ReviewVerdict
 from contentos.reviews.repository import ReviewRepository
 from contentos.search_intent.repository import SearchIntentRepository
@@ -74,6 +77,7 @@ from contentos.workflow.service import WorkflowService
 TASK_BY_ACTION: dict[str, str] = {
     ACTION_GENERATE_IDEAS: "contentos.editorial.generate_idea_candidates",
     ACTION_BUILD_PACK: "contentos.editorial.build_evidence_pack",
+    ACTION_EXTRACT_EVIDENCE: "contentos.research.extract_model_evidence",
     ACTION_ANALYZE_INTENT: "contentos.editorial.analyze_search_intent",
     ACTION_COMPOSE_BRIEF: "contentos.editorial.compose_content_brief",
     ACTION_GENERATE_DRAFT: "contentos.editorial.generate_writer_draft",
@@ -136,11 +140,18 @@ class AutopilotRunner:
     # --- sweep scope ----------------------------------------------------------
 
     def actionable_work_item_ids(self, limit: int = 200) -> list[uuid.UUID]:
+        """Work items the sweep steps, bounded. Items already in production
+        (commissioned and beyond) come first: a queue of hundreds of open
+        opportunities waiting at the commission gate must never starve the
+        few items that are actually being produced."""
+        waiting_at_gate = case(
+            (EditorialWorkItem.current_state == WorkflowState.IDEA_SCORING, 1), else_=0
+        )
         return list(
             self._session.scalars(
                 select(EditorialWorkItem.id)
                 .where(EditorialWorkItem.current_state.in_(ACTIONABLE_STATES))
-                .order_by(EditorialWorkItem.current_state_entered_at)
+                .order_by(waiting_at_gate, EditorialWorkItem.current_state_entered_at)
                 .limit(limit)
             )
         )
@@ -184,8 +195,15 @@ class AutopilotRunner:
             if pack is not None:
                 latest_pack_id = pack.id
                 latest_pack_sufficiency = pack.sufficiency
-            eligible_evidence_count = len(
-                EvidencePackService(self._session).list_eligible_evidence(opportunity.id)
+            eligible_rows = EvidencePackService(self._session).list_eligible_evidence(
+                opportunity.id
+            )
+            eligible_evidence_count = len(eligible_rows)
+            verified_evidence_count = sum(
+                1 for row in eligible_rows if row.verification_status is VerificationStatus.VERIFIED
+            )
+            pending_model_documents = documents_pending_model_evidence(
+                self._session, opportunity.id, eligible_rows
             )
             if selected_idea_id is not None:
                 analyses = SearchIntentRepository(self._session).list_by_idea(selected_idea_id)
@@ -238,6 +256,8 @@ class AutopilotRunner:
             latest_pack_id=latest_pack_id,
             latest_pack_sufficiency=latest_pack_sufficiency,
             eligible_evidence_count=eligible_evidence_count,
+            verified_evidence_count=verified_evidence_count,
+            documents_pending_model_evidence=pending_model_documents,
             intent_analysis_id=intent_analysis_id,
             latest_brief_id=brief_for_stage.id if brief_for_stage is not None else None,
             latest_brief_status=brief_for_stage.status if brief_for_stage is not None else None,
@@ -306,8 +326,18 @@ class AutopilotRunner:
             raise RuntimeError("no enqueuer configured for autopilot production steps")
         task_name = TASK_BY_ACTION[action.name]
         payload = dict(action.payload)
+        if action.name == ACTION_EXTRACT_EVIDENCE:
+            # One bounded task per document still owed a model attempt.
+            document_ids = [str(value) for value in payload.get("normalized_document_ids", [])]
+            for document_id in document_ids:
+                self._enqueue(task_name, {"normalized_document_id": document_id})
+            return {"task": task_name, "documents": len(document_ids)}
         if action.name == ACTION_BUILD_PACK:
-            payload["selections"] = self._auto_selections(uuid.UUID(payload["opportunity_id"]))
+            opportunity_id = uuid.UUID(payload["opportunity_id"])
+            # Multi-source packs: link related documents from other sources
+            # (bounded, deterministic) before selecting evidence.
+            link_related_research_inputs(self._session, opportunity_id)
+            payload["selections"] = self._auto_selections(opportunity_id)
         if action.name == ACTION_GENERATE_IMAGE:
             if actor_user_id is None:
                 raise RuntimeError("image generation needs the accountable operator")
@@ -321,11 +351,14 @@ class AutopilotRunner:
         rows = EvidencePackService(self._session).list_eligible_evidence(opportunity_id)
         selections: list[dict[str, Any]] = []
         for evidence in rows[:MAX_AUTO_SELECTIONS]:
-            role = (
-                EvidenceItemRole.KEY_FACT
-                if evidence.verification_status is VerificationStatus.VERIFIED
-                else EvidenceItemRole.SUPPORTING
-            )
+            # Excerpt-grounded facts lead; metadata observations (author,
+            # date) are context, everything else supports.
+            if evidence.verification_status is VerificationStatus.VERIFIED:
+                role = EvidenceItemRole.KEY_FACT
+            elif evidence.evidence_type is EvidenceType.OBSERVATION:
+                role = EvidenceItemRole.CONTEXT
+            else:
+                role = EvidenceItemRole.SUPPORTING
             selections.append(
                 {
                     "research_evidence_id": str(evidence.id),

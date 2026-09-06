@@ -4,6 +4,7 @@ Nothing here may ever hold SQLAlchemy objects, sessions, HTTP/SDK response
 objects, secret headers, or provider exception objects.
 """
 
+import json
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -171,6 +172,15 @@ class GenerationRequest:
             max_list_items=MAX_REF_LIST_ITEMS,
             max_string_length=MAX_REF_STRING_LENGTH,
         )
+        # Real artifacts nest deeper than the projection bound (an idea's
+        # planning dimensions, a provider signal's per-region rows): fold the
+        # over-deep tail into a bounded JSON string instead of refusing the
+        # request. Deterministic, so the input hash stays stable.
+        object.__setattr__(
+            self,
+            "input_projection",
+            clamp_projection_depth(self.input_projection, MAX_PROJECTION_DEPTH),
+        )
         _validate_bounded_json(
             "input_projection",
             self.input_projection,
@@ -259,6 +269,29 @@ def _require_identifier(
         raise error(f"{name} must not carry surrounding whitespace")
     if len(value) > limit:
         raise error(f"{name} exceeds the {limit}-character limit")
+
+
+def clamp_projection_depth(value: Any, max_depth: int, _depth: int = 1) -> Any:
+    """Containers that would exceed `max_depth` become one canonical JSON
+    string (bounded to the projection string limit); scalars pass through.
+    The result validates under `_validate_bounded_json` for that depth."""
+    if isinstance(value, dict):
+        if _depth >= max_depth:
+            return _folded_json(value)
+        return {
+            key: clamp_projection_depth(entry, max_depth, _depth + 1)
+            for key, entry in value.items()
+        }
+    if isinstance(value, list):
+        if _depth >= max_depth:
+            return _folded_json(value)
+        return [clamp_projection_depth(entry, max_depth, _depth + 1) for entry in value]
+    return value
+
+
+def _folded_json(value: Any) -> str:
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return text[:MAX_PROJECTION_STRING_LENGTH]
 
 
 def _validate_bounded_json(

@@ -28,6 +28,8 @@ import structlog
 from celery import Celery
 from sqlalchemy.orm import Session
 
+from contentos.ai.budget import BudgetExceededError, ensure_daily_attempt_budget
+from contentos.ai.enums import GenerationStatus
 from contentos.core.context import is_valid_request_id
 from contentos.discovery.enums import DiscoveryLifecycleState
 from contentos.discovery.feed import FeedDiscoveryStrategy, FeedFetchRetryableError
@@ -43,7 +45,14 @@ from contentos.intelligence.service import IntelligenceSignalService
 from contentos.normalization.enums import NormalizationStatus
 from contentos.normalization.pipeline import NormalizationPipeline
 from contentos.research.extractor import DeterministicEvidenceExtractor
-from contentos.sources.enums import DiscoveryStrategy, SourceKind, SourceLifecycleState
+from contentos.research.model_extractor import ModelEvidenceExtractor
+from contentos.research.repository import ResearchProvenanceRepository
+from contentos.sources.enums import (
+    DiscoveryStrategy,
+    SourceKind,
+    SourceLifecycleState,
+    role_yields_opportunities,
+)
 from contentos.sources.repository import SourceRepository
 from contentos.sources.service import SourceNotFoundError
 from contentos.worker.runtime import WorkerRuntime
@@ -55,6 +64,7 @@ FETCH_DISCOVERY_ITEM_TASK = "contentos.research.fetch_discovery_item"
 NORMALIZE_FETCH_TASK = "contentos.research.normalize_fetch"
 EVALUATE_DUPLICATE_TASK = "contentos.research.evaluate_duplicate"
 EXTRACT_RESEARCH_EVIDENCE_TASK = "contentos.research.extract_research_evidence"
+EXTRACT_MODEL_EVIDENCE_TASK = "contentos.research.extract_model_evidence"
 
 RESEARCH_TASK_NAMES = (
     DISCOVER_SOURCE_TASK,
@@ -62,7 +72,10 @@ RESEARCH_TASK_NAMES = (
     NORMALIZE_FETCH_TASK,
     EVALUATE_DUPLICATE_TASK,
     EXTRACT_RESEARCH_EVIDENCE_TASK,
+    EXTRACT_MODEL_EVIDENCE_TASK,
 )
+# Model extraction retries only on transient provider outcomes.
+_TRANSIENT_AI_STATUSES = frozenset({GenerationStatus.TIMEOUT, GenerationStatus.PROVIDER_ERROR})
 
 # MAX_RETRIES means the initial attempt plus up to MAX_RETRIES retries.
 MAX_RETRIES = 3
@@ -356,6 +369,14 @@ def register_research_pipeline_tasks(
         with task_session() as session:
             result = DeterministicEvidenceExtractor(session).extract_and_record(parsed_id)
             session.commit()
+            next_task: str | None = None
+            # Facts need the model: chain the model-assisted extractor for
+            # documents whose source yields opportunities, when a text
+            # provider is configured. Signal-only sources never spend it.
+            if runtime.settings.text_provider_configured and _yields_model_evidence(
+                session, parsed_id
+            ):
+                next_task = dispatch_next(self, EXTRACT_MODEL_EVIDENCE_TASK, normalized_document_id)
             return _summary(
                 self,
                 "completed",
@@ -363,6 +384,62 @@ def register_research_pipeline_tasks(
                 evidence_created=len(result.created),
                 evidence_existing=len(result.existing),
                 evidence_skipped=result.skipped_invalid,
+                next_task=next_task,
+            )
+
+    def extract_model_evidence(self: Any, normalized_document_id: str) -> dict[str, Any]:
+        parsed_id = _parse_uuid(normalized_document_id)
+        with task_session() as session:
+            if not runtime.settings.text_provider_configured:
+                return _summary(
+                    self,
+                    "skipped",
+                    normalized_document_id=normalized_document_id,
+                    reason="ai_provider_unconfigured",
+                )
+            try:
+                ensure_daily_attempt_budget(session, runtime.settings.ai_daily_attempt_budget)
+            except BudgetExceededError as error:
+                return _summary(
+                    self,
+                    "budget_exhausted",
+                    normalized_document_id=normalized_document_id,
+                    detail=str(error),
+                )
+            result = ModelEvidenceExtractor(session).extract(
+                parsed_id,
+                provider=runtime.create_generation_provider(),
+                retry_number=int(self.request.retries),
+            )
+            session.commit()
+            if result.skipped_reason is not None:
+                return _summary(
+                    self,
+                    "skipped",
+                    normalized_document_id=normalized_document_id,
+                    reason=result.skipped_reason,
+                )
+            if result.status is not GenerationStatus.SUCCEEDED:
+                if (
+                    result.status in _TRANSIENT_AI_STATUSES
+                    and int(self.request.retries) < MAX_RETRIES
+                ):
+                    raise self.retry(countdown=_retry_countdown(int(self.request.retries)))
+                return _summary(
+                    self,
+                    "ai_failed",
+                    normalized_document_id=normalized_document_id,
+                    attempt_id=str(result.attempt.id) if result.attempt is not None else None,
+                    attempt_status=result.status.value if result.status is not None else None,
+                )
+            return _summary(
+                self,
+                "completed" if result.attempt_created else "reused",
+                normalized_document_id=normalized_document_id,
+                attempt_id=str(result.attempt.id) if result.attempt is not None else None,
+                evidence_created=len(result.created),
+                evidence_existing=len(result.existing),
+                evidence_rejected=result.rejected,
             )
 
     common_options: dict[str, Any] = {
@@ -380,6 +457,14 @@ def register_research_pipeline_tasks(
     app.task(name=NORMALIZE_FETCH_TASK, **common_options)(normalize_fetch)
     app.task(name=EVALUATE_DUPLICATE_TASK, **common_options)(evaluate_duplicate)
     app.task(name=EXTRACT_RESEARCH_EVIDENCE_TASK, **common_options)(extract_research_evidence)
+    app.task(name=EXTRACT_MODEL_EVIDENCE_TASK, **common_options)(extract_model_evidence)
+
+
+def _yields_model_evidence(session: Session, document_id: uuid.UUID) -> bool:
+    provenance = ResearchProvenanceRepository(session).get_provenance(document_id)
+    if provenance is None:
+        return False
+    return role_yields_opportunities(provenance.source.primary_role)
 
 
 def _extract_intelligence_signals(session: Session, document_id: uuid.UUID) -> None:

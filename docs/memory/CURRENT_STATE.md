@@ -460,6 +460,48 @@ that state). The rule now lives in ONE place:
   work-item detail render ONLY Turkish labels; backend values remain the
   wire/filter contract. An untranslated value is humanized, never hidden.
 
+## Model-assisted evidence layer: facts, multi-source packs, autopilot step (2026-09-06)
+
+The from-scratch trial showed the production chain always blocking at the
+evidence pack: the deterministic extractor only yields author/date
+observations, every opportunity is single-sourced, and no evidence ever
+carried the `key_fact` role. Three bounded additions close that gap:
+
+- `research/model_extractor.py` (`ModelEvidenceExtractor`, purpose
+  `evidence_extraction`, schema `evidence-candidate-batch/1`, template
+  `evidence-extraction/1`): the provider proposes statements with the
+  verbatim excerpt they rest on; every excerpt is located exactly in the
+  normalized text (offsets computed here, never trusted), overlapping /
+  oversized / unlocatable candidates are rejected, rows are persisted as
+  `extraction_method = model_assisted`, `verification_status = verified`
+  (= excerpt-grounded, not fact-checked), with the attempt id in
+  `metadata_json`. One automatic attempt per document; reruns reuse the
+  attempt (raw output is never persisted). Only sources whose role yields
+  opportunities are read; community sources never. Worker task
+  `contentos.research.extract_model_evidence` is chained after the
+  deterministic extractor when a text provider is configured.
+- `opportunities/linking.py`: cross-source research inputs by distinctive
+  title/topic tokens (generic domain words never count), bounded, needs an
+  effective duplicate decision, recorded as system-added SUPPORTING inputs
+  with the shared terms in the note. Runs on promotion and again before the
+  autopilot builds a pack; this is what makes packs multi-sourced and idea
+  originality pass its distinct-source rule.
+- Autopilot: new action `extract_evidence` (EVIDENCE_BUILDING, before the
+  first pack, when no VERIFIED evidence exists and admitted documents are
+  still owed an attempt — `research/pending.py`); pack auto-selection
+  assigns `key_fact` to VERIFIED rows, `context` to observations,
+  `supporting` otherwise. Migration 0036 widens the purpose and
+  extraction-method CHECKs.
+
+Two production fixes found by running the chain for real: the autopilot
+sweep (50 items per 20 s) now steps items already in production before
+the opportunities waiting at the commission gate (a queue of ~100 open
+opportunities starved the one commissioned item); and the AI boundary
+folds over-deep `input_projection` containers into a bounded JSON string
+(`clamp_projection_depth`, deterministic) instead of refusing the request
+— real ideas (planning dimensions) and provider signals (per-region rows)
+nest deeper than the 5-level bound, which had never been exercised live.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

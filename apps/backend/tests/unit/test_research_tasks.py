@@ -285,7 +285,7 @@ def run(app: Celery, task_name: str, argument: str) -> Any:
 
 
 class TestRegistrationAndPolicy:
-    def test_worker_app_registers_all_five_stable_task_names(self) -> None:
+    def test_worker_app_registers_all_stable_task_names(self) -> None:
         app = create_worker_app(eager_settings())
 
         assert RESEARCH_TASK_NAMES == (
@@ -294,6 +294,7 @@ class TestRegistrationAndPolicy:
             "contentos.research.normalize_fetch",
             "contentos.research.evaluate_duplicate",
             "contentos.research.extract_research_evidence",
+            "contentos.research.extract_model_evidence",
         )
         for name in RESEARCH_TASK_NAMES:
             assert name in app.tasks

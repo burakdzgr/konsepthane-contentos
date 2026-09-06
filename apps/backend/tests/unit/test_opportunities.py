@@ -463,17 +463,25 @@ class TestIdempotencyAndConflicts:
             # Promotion identity does not block document A from becoming a
             # supporting input on opportunity B.
             repository = OpportunityRepository(session)
-            repository.insert_research_input(
-                OpportunityResearchInput(
-                    opportunity_id=result_b.opportunity_id,
-                    normalized_document_id=document_a,
-                    duplicate_decision_id=decision_a,
-                    role=ResearchInputRole.SUPPORTING,
-                    added_by=OpportunityActor.OPERATOR,
-                    note="destekleyici kaynak",
-                    added_at=NOW,
+            # Cross-source linking may already have added document A as a
+            # system SUPPORTING input (same topic); the operator path adds it
+            # only when it is not there yet.
+            already = {
+                row.normalized_document_id
+                for row in repository.list_research_inputs(result_b.opportunity_id)
+            }
+            if document_a not in already:
+                repository.insert_research_input(
+                    OpportunityResearchInput(
+                        opportunity_id=result_b.opportunity_id,
+                        normalized_document_id=document_a,
+                        duplicate_decision_id=decision_a,
+                        role=ResearchInputRole.SUPPORTING,
+                        added_by=OpportunityActor.OPERATOR,
+                        note="destekleyici kaynak",
+                        added_at=NOW,
+                    )
                 )
-            )
             session.commit()
             inputs = repository.list_research_inputs(result_b.opportunity_id)
             assert {i.role for i in inputs} == {
