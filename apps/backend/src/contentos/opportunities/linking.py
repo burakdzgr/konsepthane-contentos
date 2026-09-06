@@ -47,6 +47,8 @@ from contentos.strategy.service import normalize_phrase
 MAX_LINKED_INPUTS = 4
 CANDIDATE_SCAN_LIMIT = 600
 MIN_TOKEN_LENGTH = 3
+# A single shared token this long is specific enough to relate two titles.
+STRONG_TOKEN_LENGTH = 7
 # Tokens that describe the whole domain rather than a topic. Shared alone
 # they tie everything to everything; they never count as evidence of
 # relatedness.
@@ -187,7 +189,11 @@ def link_related_research_inputs(
         shared = tuple(
             token for token in distinctive_tokens(document.title or "") if token in topic_set
         )
-        if len(shared) < required:
+        if len(shared) < required and not any(
+            len(token) >= STRONG_TOKEN_LENGTH for token in shared
+        ):
+            # One long, specific term ("cinderella", "unicorn") is as telling
+            # as two short ones; two generic-looking short tokens are not.
             continue
         # Documents from a source not yet represented come first: they are
         # what makes the pack multi-sourced.

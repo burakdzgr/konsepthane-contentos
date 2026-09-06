@@ -11,11 +11,14 @@ re-implements any stage. Every outcome is written to the trail."""
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from contentos.ai.attempts import next_retry_number
+from contentos.ai.enums import GenerationPurpose
 from contentos.auth.models import User
 from contentos.autopilot.enums import AutopilotEventKind, AutopilotMode
 from contentos.autopilot.planner import (
@@ -53,7 +56,7 @@ from contentos.ideas.repository import IdeaRepository
 from contentos.ideas.service import IdeaService
 from contentos.media.service import MediaService
 from contentos.media.store import MediaStore
-from contentos.opportunities.linking import link_related_research_inputs
+from contentos.opportunities.linking import distinct_source_count, link_related_research_inputs
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.opportunities.service import (
     OpportunityCommissioningService,
@@ -85,6 +88,16 @@ TASK_BY_ACTION: dict[str, str] = {
     ACTION_RUN_QA: "contentos.editorial.run_qa_gates",
     ACTION_GENERATE_IMAGE: "contentos.editorial.generate_media_image",
     ACTION_PUBLISH: "contentos.editorial.publish_package",
+}
+
+# AI actions and the attempt purpose they create (for fresh retry numbers).
+PURPOSE_BY_ACTION: dict[str, GenerationPurpose] = {
+    ACTION_GENERATE_IDEAS: GenerationPurpose.IDEA_CANDIDATES,
+    ACTION_ANALYZE_INTENT: GenerationPurpose.INTENT_SYNTHESIS,
+    ACTION_COMPOSE_BRIEF: GenerationPurpose.BRIEF_COMPOSITION,
+    ACTION_GENERATE_DRAFT: GenerationPurpose.WRITER_DRAFT,
+    ACTION_GENERATE_REVIEW: GenerationPurpose.EDITOR_REVIEW,
+    ACTION_GENERATE_IMAGE: GenerationPurpose.MEDIA_IMAGE,
 }
 
 # States in which the autopilot may have something to do (the sweep scope).
@@ -182,15 +195,21 @@ class AutopilotRunner:
             idea_count = len(ideas)
             selected = IdeaService(self._session).get_effective_selection(opportunity.id)
             selected_idea_id = selected.id if selected is not None else None
-            if ideas:
-                ranked = sorted(
-                    ideas,
-                    key=lambda idea: (
-                        _ORIGINALITY_RANK.get(idea.originality_status, 9),
-                        idea.created_at,
-                    ),
-                )
-                best_idea_id = ranked[0].id
+            # Only an idea that PASSED originality is ever auto-selected: the
+            # brief acceptance gate refuses anything else, so selecting it
+            # would only park the item downstream.
+            passed = [idea for idea in ideas if idea.originality_status is OriginalityStatus.PASSED]
+            if passed:
+                best_idea_id = min(passed, key=lambda idea: idea.created_at).id
+            inputs = opportunities.list_research_inputs(opportunity.id)
+            latest_input_at = max((row.added_at for row in inputs), default=None)
+            latest_idea_at = max((idea.created_at for idea in ideas), default=None)
+            ideas_predate_inputs = bool(
+                latest_input_at is not None
+                and latest_idea_at is not None
+                and _aware(latest_idea_at) < _aware(latest_input_at)
+            )
+            distinct_input_sources = distinct_source_count(self._session, opportunity)
             pack = EvidencePackRepository(self._session).get_latest_pack(opportunity.id)
             if pack is not None:
                 latest_pack_id = pack.id
@@ -253,6 +272,8 @@ class AutopilotRunner:
             idea_count=idea_count,
             selected_idea_id=selected_idea_id,
             best_idea_id=best_idea_id,
+            ideas_predate_research_inputs=ideas_predate_inputs,
+            distinct_input_sources=distinct_input_sources,
             latest_pack_id=latest_pack_id,
             latest_pack_sufficiency=latest_pack_sufficiency,
             eligible_evidence_count=eligible_evidence_count,
@@ -332,6 +353,21 @@ class AutopilotRunner:
             for document_id in document_ids:
                 self._enqueue(task_name, {"normalized_document_id": document_id})
             return {"task": task_name, "documents": len(document_ids)}
+        purpose = PURPOSE_BY_ACTION.get(action.name)
+        if purpose is not None:
+            # Attempt identity includes the retry number: a re-enqueue after
+            # a failed attempt must name a fresh one or the provider is never
+            # called again (the stored failure would be "reused").
+            payload["retry_number"] = next_retry_number(
+                self._session,
+                purpose,
+                work_item_id=uuid.UUID(payload["work_item_id"])
+                if payload.get("work_item_id")
+                else None,
+                opportunity_id=uuid.UUID(payload["opportunity_id"])
+                if payload.get("opportunity_id")
+                else None,
+            )
         if action.name == ACTION_BUILD_PACK:
             opportunity_id = uuid.UUID(payload["opportunity_id"])
             # Multi-source packs: link related documents from other sources
@@ -498,3 +534,7 @@ class AutopilotRunner:
         if user is None or not user.is_active:
             raise RuntimeError("the autopilot's accountable operator is missing or inactive")
         return user
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)

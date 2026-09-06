@@ -358,6 +358,20 @@ class TestResearchInputLinking:
         assert outcome.linked == 0
         assert len(OpportunityRepository(session).list_research_inputs(opportunity.id)) == 2
 
+    def test_one_strong_shared_term_links_across_sources(self, session: Session) -> None:
+        pretty = make_source(session, "pretty")
+        karas = make_source(session, "karas")
+        root = make_document(
+            session, pretty, title="Magical Cinderella Themed Second Birthday Party"
+        )
+        other = make_document(session, karas, title="Cinderella Birthday Party")
+        make_document(session, karas, title="Woodland Fox Tea Party")
+
+        opportunity = promote(session, root)
+        inputs = OpportunityRepository(session).list_research_inputs(opportunity.id)
+        assert {row.normalized_document_id for row in inputs} == {root.id, other.id}
+        assert distinct_source_count(session, opportunity) == 2
+
     def test_generic_titles_never_link(self, session: Session) -> None:
         karas = make_source(session, "karas")
         pretty = make_source(session, "pretty")
@@ -467,3 +481,74 @@ class TestProjectionDepth:
         assert request.input_projection["idea"]["planning"]["dimensions"]["steps"] == steps
         # Deterministic: the same input folds to the same projection.
         assert clamp_projection_depth(deep, MAX_PROJECTION_DEPTH) == clamped
+
+
+class TestRetryNumbers:
+    def test_next_retry_number_skips_recorded_attempts(self, session: Session) -> None:
+        from contentos.ai.attempts import next_retry_number
+
+        source = make_source(session, "ilham")
+        document = make_document(session, source, title="Unicorn Birthday Party")
+        opportunity = promote(session, document)
+        session.commit()
+        assert (
+            next_retry_number(
+                session, GenerationPurpose.EVIDENCE_EXTRACTION, opportunity_id=opportunity.id
+            )
+            == 0
+        )
+
+        # A failed extraction attempt for the document names the document
+        # (not the opportunity) in its refs: unrelated to the opportunity.
+        ModelEvidenceExtractor(session).extract(
+            document.id, provider=FakeStructuredProvider(failure=ProviderFailureKind.TIMEOUT)
+        )
+        session.commit()
+        assert (
+            next_retry_number(
+                session, GenerationPurpose.EVIDENCE_EXTRACTION, opportunity_id=opportunity.id
+            )
+            == 0
+        )
+        # Attempts carrying the opportunity id advance the retry number.
+        attempt = session.scalar(select(AiGenerationAttempt))
+        assert attempt is not None
+        attempt.input_refs = {**attempt.input_refs, "opportunity_id": str(opportunity.id)}
+        session.flush()
+        assert (
+            next_retry_number(
+                session, GenerationPurpose.EVIDENCE_EXTRACTION, opportunity_id=opportunity.id
+            )
+            == attempt.retry_number + 1
+        )
+        assert (
+            next_retry_number(
+                session, GenerationPurpose.IDEA_CANDIDATES, opportunity_id=opportunity.id
+            )
+            == 0
+        )
+
+
+class TestOriginalityGuard:
+    def test_only_passed_ideas_are_auto_selected_and_stale_ideas_regenerate(self) -> None:
+        from contentos.autopilot.planner import ACTION_GENERATE_IDEAS, ACTION_SELECT_IDEA
+
+        base = Snapshot(
+            work_item_id=uuid.uuid4(),
+            state=WorkflowState.EVIDENCE_BUILDING,
+            opportunity_id=uuid.uuid4(),
+            disposition=OpportunityDisposition.COMMISSIONED,
+            idea_count=3,
+        )
+        # No PASSED idea, ideas older than the newest input, two sources: regenerate once.
+        stale = dataclasses.replace(
+            base, ideas_predate_research_inputs=True, distinct_input_sources=2
+        )
+        action = plan(stale, AutopilotMode.AUTONOMOUS)
+        assert action.name == ACTION_GENERATE_IDEAS
+        # No PASSED idea and nothing new to learn from: a human decision.
+        parked = plan(dataclasses.replace(base, distinct_input_sources=1), AutopilotMode.AUTONOMOUS)
+        assert parked.kind == "wait" and parked.name == "idea_originality"
+        # A PASSED idea is selected autonomously.
+        good = dataclasses.replace(base, best_idea_id=uuid.uuid4())
+        assert plan(good, AutopilotMode.AUTONOMOUS).name == ACTION_SELECT_IDEA

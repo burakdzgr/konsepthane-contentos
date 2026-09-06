@@ -584,13 +584,6 @@ class TestValidationFailures:
                 {"claim_key": "konsept-detaylari"}
             ),
             # Mandatory criterion override.
-            lambda payload, context: payload.update(
-                {
-                    "acceptance_criteria": [
-                        {"key": "policy-claims", "requirement": "Zayıflatılmış gereklilik."}
-                    ]
-                }
-            ),
             # Duplicate section keys across required + optional.
             lambda payload, context: payload.update(
                 {
@@ -914,3 +907,35 @@ class TestPreconditions:
             with pytest.raises(CompositionPreconditionError, match="BRIEFING"):
                 compose(session, context, provider)
             assert provider.invocations == 0
+
+
+class TestMandatoryCriteriaEcho:
+    def test_echoed_mandatory_criteria_are_dropped_not_fatal(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        """Models repeat what they were shown: an acceptance criterion that
+        reuses a mandatory policy key is dropped and the system's canonical
+        text survives untouched — never a validation failure."""
+        with open_session(session_factory) as session:
+            context = seed_context(session)
+            payload = composition_payload(
+                context,
+                acceptance_criteria=[
+                    {"key": "policy-claims", "requirement": "Zayıflatılmış gereklilik."},
+                    {"key": "decision-first", "requirement": "Önce karar çerçevesi verilmeli."},
+                ],
+            )
+            result = compose(session, context, CapturingFake(payload=payload))
+            session.commit()
+
+            assert result.status is GenerationStatus.SUCCEEDED
+            assert result.brief is not None
+            keys = [entry["key"] for entry in result.brief.acceptance_criteria]
+            assert keys.count("policy-claims") == 1
+            canonical = next(
+                entry
+                for entry in result.brief.acceptance_criteria
+                if entry["key"] == "policy-claims"
+            )
+            assert canonical["requirement"] != "Zayıflatılmış gereklilik."
+            assert "decision-first" in keys

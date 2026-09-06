@@ -97,6 +97,10 @@ class Snapshot:
     # key facts. Documents still owed a model-assisted extraction attempt.
     verified_evidence_count: int = 0
     documents_pending_model_evidence: tuple[uuid.UUID, ...] = ()
+    # Ideas generated before the newest research input were judged against
+    # a narrower source base; distinct sources behind the admitted inputs.
+    ideas_predate_research_inputs: bool = False
+    distinct_input_sources: int = 0
     intent_analysis_id: uuid.UUID | None = None
     latest_brief_id: uuid.UUID | None = None
     latest_brief_status: BriefStatus | None = None
@@ -183,8 +187,22 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
             if autonomous and s.best_idea_id is not None:
                 return _command(
                     ACTION_SELECT_IDEA,
-                    "en iyi özgünlük sonucuna sahip aday seçiliyor",
+                    "özgünlük testini geçen en eski aday seçiliyor",
                     idea_id=str(s.best_idea_id),
+                )
+            if s.best_idea_id is None and s.idea_count > 0:
+                if s.ideas_predate_research_inputs and s.distinct_input_sources >= 2:
+                    # The source base widened after these ideas were judged:
+                    # one more generation sees every admitted input.
+                    return _enqueue(
+                        ACTION_GENERATE_IDEAS,
+                        "kaynak tabanı genişledi; fikirler yeniden üretiliyor",
+                        opportunity_id=str(s.opportunity_id),
+                        candidate_count=DEFAULT_IDEA_CANDIDATES,
+                    )
+                return _wait(
+                    "idea_originality",
+                    "hiçbir fikir özgünlük testini geçmedi; kaynak tabanı ya da fikir kararı operatörde",
                 )
             return _wait("idea_selection", "fikir seçimi operatörde")
         if s.latest_pack_id is None:

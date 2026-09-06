@@ -194,7 +194,9 @@ def build_structured_prompt(request: GenerationRequest, output_schema: ProviderO
     output schema as an explicit contract, then the bounded input projection.
     Everything the model must know is in the prompt — the gateway is
     stateless per job and no tools exist."""
-    schema_json = json.dumps(output_schema.json_schema, ensure_ascii=False, indent=2)
+    # Compact: the schema is a contract, not prose; every byte is typed into a
+    # browser and counted against the gateway prompt limit.
+    schema_json = json.dumps(output_schema.json_schema, ensure_ascii=False, separators=(",", ":"))
     parts = []
     if request.instructions:
         parts.append(request.instructions.strip())

@@ -91,7 +91,7 @@ def test_prompt_embeds_schema_instructions_and_input() -> None:
     prompt = build_structured_prompt(request(), SCHEMA)
     assert prompt.startswith("Konsepthane için fikir üret.")
     assert "JSON ŞEMASI (idea-candidates v1)" in prompt
-    assert '"additionalProperties": false' in prompt
+    assert "\"additionalProperties\":false" in prompt
     assert '"topic":"Evde doğum günü"' in prompt
 
 

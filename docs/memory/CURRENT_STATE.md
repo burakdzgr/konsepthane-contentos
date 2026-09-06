@@ -501,6 +501,24 @@ folds over-deep `input_projection` containers into a bounded JSON string
 (`clamp_projection_depth`, deterministic) instead of refusing the request
 — real ideas (planning dimensions) and provider signals (per-region rows)
 nest deeper than the 5-level bound, which had never been exercised live.
+The subcontractor gateway's job contract capped prompts at 20k chars; a
+real brief-composition prompt is ~25k (schema + evidence projection), so
+the gateway now reads `MAX_PROMPT_CHARS` (default 60000, set in
+`.docker.env`) and ContentOS serializes the JSON schema compactly in the
+prompt (`build_structured_prompt`).
+
+Further rules learned from the third live run (2026-09-06, item "Beautiful
+Cinderella 4th Birthday Party": 5 linked inputs, 2 sources, 3 ideas PASSED,
+pack READY with 24 key facts in ~2 minutes): the autopilot only
+auto-selects ideas whose originality PASSED and, when no idea passed but
+the source base widened after generation, regenerates ideas once before
+parking on `idea_originality`; autopilot AI re-enqueues carry a fresh
+`retry_number` derived from the durable attempts (`ai/attempts.py`) so a
+failed attempt is never silently "reused"; a single long specific shared
+title token ("cinderella", "unicorn") is enough to link documents across
+sources; and a brief whose model output echoes the mandatory acceptance
+criteria is accepted with the canonical text (template
+`brief-composition/2` also tells the model not to repeat them).
 
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 

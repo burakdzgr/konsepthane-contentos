@@ -89,7 +89,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 BRIEF_COMPOSITION_TEMPLATE_NAME = "brief-composition"
-BRIEF_COMPOSITION_TEMPLATE_VERSION = "1"
+BRIEF_COMPOSITION_TEMPLATE_VERSION = "3"
 
 # Deterministic bounded evidence-projection policy (option B of the
 # accepted contract): items are ordered by pack role priority, then claim
@@ -157,7 +157,13 @@ You MUST:
   reference at least one supplied evidence id; inference and
   editorial_judgment MUST be labeled as such; never upgrade an
   observation or instruction to sourced factual truth);
-- carry uncertainty and cautions into the contract, never erase them.
+- carry uncertainty and cautions into the contract, never erase them;
+- propose only ADDITIONAL exclusions, uncertainty notes and acceptance
+  criteria: the mandatory ones you were given are appended by the system
+  verbatim, so do not repeat them and never reuse their keys.
+- reference evidence ONLY by copying an `evidence_id` exactly as supplied
+  (one complete 36-character id per list entry; never join, shorten or
+  invent ids — a single malformed id invalidates the whole contract).
 
 You MUST NOT:
 - invent facts, statistics, quotes, interviews, customer experiences,
@@ -626,9 +632,11 @@ class BriefCompositionEngine:
             AcceptanceCriterion(key=key, requirement=requirement)
             for key, requirement in MANDATORY_ACCEPTANCE_CRITERIA
         ]
+        mandatory_keys = {key for key, _ in MANDATORY_ACCEPTANCE_CRITERIA}
         criteria.extend(
             AcceptanceCriterion(key=entry.key, requirement=entry.requirement)
             for entry in payload.acceptance_criteria
+            if entry.key not in mandatory_keys
         )
         link_needs = [
             InternalLinkNeed(topic=need.topic, purpose=need.purpose)
@@ -751,9 +759,10 @@ class _CompositionValidator:
             if criterion.key in criterion_keys:
                 return "duplicate_criterion_keys"
             criterion_keys.add(criterion.key)
-            if criterion.key in self.mandatory_criterion_keys:
-                # The model may never override a mandatory policy criterion.
-                return "mandatory_criterion_override"
+            # A criterion that echoes a mandatory policy key is not an
+            # override: the system's canonical text wins at materialization
+            # and the echo is dropped there (models tend to repeat what
+            # they were shown).
 
         if _fake_ugc_violation(payload):
             return "fake_ugc"

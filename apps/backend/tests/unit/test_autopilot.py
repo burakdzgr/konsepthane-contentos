@@ -129,7 +129,11 @@ class TestRunner:
         assert enqueued == [
             (
                 "contentos.editorial.generate_idea_candidates",
-                {"opportunity_id": str(context.opportunity_id), "candidate_count": 3},
+                {
+                    "opportunity_id": str(context.opportunity_id),
+                    "candidate_count": 3,
+                    "retry_number": 0,
+                },
             )
         ]
         assert second is not None and second.action.kind == "none"
