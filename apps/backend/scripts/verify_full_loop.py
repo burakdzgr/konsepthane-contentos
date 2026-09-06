@@ -177,7 +177,12 @@ with session_factory() as session:
     context.work_item_id = promo.work_item_id
     opportunity_id = promo.opportunity_id
     repo = OpportunityRepository(session)
+    # Cross-source linking may already have admitted some of these documents
+    # as system SUPPORTING inputs; the operator path only adds the rest.
+    already = {row.normalized_document_id for row in repo.list_research_inputs(opportunity_id)}
     for document_id, decision_id in zip(document_ids[1:], decision_ids[1:], strict=True):
+        if document_id in already:
+            continue
         repo.insert_research_input(
             OpportunityResearchInput(
                 opportunity_id=opportunity_id,

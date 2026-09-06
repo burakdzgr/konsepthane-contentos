@@ -810,12 +810,25 @@ def _mandatory_uncertainty(pack: Any, intent: Any, contradictions: list[Any]) ->
         if cleaned and cleaned not in notes:
             notes.append(cleaned)
 
-    for entry in pack.staleness_notes:
-        add(f"Kanıt tazeliği sınırlı: {entry.get('research_evidence_id')} ({entry.get('basis')})")
-    for entry in pack.locale_limitations.get("mismatches", []):
+    # Per-evidence cautions are aggregated: a 40-item pack from two 2019
+    # articles must not spend the whole uncertainty budget on repeats.
+    stale = list(pack.staleness_notes)
+    if stale:
+        sample = ", ".join(str(entry.get("research_evidence_id")) for entry in stale[:3])
+        more = f" (+{len(stale) - 3} kanıt daha)" if len(stale) > 3 else ""
+        basis = str(stale[0].get("basis") or "").strip()
         add(
-            "Yerel kapsam sınırı: kanıt "
-            f"{entry.get('research_evidence_id')} locale {entry.get('locale')}"
+            f"Kanıt tazeliği sınırlı: {len(stale)} kanıt — {sample}{more}"
+            + (f" ({basis})" if basis else "")
+        )
+    mismatches = list(pack.locale_limitations.get("mismatches", []))
+    if mismatches:
+        locales = sorted({str(entry.get("locale")) for entry in mismatches})
+        sample = ", ".join(str(entry.get("research_evidence_id")) for entry in mismatches[:3])
+        more = f" (+{len(mismatches) - 3} kanıt daha)" if len(mismatches) > 3 else ""
+        add(
+            f"Yerel kapsam sınırı: {len(mismatches)} kanıt farklı locale'den "
+            f"({', '.join(locales)}) — {sample}{more}"
         )
     if intent.missing_signals:
         add("Eksik arama sinyalleri: " + ", ".join(intent.missing_signals))
