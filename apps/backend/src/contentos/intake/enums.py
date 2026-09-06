@@ -46,5 +46,6 @@ class IntakeEventKind(StrEnum):
     FETCH_COMPLETED = "fetch_completed"
     PROMOTION_DISPATCHED = "promotion_dispatched"
     PROMOTION_CAP_REACHED = "promotion_cap_reached"
+    PROMOTION_SKIPPED_BY_ROLE = "promotion_skipped_by_role"
     OPERATIONAL_PAUSE = "operational_pause"
     STEP_ERROR = "step_error"

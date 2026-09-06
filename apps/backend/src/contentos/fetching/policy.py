@@ -1,6 +1,6 @@
 """Explicit, conservative fetch policy. No magic numbers in client code."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from contentos.core.config import Settings
 
@@ -49,6 +49,20 @@ class FetchPolicy:
     per_host_concurrency: int = 1
     min_host_interval_seconds: float = 1.0
     robots_cache_ttl_seconds: float = 900.0
+
+
+# Sitemap/feed documents some servers hand out as a generic binary type. The
+# discovery strategies still sniff the body and refuse anything but XML, so
+# this widening never reaches article fetching or normalization.
+DISCOVERY_EXTRA_CONTENT_TYPES: frozenset[str] = frozenset({"application/octet-stream"})
+
+
+def build_discovery_fetch_policy(settings: Settings) -> FetchPolicy:
+    """The fetch policy for discovery documents only (sitemaps and feeds)."""
+    base = build_fetch_policy(settings)
+    return replace(
+        base, allowed_content_types=base.allowed_content_types | DISCOVERY_EXTRA_CONTENT_TYPES
+    )
 
 
 def build_fetch_policy(settings: Settings) -> FetchPolicy:

@@ -28,7 +28,7 @@ from contentos.intake.prefilter import classify_url
 from contentos.intake.service import IntakePolicy, IntakeRunService
 from contentos.operations.enums import PauseScope
 from contentos.operations.service import OperationsService
-from contentos.sources.enums import SourceKind, SourceLifecycleState
+from contentos.sources.enums import SourceKind, SourceLifecycleState, SourceRole
 
 POLICY = IntakePolicy(
     prefilter_batch_size=100,
@@ -140,8 +140,13 @@ class TestRunLifecycle:
         ]
 
 
-def seeded_run(session: Session, urls: list[str]) -> tuple[Any, Any, FakeFetchClient]:
+def seeded_run(
+    session: Session, urls: list[str], *, role: SourceRole | None = None
+) -> tuple[Any, Any, FakeFetchClient]:
     source = make_source(session)
+    if role is not None:
+        source.primary_role = role
+        session.flush()
     client = FakeFetchClient(
         {SITEMAP_URL: successful_fetch(SITEMAP_URL, urlset(*[(url, None) for url in urls]))}
     )
@@ -289,6 +294,104 @@ class TestOrchestrator:
 
 
 class TestPromotePhase:
+    def test_signal_only_sources_never_promote(self, session: Session) -> None:
+        """A community-intent source feeds signals; its pages never become
+        opportunities. The run records the decision once and completes."""
+        import hashlib
+        from datetime import UTC, datetime
+
+        from contentos.duplicates.enums import DuplicateDecisionOutcome
+        from contentos.duplicates.models import DuplicateDecision
+        from contentos.fetching.models import (
+            FetchOutcome,
+            FetchResult,
+            RetryClassification,
+            RobotsDecision,
+        )
+        from contentos.fetching.snapshot_service import FetchSnapshotService
+        from contentos.intake.models import IntakeRunEvent
+        from contentos.normalization.service import NormalizationService
+
+        now = datetime(2026, 9, 6, 12, 0, tzinfo=UTC)
+        source, run, client = seeded_run(session, article_urls(1), role=SourceRole.COMMUNITY_INTENT)
+        orchestrator = IntakeOrchestrator(session, fetch_client_factory=factory_for(client))
+        orchestrator.advance(run.id)  # discovery
+        orchestrator.advance(run.id)  # prefilter
+        dispatched = orchestrator.advance(run.id)
+        item_id = uuid.UUID(dispatched.fetch_dispatches[0])
+        item = session.get(DiscoveryItem, item_id)
+        assert item is not None
+        body = b"<html>forumda sorulan bir soru</html>"
+        snapshot = FetchSnapshotService(session).record_fetch_result(
+            item.id,
+            FetchResult(
+                requested_url=item.canonical_url,
+                outcome=FetchOutcome.SUCCESS,
+                retry=RetryClassification.NOT_APPLICABLE,
+                robots_decision=RobotsDecision.ALLOWED,
+                fetched_at=now,
+                duration_ms=2.0,
+                final_url=item.canonical_url,
+                status_code=200,
+                content_type="text/html; charset=utf-8",
+                body=body,
+            ),
+            raw_payload_ref=f"memory:sha256:{hashlib.sha256(body).hexdigest()}",
+        )
+        document = NormalizationService(session).record_success(
+            snapshot.id,
+            extractor_name="html-basic",
+            extractor_version="1",
+            clean_text="forumda sorulan uzun bir soru metni.",
+            title="Forum sorusu",
+            headings=[],
+        )
+        session.add(
+            DuplicateDecision(
+                normalized_document_id=document.id,
+                engine_name="duplicate-engine",
+                engine_version="1",
+                decision=DuplicateDecisionOutcome.UNIQUE,
+                signals={},
+                thresholds={},
+                matches=[],
+                rationale_codes=[],
+                evaluated_at=now,
+            )
+        )
+        session.flush()
+        if session.get(DiscoveryItem, item_id).lifecycle_state is not (
+            DiscoveryLifecycleState.FETCHED
+        ):
+            DiscoveryService(session).mark_fetched(item_id)
+
+        outcome = orchestrator.advance(run.id)
+
+        assert outcome.promote_dispatches == ()
+        assert run.promotions_dispatched == 0
+        kinds = [
+            event.kind
+            for event in session.scalars(
+                select(IntakeRunEvent).where(IntakeRunEvent.run_id == run.id)
+            )
+        ]
+        assert kinds.count(IntakeEventKind.PROMOTION_SKIPPED_BY_ROLE) == 1
+        assert IntakeEventKind.PROMOTION_CAP_REACHED not in kinds
+        orchestrator.advance(run.id)
+        assert kinds.count(IntakeEventKind.PROMOTION_SKIPPED_BY_ROLE) == 1
+
+    def test_discovery_fetch_policy_accepts_octet_stream_only_for_discovery(self) -> None:
+        from integrations_fixtures import integration_settings
+
+        from contentos.fetching.policy import build_discovery_fetch_policy, build_fetch_policy
+
+        settings = integration_settings()
+        strict = build_fetch_policy(settings)
+        discovery = build_discovery_fetch_policy(settings)
+        assert "application/octet-stream" not in strict.allowed_content_types
+        assert "application/octet-stream" in discovery.allowed_content_types
+        assert discovery.max_body_bytes == strict.max_body_bytes
+
     def test_promotes_eligible_documents_and_counts_opportunities(self, session: Session) -> None:
         import hashlib
         from datetime import UTC, datetime

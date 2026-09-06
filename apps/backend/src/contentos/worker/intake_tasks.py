@@ -36,7 +36,7 @@ def register_intake_tasks(app: Celery, runtime: WorkerRuntime) -> None:
         session = runtime.create_session()
         try:
             orchestrator = IntakeOrchestrator(
-                session, fetch_client_factory=runtime.create_fetch_client
+                session, fetch_client_factory=runtime.create_discovery_fetch_client
             )
             outcome = orchestrator.advance(parsed_id)
             session.commit()

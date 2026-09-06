@@ -14,7 +14,7 @@ from contentos.ai.protocol import StructuredGenerationProvider
 from contentos.core.config import Settings
 from contentos.db.session import create_database_engine, create_session_factory
 from contentos.fetching.client import FetchClient
-from contentos.fetching.policy import build_fetch_policy
+from contentos.fetching.policy import build_discovery_fetch_policy, build_fetch_policy
 from contentos.media.store import MediaStore
 from contentos.payloads.postgres import PostgresRawPayloadStore
 from contentos.publishing.transport import PublishingTransport
@@ -63,6 +63,13 @@ class WorkerRuntime:
         if self._fetch_client_factory is not None:
             return self._fetch_client_factory()
         return FetchClient(build_fetch_policy(self._settings))
+
+    def create_discovery_fetch_client(self) -> FetchClient:
+        """Fetch client for sitemap/feed documents (accepts octet-stream XML);
+        callers must close it. Article fetches keep the strict policy."""
+        if self._fetch_client_factory is not None:
+            return self._fetch_client_factory()
+        return FetchClient(build_discovery_fetch_policy(self._settings))
 
     def create_payload_store(self, session: Session) -> PostgresRawPayloadStore:
         """Compose the durable payload provider bound to the task session."""

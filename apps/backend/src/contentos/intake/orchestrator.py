@@ -42,6 +42,7 @@ from contentos.operations.errors import IntakePausedError
 from contentos.operations.service import OperationsService
 from contentos.opportunities.models import EditorialOpportunity
 from contentos.opportunities.service import ELIGIBLE_OUTCOMES
+from contentos.sources.enums import role_yields_opportunities
 from contentos.sources.models import Source
 from contentos.strategy.service import StrategyService
 
@@ -474,9 +475,26 @@ class IntakeOrchestrator:
             )
             run.opportunities_created = created
 
-        remaining_cap = policy.max_promotions_per_run - run.promotions_dispatched
+        source = self._session.get(Source, run.source_id)
+        role_gated = source is not None and not role_yields_opportunities(source.primary_role)
+        if role_gated:
+            # Community / competitor / taxonomy / trend / search sources feed
+            # SIGNALS only: their pages are never promoted to opportunities.
+            # Recorded once per run so the operator sees why nothing came out.
+            if not self._service.has_event(run.id, IntakeEventKind.PROMOTION_SKIPPED_BY_ROLE):
+                self._service.record_event(
+                    run,
+                    IntakeStage.PROMOTE,
+                    IntakeEventKind.PROMOTION_SKIPPED_BY_ROLE,
+                    {"role": source.primary_role.value if source is not None else None},
+                )
+            remaining_cap = 0
+        else:
+            remaining_cap = policy.max_promotions_per_run - run.promotions_dispatched
         if remaining_cap <= 0:
-            if not self._service.has_event(run.id, IntakeEventKind.PROMOTION_CAP_REACHED):
+            if not role_gated and not self._service.has_event(
+                run.id, IntakeEventKind.PROMOTION_CAP_REACHED
+            ):
                 self._service.record_event(
                     run,
                     IntakeStage.PROMOTE,

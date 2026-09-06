@@ -478,6 +478,17 @@ root sitemap must still be readable; retryable child fetch failures still
 raise for the intake step's retry. Legacy namespace accepted; octet-stream
 accepted only when the body sniffs as sitemap XML.
 
+Two more rules from the same trial: (1) **promotion is role-gated** —
+only `inspiration` and `turkish_editorial` sources promote documents to
+opportunities; community-intent, competitor, taxonomy, trend and search
+sources feed signals only, and the intake run records
+`promotion_skipped_by_role` once (migration 0035 widens the event-kind
+CHECK); before this, forum threads and product pages became "opportunities".
+(2) Discovery documents (sitemaps/feeds) are fetched with
+`build_discovery_fetch_policy`, which additionally accepts
+`application/octet-stream` (PartySlate serves its sitemap that way); article
+fetches keep the strict policy and the strategies still sniff the body.
+
 Local operations learned the hard way (see `docs/INTAKE_ORCHESTRATION.md`
 for the pipeline itself): the subcontractor gateway runs as the
 `konsept-gateway` container next to `konsept-rabbitmq` and must be started

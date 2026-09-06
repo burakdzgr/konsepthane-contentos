@@ -109,6 +109,18 @@ _DEFAULT_CAPABILITIES: dict[SourceRole, tuple[SourceCapability, ...]] = {
 }
 
 
+# Only sources read for their editorial content become opportunities.
+# Community, competitor, taxonomy, trend and search sources feed SIGNALS
+# (needs, competition, vocabulary, trends); their pages are never promoted.
+OPPORTUNITY_ROLES: frozenset[SourceRole] = frozenset(
+    {SourceRole.INSPIRATION, SourceRole.TURKISH_EDITORIAL}
+)
+
+
+def role_yields_opportunities(role: SourceRole) -> bool:
+    return role in OPPORTUNITY_ROLES
+
+
 def default_capabilities_for(role: SourceRole) -> tuple[SourceCapability, ...]:
     """The capability set a role implies when the operator states none."""
     return _DEFAULT_CAPABILITIES[role]

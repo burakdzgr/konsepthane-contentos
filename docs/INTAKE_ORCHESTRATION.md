@@ -162,3 +162,13 @@ never persisted; only PII-free normalized signals are.
 - Score-ineligible opportunities are NOT auto-rejected: opportunity
   rejection is a named human decision (Phase 5); the UI surfaces them
   as ATLA recommendations for a one-click human reject instead.
+
+## Promotion is role-gated (2026-09-06)
+
+Only sources with primary role `inspiration` or `turkish_editorial` promote
+fetched documents to opportunities. `community_intent`, `competitor`,
+`taxonomy`, `trend` and `search` sources are read for signals only; their
+run records one `promotion_skipped_by_role` event and completes with
+`opportunities_created = 0`. Sitemap/feed documents are fetched with the
+discovery fetch policy (accepts `application/octet-stream` when the body is
+XML); article fetches keep the strict media-type policy.

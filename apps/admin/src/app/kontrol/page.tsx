@@ -78,6 +78,7 @@ const EVENT_LABELS: Record<string, string> = {
   fetch_completed: "Getirme aşaması tamamlandı",
   promotion_dispatched: "İçerik fırsata yükseltiliyor",
   promotion_cap_reached: "Fırsat sınırına ulaşıldı",
+  promotion_skipped_by_role: "Sinyal kaynağı: fırsat yükseltmesi yok",
   operational_pause: "Operasyonel durdurma devrede",
   step_error: "Aşama hatası oluştu",
 };

@@ -198,7 +198,7 @@ def register_research_pipeline_tasks(
                 return _summary(self, "skipped", source_id=source_id, reason="unsupported_strategy")
 
             try:
-                with runtime.create_fetch_client() as fetch_client:
+                with runtime.create_discovery_fetch_client() as fetch_client:
                     result = strategy_class(session, fetch_client).execute(parsed_id)
             except (FeedFetchRetryableError, SitemapFetchRetryableError) as error:
                 raise self.retry(

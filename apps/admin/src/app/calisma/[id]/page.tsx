@@ -146,6 +146,8 @@ function describeEvent(event: IntakeEventView): string {
       return "Uygun doküman fırsata yükseltiliyor (skorlama otomatik zincirlenir)";
     case "promotion_cap_reached":
       return `Çalışma başına yükseltme sınırına ulaşıldı (${n("cap")})`;
+    case "promotion_skipped_by_role":
+      return "Sinyal kaynağı: sayfalar fırsata yükseltilmez, yalnızca sinyal çıkarılır";
     case "operational_pause":
       return `Operasyonel durdurma devrede (${String(d.scope ?? "")}) — çalışma bekletildi`;
     case "step_error":
