@@ -552,6 +552,23 @@ returns the rule text with its code, and the generation service logs
 `generation_domain_validation_failed` with that reason (validator text only,
 never model output). Persistence rules are unchanged: nothing is coerced.
 
+### Per-entity execution locks for provider-calling tasks (2026-09-06)
+
+Live editor review failed four times with `subcontractor_rate_limit` although
+the gateway completed every job. Two executions of `generate_editor_review`
+ran for the same work item: the draft task chains it after commit, and the
+autopilot enqueued it on the next sweep. Both called the gateway (concurrency
+limit 2 → HTTP 429 for the loser), and their retry numbers collided
+(`retry_number + request.retries`), so the execution that actually got the
+review hit an identity conflict with the other's failed attempt and discarded
+a real result. `worker/execution_lock.py` adds a Redis `SET NX EX` lock per
+(task, entity) — in-memory under eager Celery — held for the execution with a
+TTL of the provider timeout plus 300 s; `register_editorial_pipeline_tasks`
+wraps idea generation, search intent, brief composition, writer draft, editor
+review and media image generation with it. A duplicate returns
+`duplicate_in_flight` without touching the provider; the holder (or the
+autopilot's next sweep) owns the outcome.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

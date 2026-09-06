@@ -21,8 +21,9 @@ a distinct durable attempt identity; failed attempts are COMMITTED before a
 DOMAIN retry is raised.
 """
 
+import functools
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, Protocol
 
@@ -65,6 +66,7 @@ from contentos.reviews.errors import ReviewGenerationMaterializationError
 from contentos.reviews.generation import EditorEngine
 from contentos.reviews.repository import ReviewRepository
 from contentos.search_intent.service import SearchIntentService
+from contentos.worker.execution_lock import execution_lock_key
 from contentos.worker.research_tasks import (
     MAX_RETRIES,
     InvalidPipelineInputError,
@@ -111,6 +113,9 @@ MAX_BLOCK_REASON_ITEMS = 5
 # or (assumed transient) provider error may retry within the Celery bound;
 # VALIDATION_FAILED and CANCELLED are terminal for automatic execution —
 # the durable attempt persists and nothing retries blindly.
+# A lock outlives the provider timeout so a crashed worker never pins an entity.
+LOCK_TTL_MARGIN_SECONDS = 300
+TaskBody = Callable[..., dict[str, Any]]
 RETRYABLE_AI_STATUSES = frozenset({GenerationStatus.TIMEOUT, GenerationStatus.PROVIDER_ERROR})
 
 
@@ -162,6 +167,44 @@ def register_editorial_pipeline_tasks(
             raise
         finally:
             session.close()
+
+    lock_ttl_seconds = int(runtime.settings.subcontractor_timeout_seconds) + LOCK_TTL_MARGIN_SECONDS
+
+    def exclusive(*key_fields: str) -> Callable[[TaskBody], TaskBody]:
+        """Run the task body only if no other execution holds the entity.
+
+        The key is the task name plus the named kwargs (the pipeline always
+        dispatches by keyword). A duplicate never touches the provider: it
+        reports `duplicate_in_flight` and leaves the outcome to the holder."""
+
+        def decorate(body: TaskBody) -> TaskBody:
+            @functools.wraps(body)
+            def guarded(task: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                parts = [str(kwargs[field]) for field in key_fields if field in kwargs]
+                if len(parts) != len(key_fields):
+                    return body(task, *args, **kwargs)
+                lock = runtime.execution_lock()
+                key = execution_lock_key(str(task.name), *parts)
+                token = lock.acquire(key, lock_ttl_seconds)
+                if token is None:
+                    _logger.info(
+                        "editorial_task_duplicate_in_flight",
+                        task=str(task.name),
+                        entity=":".join(parts),
+                    )
+                    return _summary(
+                        task,
+                        "duplicate_in_flight",
+                        **{field: kwargs[field] for field in key_fields},
+                    )
+                try:
+                    return body(task, *args, **kwargs)
+                finally:
+                    lock.release(key, token)
+
+            return guarded
+
+        return decorate
 
     def dispatch_next(task: Any, task_name: str, payload: dict[str, Any]) -> str:
         """Enqueue after commit; transport failure triggers a DISPATCH retry."""
@@ -1143,14 +1186,26 @@ def register_editorial_pipeline_tasks(
     }
     app.task(name=PROMOTE_RESEARCH_TASK, **common_options)(promote_research)
     app.task(name=EVALUATE_OPPORTUNITY_TASK, **common_options)(evaluate_opportunity)
-    app.task(name=GENERATE_IDEA_CANDIDATES_TASK, **common_options)(generate_idea_candidates)
+    app.task(name=GENERATE_IDEA_CANDIDATES_TASK, **common_options)(
+        exclusive("opportunity_id")(generate_idea_candidates)
+    )
     app.task(name=BUILD_EVIDENCE_PACK_TASK, **common_options)(build_evidence_pack)
-    app.task(name=ANALYZE_SEARCH_INTENT_TASK, **common_options)(analyze_search_intent)
-    app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(compose_content_brief)
-    app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(generate_writer_draft)
-    app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(generate_editor_review)
+    app.task(name=ANALYZE_SEARCH_INTENT_TASK, **common_options)(
+        exclusive("opportunity_id")(analyze_search_intent)
+    )
+    app.task(name=COMPOSE_CONTENT_BRIEF_TASK, **common_options)(
+        exclusive("work_item_id")(compose_content_brief)
+    )
+    app.task(name=GENERATE_WRITER_DRAFT_TASK, **common_options)(
+        exclusive("content_brief_id")(generate_writer_draft)
+    )
+    app.task(name=GENERATE_EDITOR_REVIEW_TASK, **common_options)(
+        exclusive("work_item_id")(generate_editor_review)
+    )
     app.task(name=RUN_QA_GATES_TASK, **common_options)(run_qa_gates)
-    app.task(name=GENERATE_MEDIA_IMAGE_TASK, **common_options)(generate_media_image)
+    app.task(name=GENERATE_MEDIA_IMAGE_TASK, **common_options)(
+        exclusive("work_item_id", "need_index")(generate_media_image)
+    )
     app.task(name=PUBLISH_PACKAGE_TASK, **common_options)(publish_package)
 
 

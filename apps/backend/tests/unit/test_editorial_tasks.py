@@ -1495,3 +1495,50 @@ class TestCommissioningOverride:
             )
             session.commit()
         assert "commissioning_gate_override" not in clean.events()[-1].artifact_refs
+
+
+class TestExecutionLock:
+    """A second execution for the same entity never reaches the provider."""
+
+    def test_duplicate_in_flight_exits_without_provider_spend(self, harness: Harness) -> None:
+        from contentos.worker.editorial_tasks import GENERATE_EDITOR_REVIEW_TASK
+        from contentos.worker.execution_lock import execution_lock_key
+
+        review = TestEditorReviewTask()
+        app, _dispatcher, accepted, _draft_id = review.in_editing(harness)
+        harness.provider = FakeStructuredProvider(payload=review.editor_payload())
+        work_item_id = str(accepted.context.work_item_id)
+        lock = harness.runtime.execution_lock()
+        token = lock.acquire(execution_lock_key(GENERATE_EDITOR_REVIEW_TASK, work_item_id), 60)
+        assert token is not None
+        try:
+            result = (
+                app.tasks[GENERATE_EDITOR_REVIEW_TASK]
+                .apply(kwargs={"work_item_id": work_item_id})
+                .get()
+            )
+        finally:
+            lock.release(execution_lock_key(GENERATE_EDITOR_REVIEW_TASK, work_item_id), token)
+        assert result["status"] == "duplicate_in_flight"
+        assert harness.provider.invocations == 0
+
+        released = (
+            app.tasks[GENERATE_EDITOR_REVIEW_TASK]
+            .apply(kwargs={"work_item_id": work_item_id})
+            .get()
+        )
+        assert released["status"] == "completed"
+        assert harness.provider.invocations == 1
+
+    def test_in_memory_lock_expires_and_only_the_holder_releases(self) -> None:
+        from contentos.worker.execution_lock import InMemoryExecutionLock
+
+        now = [100.0]
+        lock = InMemoryExecutionLock(clock=lambda: now[0])
+        token = lock.acquire("k", 10)
+        assert token is not None
+        assert lock.acquire("k", 10) is None
+        lock.release("k", "not-the-token")
+        assert lock.acquire("k", 10) is None
+        now[0] = 111.0
+        assert lock.acquire("k", 10) is not None

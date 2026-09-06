@@ -18,6 +18,12 @@ from contentos.fetching.policy import build_discovery_fetch_policy, build_fetch_
 from contentos.media.store import MediaStore
 from contentos.payloads.postgres import PostgresRawPayloadStore
 from contentos.publishing.transport import PublishingTransport
+from contentos.queue.redis import create_redis_client
+from contentos.worker.execution_lock import (
+    ExecutionLock,
+    InMemoryExecutionLock,
+    RedisExecutionLock,
+)
 
 SessionFactory = Callable[[], Session]
 FetchClientFactory = Callable[[], FetchClient]
@@ -38,6 +44,7 @@ class WorkerRuntime:
         image_generation_provider_factory: ProviderFactory | None = None,
         media_store: MediaStore | None = None,
         publishing_transport_factory: PublishingTransportFactory | None = None,
+        execution_lock: ExecutionLock | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -46,10 +53,22 @@ class WorkerRuntime:
         self._image_provider_factory = image_generation_provider_factory
         self._media_store = media_store
         self._publishing_transport_factory = publishing_transport_factory
+        self._execution_lock = execution_lock
 
     @property
     def settings(self) -> Settings:
         return self._settings
+
+    def execution_lock(self) -> ExecutionLock:
+        """One lock instance per process: Redis-backed for real workers,
+        in-memory under eager Celery (tests, local scripts)."""
+        if self._execution_lock is None:
+            if self._settings.celery_task_always_eager:
+                self._execution_lock = InMemoryExecutionLock()
+            else:
+                settings = self._settings
+                self._execution_lock = RedisExecutionLock(lambda: create_redis_client(settings))
+        return self._execution_lock
 
     def create_session(self) -> Session:
         """Return a fresh task-scoped Session; the engine is built lazily once."""
