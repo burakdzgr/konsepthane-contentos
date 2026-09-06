@@ -18,7 +18,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from contentos.ai.attempts import next_retry_number
-from contentos.ai.enums import GenerationPurpose
+from contentos.ai.enums import GenerationPurpose, GenerationStatus
+from contentos.ai.models import AiGenerationAttempt
 from contentos.auth.models import User
 from contentos.autopilot.enums import AutopilotEventKind, AutopilotMode
 from contentos.autopilot.planner import (
@@ -54,6 +55,7 @@ from contentos.evidence_packs.service import EvidencePackService
 from contentos.ideas.enums import OriginalityStatus
 from contentos.ideas.repository import IdeaRepository
 from contentos.ideas.service import IdeaService
+from contentos.media.models import MediaAsset
 from contentos.media.service import MediaService
 from contentos.media.store import MediaStore
 from contentos.opportunities.linking import distinct_source_count, link_related_research_inputs
@@ -298,6 +300,9 @@ class AutopilotRunner:
             rework_cycles=rework_cycles,
             active_qa_outcome=active_qa.outcome if active_qa is not None else None,
             open_media_needs=open_needs,
+            media_needs_with_candidate=media_candidate_needs(self._session, work_item.id)
+            if open_needs
+            else (),
             latest_package_id=latest_package.id if latest_package is not None else None,
             in_flight=self._autopilot.in_flight_actions(work_item.id),
         )
@@ -554,3 +559,27 @@ class AutopilotRunner:
 
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def media_candidate_needs(session: Session, work_item_id: uuid.UUID) -> tuple[int, ...]:
+    """Need indexes that already have a generated candidate: a SUCCEEDED
+    media attempt for this work item whose bytes became a media asset. The
+    operator still binds a candidate to its need; the planner must simply
+    not generate another image for a need that has one waiting."""
+    rows = session.execute(
+        select(AiGenerationAttempt.input_refs)
+        .join(MediaAsset, MediaAsset.generation_attempt_id == AiGenerationAttempt.id)
+        .where(
+            AiGenerationAttempt.purpose == GenerationPurpose.MEDIA_IMAGE,
+            AiGenerationAttempt.status == GenerationStatus.SUCCEEDED,
+        )
+    ).scalars()
+    wanted = str(work_item_id)
+    indexes: set[int] = set()
+    for refs in rows:
+        if not isinstance(refs, dict) or refs.get("work_item_id") != wanted:
+            continue
+        index = refs.get("need_index")
+        if isinstance(index, int) and not isinstance(index, bool):
+            indexes.add(index)
+    return tuple(sorted(indexes))

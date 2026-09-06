@@ -594,6 +594,16 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Generated images count as candidates for their need (2026-09-06)
+
+Once images were produced, the autopilot generated a second image for need 0
+instead of moving to need 1: the runner never filled
+`media_needs_with_candidate`, so every open need looked pending forever.
+`media_candidate_needs` now derives it from SUCCEEDED `media_image` attempts
+(refs: work item + need index) that materialized a media asset. Binding a
+candidate to its need stays the operator's decision (`media_satisfaction`
+wait); the planner just never generates twice for the same need.
+
 ### Media byte store lives on a shared, app-owned volume (2026-09-06)
 
 With the download fixed, the first live image failed at `MediaStore.put` with

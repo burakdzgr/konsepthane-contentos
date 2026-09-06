@@ -507,6 +507,54 @@ class TestMediaImageGeneration:
                 )
 
 
+class TestAutopilotMediaCandidates:
+    def test_a_generated_asset_counts_as_a_candidate_for_its_need(
+        self, harness: Harness, tmp_path: Path
+    ) -> None:
+        import dataclasses
+
+        from contentos.ai.fake import FakeStructuredProvider
+        from contentos.autopilot.enums import AutopilotMode
+        from contentos.autopilot.planner import ACTION_GENERATE_IMAGE, plan
+        from contentos.autopilot.runner import AutopilotRunner, media_candidate_needs
+        from contentos.media.generation import MediaImageEngine
+        from contentos.qa.enums import QaOutcome
+        from contentos.workflow.repository import WorkflowRepository
+
+        accepted, _, _ = qa_review_context(harness)
+        work_item_id = accepted.context.work_item_id
+        store = MediaStore(tmp_path / "media-store")
+        with harness.session() as session:
+            assert media_candidate_needs(session, work_item_id) == ()
+            MediaImageEngine(session, store).generate(
+                work_item_id,
+                0,
+                requested_by=operator_user(session),
+                provider=FakeStructuredProvider(payload=TestMediaImageGeneration().image_payload()),
+            )
+            session.commit()
+            assert media_candidate_needs(session, work_item_id) == (0,)
+
+            work_item = WorkflowRepository(session).get_by_id(work_item_id)
+            assert work_item is not None
+            snapshot = AutopilotRunner(session, media_store=store).snapshot(work_item)
+            assert 0 in snapshot.open_media_needs  # binding is still the operator's
+            assert snapshot.media_needs_with_candidate == (0,)
+            # Whatever comes next (QA first, then the other open needs, then
+            # the operator's binding), need 0 is never generated again.
+            action = plan(snapshot, AutopilotMode.AUTONOMOUS)
+            assert not (
+                action.name == ACTION_GENERATE_IMAGE and action.payload.get("need_index") == 0
+            )
+            with_report = dataclasses.replace(snapshot, active_qa_outcome=QaOutcome.NOT_READY)
+            follow_up = plan(with_report, AutopilotMode.AUTONOMOUS)
+            if len(snapshot.open_media_needs) > 1:
+                assert follow_up.name == ACTION_GENERATE_IMAGE
+                assert follow_up.payload["need_index"] != 0
+            else:
+                assert follow_up.kind == "wait" and follow_up.name == "media_satisfaction"
+
+
 class TestGenerateImageCommand:
     def test_generate_image_queues_the_exact_task_with_the_named_human(
         self, harness: Harness
