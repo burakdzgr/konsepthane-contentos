@@ -28,6 +28,9 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
 RUN groupadd --system contentos && useradd --system --gid contentos --no-create-home contentos
+# ContentOS-owned media byte store (content-addressed); a named volume is
+# mounted here by compose and inherits this ownership on first creation.
+RUN mkdir -p /var/lib/contentos/media-store && chown -R contentos:contentos /var/lib/contentos
 
 WORKDIR /app
 COPY --from=builder --chown=contentos:contentos /app /app

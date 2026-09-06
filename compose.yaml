@@ -15,6 +15,8 @@ x-backend-environment: &backend-environment
   CONTENTOS_PUBLISHING_API_URL: ${CONTENTOS_PUBLISHING_API_URL:-}
   CONTENTOS_PUBLISHING_API_KEY: ${CONTENTOS_PUBLISHING_API_KEY:-}
   CONTENTOS_API_DOCS_ENABLED: ${CONTENTOS_API_DOCS_ENABLED:-true}
+  # ContentOS-owned media byte store; the api and worker share one volume.
+  CONTENTOS_MEDIA_STORE_ROOT: ${CONTENTOS_MEDIA_STORE_ROOT:-/var/lib/contentos/media-store}
   # OpenAI adapter (optional). Empty = not configured: AI commands refuse
   # with a clear 503 instead of the worker dropping the task silently.
   CONTENTOS_OPENAI_API_KEY: ${CONTENTOS_OPENAI_API_KEY:-}
@@ -136,6 +138,7 @@ services:
       # key referenced by CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON as
       # /run/contentos/secrets/<file>. Read-only inside the containers.
       - ./secrets:/run/contentos/secrets:ro
+      - contentos-media-store:/var/lib/contentos/media-store
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -181,6 +184,7 @@ services:
       # key referenced by CONTENTOS_GOOGLE_SERVICE_ACCOUNT_JSON as
       # /run/contentos/secrets/<file>. Read-only inside the containers.
       - ./secrets:/run/contentos/secrets:ro
+      - contentos-media-store:/var/lib/contentos/media-store
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -261,3 +265,4 @@ networks:
 
 volumes:
   contentos-postgres-data: {}
+  contentos-media-store: {}

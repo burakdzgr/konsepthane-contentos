@@ -594,6 +594,16 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Media byte store lives on a shared, app-owned volume (2026-09-06)
+
+With the download fixed, the first live image failed at `MediaStore.put` with
+`PermissionError: 'data'`: the default `media_store_root` (`./data/media-store`)
+resolves under `/app`, which is root-owned in the image while the process runs
+as `contentos`. The Dockerfile now creates `/var/lib/contentos/media-store`
+owned by the app user, compose sets `CONTENTOS_MEDIA_STORE_ROOT` to it and
+mounts the named volume `contentos-media-store` on the api and the worker (the
+api serves what the worker stores). Nothing under `/app` is written at runtime.
+
 ### Gateway images are downloaded by path, not by advertised URL (2026-09-06)
 
 QA left two open media needs; the autopilot's `generate_image` produced images
