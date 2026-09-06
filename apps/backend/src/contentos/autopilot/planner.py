@@ -101,6 +101,8 @@ class Snapshot:
     # a narrower source base; distinct sources behind the admitted inputs.
     ideas_predate_research_inputs: bool = False
     distinct_input_sources: int = 0
+    # The pinned idea's originality; brief acceptance refuses anything but PASSED.
+    selected_idea_passed: bool = True
     intent_analysis_id: uuid.UUID | None = None
     latest_brief_id: uuid.UUID | None = None
     latest_brief_status: BriefStatus | None = None
@@ -246,6 +248,13 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
         return _none("analiz var; sistem brif hazırlığına geçiriyor")
 
     if state is WorkflowState.BRIEFING:
+        if not s.selected_idea_passed:
+            # The acceptance gate refuses a brief pinned to an idea that did
+            # not pass originality; do not knock on it every sweep.
+            return _wait(
+                "idea_originality",
+                "seçili fikir özgünlük testini geçmedi; brief kabulü operatörde",
+            )
         if s.latest_brief_id is None:
             if (
                 s.selected_idea_id is None

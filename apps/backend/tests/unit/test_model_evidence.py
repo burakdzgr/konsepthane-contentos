@@ -552,3 +552,20 @@ class TestOriginalityGuard:
         # A PASSED idea is selected autonomously.
         good = dataclasses.replace(base, best_idea_id=uuid.uuid4())
         assert plan(good, AutopilotMode.AUTONOMOUS).name == ACTION_SELECT_IDEA
+
+    def test_briefing_waits_when_the_pinned_idea_failed_originality(self) -> None:
+        from contentos.briefs.enums import BriefStatus
+
+        snapshot = Snapshot(
+            work_item_id=uuid.uuid4(),
+            state=WorkflowState.BRIEFING,
+            opportunity_id=uuid.uuid4(),
+            disposition=OpportunityDisposition.COMMISSIONED,
+            idea_count=3,
+            selected_idea_id=uuid.uuid4(),
+            latest_brief_id=uuid.uuid4(),
+            latest_brief_status=BriefStatus.DRAFT,
+            selected_idea_passed=False,
+        )
+        action = plan(snapshot, AutopilotMode.AUTONOMOUS)
+        assert action.kind == "wait" and action.name == "idea_originality"

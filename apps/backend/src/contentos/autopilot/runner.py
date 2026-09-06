@@ -184,6 +184,7 @@ class AutopilotRunner:
         )
 
         idea_count = 0
+        selected_idea_passed = True
         selected_idea_id: uuid.UUID | None = None
         best_idea_id: uuid.UUID | None = None
         latest_pack_id = None
@@ -195,6 +196,9 @@ class AutopilotRunner:
             idea_count = len(ideas)
             selected = IdeaService(self._session).get_effective_selection(opportunity.id)
             selected_idea_id = selected.id if selected is not None else None
+            selected_idea_passed = (
+                selected is None or selected.originality_status is OriginalityStatus.PASSED
+            )
             # Only an idea that PASSED originality is ever auto-selected: the
             # brief acceptance gate refuses anything else, so selecting it
             # would only park the item downstream.
@@ -274,6 +278,7 @@ class AutopilotRunner:
             best_idea_id=best_idea_id,
             ideas_predate_research_inputs=ideas_predate_inputs,
             distinct_input_sources=distinct_input_sources,
+            selected_idea_passed=selected_idea_passed,
             latest_pack_id=latest_pack_id,
             latest_pack_sufficiency=latest_pack_sufficiency,
             eligible_evidence_count=eligible_evidence_count,

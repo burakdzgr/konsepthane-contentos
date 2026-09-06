@@ -89,7 +89,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 BRIEF_COMPOSITION_TEMPLATE_NAME = "brief-composition"
-BRIEF_COMPOSITION_TEMPLATE_VERSION = "3"
+BRIEF_COMPOSITION_TEMPLATE_VERSION = "4"
 
 # Deterministic bounded evidence-projection policy (option B of the
 # accepted contract): items are ordered by pack role priority, then claim
@@ -164,6 +164,11 @@ You MUST:
 - reference evidence ONLY by copying an `evidence_id` exactly as supplied
   (one complete 36-character id per list entry; never join, shorten or
   invent ids — a single malformed id invalidates the whole contract).
+- keep the contract COMPACT: at most 12 claims (claim text ≤ 220
+  characters, handling ≤ 160), at most 8 required + 3 optional sections
+  (purpose ≤ 200 characters), at most 6 FAQ questions, at most 6 additional
+  acceptance criteria; the whole JSON must stay under 12,000 characters —
+  a longer reply is cut off in transport and discarded.
 
 You MUST NOT:
 - invent facts, statistics, quotes, interviews, customer experiences,
