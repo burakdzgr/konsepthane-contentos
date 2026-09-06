@@ -33,6 +33,7 @@ completed-outcome design — that remains a future orchestration boundary.
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -66,6 +67,9 @@ _FAILURE_STATUS: dict[ProviderFailureKind, GenerationStatus] = {
     ProviderFailureKind.TIMEOUT: GenerationStatus.TIMEOUT,
     ProviderFailureKind.CANCELLED: GenerationStatus.CANCELLED,
 }
+
+
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,8 +214,18 @@ def _validate_payload[PayloadT: BaseModel](
         # The rejected raw payload is discarded after classification; no
         # validation traceback or input echo becomes domain data.
         return GenerationStatus.VALIDATION_FAILED, SCHEMA_VALIDATION_ERROR_CLASS, None
-    if spec.domain_validator is not None and spec.domain_validator(validated) is not None:
-        return GenerationStatus.VALIDATION_FAILED, DOMAIN_VALIDATION_ERROR_CLASS, None
+    if spec.domain_validator is not None:
+        reason = spec.domain_validator(validated)
+        if reason is not None:
+            # The reason is the validator's own short code, never model
+            # output; without it an operator cannot tell which rule the
+            # generation broke.
+            _logger.warning(
+                "generation_domain_validation_failed",
+                schema=f"{spec.schema_name}/{spec.schema_version}",
+                reason=reason[:200],
+            )
+            return GenerationStatus.VALIDATION_FAILED, DOMAIN_VALIDATION_ERROR_CLASS, None
     return GenerationStatus.SUCCEEDED, None, validated
 
 

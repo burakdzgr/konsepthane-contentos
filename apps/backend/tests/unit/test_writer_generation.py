@@ -290,3 +290,11 @@ class TestWriterGeneration:
             assert recovered.status is GenerationStatus.SUCCEEDED
             assert recovered.draft is not None
             assert provider.invocations == 2
+
+
+def test_template_v3_forbids_claim_refs_on_placeholder_blocks() -> None:
+    from contentos.drafts.generation import _TEMPLATE_V1, WRITER_DRAFT_TEMPLATE_VERSION
+
+    assert WRITER_DRAFT_TEMPLATE_VERSION == "3"
+    assert "YER TUTUCUDUR" in _TEMPLATE_V1
+    assert "claim_refs" in _TEMPLATE_V1

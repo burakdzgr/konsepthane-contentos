@@ -57,12 +57,21 @@ class WriterBlockV1(BaseModel):
     block_id: BlockId
     kind: BlockKindLiteral
     text: BlockText
-    claim_refs: list[ClaimRef] = Field(default_factory=list, max_length=MAX_CLAIM_REFS_PER_BLOCK)
+    claim_refs: list[ClaimRef] = Field(
+        default_factory=list,
+        max_length=MAX_CLAIM_REFS_PER_BLOCK,
+        description="Brief claim ids the text relays; MUST be empty for "
+        "internal_link_need and media_need blocks.",
+    )
     uncertainty_refs: list[HandlingRef] = Field(
         default_factory=list, max_length=MAX_UNCERTAINTY_REFS_PER_BLOCK
     )
-    link_need_ref: int | None = Field(default=None, ge=0, le=50)
-    media_need_ref: int | None = Field(default=None, ge=0, le=50)
+    link_need_ref: int | None = Field(
+        default=None, ge=0, le=50, description="Only on internal_link_need blocks."
+    )
+    media_need_ref: int | None = Field(
+        default=None, ge=0, le=50, description="Only on media_need blocks."
+    )
 
 
 class WriterSectionV1(BaseModel):

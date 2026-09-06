@@ -86,7 +86,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 WRITER_DRAFT_TEMPLATE_NAME = "writer-draft"
-WRITER_DRAFT_TEMPLATE_VERSION = "2"
+WRITER_DRAFT_TEMPLATE_VERSION = "3"
 
 MAX_EVIDENCE_STATEMENT_CHARS = 500
 MAX_OUTPUT_TOKENS = 16_000
@@ -122,6 +122,13 @@ Türkçe bir TASLAĞA dönüştürmek. Kurallar bağlayıcıdır:
 10. editorial_findings listesi doluysa bu bir YENİDEN YAZIMDIR: her
     bulguyu ilgili yerde gider; bulgular talimattır, asla yeni olgu
     kaynağı değildir.
+11. internal_link_need ve media_need blokları YER TUTUCUDUR: claim_refs
+    daima boş liste ([]) olur; media_need_ref yalnızca media_need,
+    link_need_ref yalnızca internal_link_need bloğunda bulunur. Bir
+    iddiayı görsel veya bağlantıya bağlamak istiyorsan onu ayrı bir
+    paragraph/callout bloğunda claim_refs ile yaz.
+12. Bir blok içinde kanıt cümlesiyle 80 karakterden uzun birebir örtüşen
+    dizi olmasın; ifadeyi baştan kur.
 Çıktı: yalnızca writer-draft/1 şemasına uyan JSON.
 """
 
@@ -174,8 +181,8 @@ class _WriterOutputValidator:
         try:
             body = payload_to_body_input(payload)
             cleaned = body.cleaned()
-        except DraftInputError:
-            return "invalid_body_structure"
+        except DraftInputError as error:
+            return f"invalid_body_structure: {error}"
 
         body_keys = [section["key"] for section in cleaned["sections"]]
         if any(key not in body_keys for key in self.required_keys):
@@ -203,8 +210,8 @@ class _WriterOutputValidator:
                 self.brief,
                 self.originality_policy,
             )
-        except DraftPolicyViolationError:
-            return "writer_policy_violation"
+        except DraftPolicyViolationError as error:
+            return f"writer_policy_violation: {error}"
         return None
 
 

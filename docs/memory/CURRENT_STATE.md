@@ -538,6 +538,20 @@ restart while a task polls the gateway orphans that job until Redis redelivers
 the task (default visibility timeout 1 h) — the autopilot's 15-minute in-flight
 window re-enqueues sooner.
 
+### Writer template v3: placeholder blocks carry no claim refs (2026-09-06)
+
+The first live writer draft passed every writer policy (handling coverage
+52/52, claim semantics, originality 70/80 chars) but was rejected as
+`domain_validation` because the model attached `claim_refs` to `media_need`
+placeholder blocks, which the draft DTO forbids. The validator's reason was
+never logged, so the diagnosis required re-running the validators inside the
+worker against the archived reply. Changes: writer template v3 states the
+placeholder rule and the 80-character verbatim limit explicitly, the writer
+block schema carries field descriptions the model sees, the writer validator
+returns the rule text with its code, and the generation service logs
+`generation_domain_validation_failed` with that reason (validator text only,
+never model output). Persistence rules are unchanged: nothing is coerced.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,
