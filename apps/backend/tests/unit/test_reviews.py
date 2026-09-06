@@ -208,6 +208,73 @@ class TestReviewCreation:
             assert events[0].request_id == "review-req-1"
 
 
+class TestStaleReviewSupersession:
+    def test_review_of_a_superseded_draft_is_replaced_without_an_operator_reason(
+        self, harness: Harness
+    ) -> None:
+        import dataclasses
+
+        accepted, draft_id, claim_id = editing_context(harness)
+        work_item_id = accepted.context.work_item_id
+        with harness.session() as session:
+            service = ReviewService(session)
+            first = service.create_review(work_item_id, [finding(claim_id=claim_id)])
+            session.commit()
+            assert first.review.verdict is ReviewVerdict.REVISE
+
+            # Editor sent it back; the Writer produced v2; the system moved
+            # the item to EDITING with v2 pinned — the runtime's exact path.
+            workflow = WorkflowService(session)
+            workflow.transition(
+                work_item_id,
+                WorkflowState.CHANGES_REQUESTED,
+                actor_origin=WorkflowActorOrigin.OPERATOR,
+                reason="editör düzeltme istedi",
+                artifact_refs={
+                    "content_draft_id": str(draft_id),
+                    "editorial_review_id": str(first.review.id),
+                },
+                responsible_state=WorkflowState.DRAFTING,
+            )
+            workflow.resolve_changes_requested(work_item_id, reason="yeniden yazıma yönlendirildi")
+            body = valid_body(accepted.claim_ids, accepted.handling_ids)
+            body_v2 = dataclasses.replace(
+                body,
+                sections=tuple(
+                    dataclasses.replace(section, heading=section.heading + " (v2)")
+                    for section in body.sections
+                ),
+            )
+            creation = DraftService(session).create_operator_draft(
+                accepted.context.brief_id, body_v2, supersede_reason="editör düzeltme istedi"
+            )
+            assert creation.created and creation.draft.version == 2
+            workflow.transition(
+                work_item_id,
+                WorkflowState.EDITING,
+                actor_origin=WorkflowActorOrigin.SYSTEM,
+                reason="v2 durable and valid",
+                artifact_refs={
+                    "content_draft_id": str(creation.draft.id),
+                    "draft_version": creation.draft.version,
+                    "content_hash": creation.draft.content_hash,
+                },
+            )
+            session.commit()
+
+            # No supersede reason from the caller: the stale review is
+            # history by definition and the system names the reason.
+            second = service.create_review(work_item_id, [])
+            session.commit()
+            assert second.created and second.review.version == 2
+            assert second.review.content_draft_id == creation.draft.id
+            assert second.superseded_review_id == first.review.id
+            old = ReviewRepository(session).get_review(first.review.id)
+            assert old is not None and old.status is ReviewStatus.SUPERSEDED
+            events = ReviewRepository(session).list_status_events(first.review.id)
+            assert "eski taslak sürümüne" in (events[0].reason or "")
+
+
 class TestFindingValidation:
     def test_unknown_block_anchor_rejected(self, harness: Harness) -> None:
         accepted, _, _ = editing_context(harness)

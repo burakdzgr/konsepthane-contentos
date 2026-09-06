@@ -109,6 +109,9 @@ class Snapshot:
     active_draft_id: uuid.UUID | None = None
     active_review_id: uuid.UUID | None = None
     active_review_verdict: ReviewVerdict | None = None
+    # The ACTIVE review covers a draft other than the ACTIVE draft (the
+    # draft was rewritten after that review): it is history, not a verdict.
+    active_review_is_stale: bool = False
     rework_cycles: int = 0
     active_qa_outcome: QaOutcome | None = None
     open_media_needs: tuple[int, ...] = ()
@@ -289,7 +292,11 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
                 "etkin taslak yok; yazar motoru çalıştırılıyor",
                 content_brief_id=str(s.latest_brief_id),
             )
-        if s.active_review_verdict is ReviewVerdict.REVISE and s.rework_cycles > 0:
+        if (
+            s.active_review_verdict is ReviewVerdict.REVISE
+            and s.rework_cycles > 0
+            and not s.active_review_is_stale
+        ):
             # Back from CHANGES_REQUESTED: the active draft is the one the
             # editor sent back, so a new version is owed. The Writer picks
             # the findings up from the durable rework entry; the reason
@@ -305,7 +312,10 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
     if state is WorkflowState.EDITING:
         if s.active_draft_id is None:
             return _wait("no_active_draft", "etkin taslak yok")
-        if s.active_review_id is None:
+        if s.active_review_id is None or s.active_review_is_stale:
+            # A stale review belongs to a superseded draft version; the
+            # Editor must judge the active draft (review persistence
+            # supersedes the stale one with a system reason).
             return _enqueue(
                 ACTION_GENERATE_REVIEW,
                 "editör değerlendirmesi yok; üretiliyor",

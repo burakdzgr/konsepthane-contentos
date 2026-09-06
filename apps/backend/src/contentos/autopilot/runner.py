@@ -290,6 +290,11 @@ class AutopilotRunner:
             active_draft_id=active_draft.id if active_draft is not None else None,
             active_review_id=active_review.id if active_review is not None else None,
             active_review_verdict=active_review.verdict if active_review is not None else None,
+            active_review_is_stale=(
+                active_review is not None
+                and active_draft is not None
+                and active_review.content_draft_id != active_draft.id
+            ),
             rework_cycles=rework_cycles,
             active_qa_outcome=active_qa.outcome if active_qa is not None else None,
             open_media_needs=open_needs,
@@ -507,6 +512,8 @@ class AutopilotRunner:
     ) -> dict[str, Any]:
         draft = DraftRepository(self._session).get_active_draft(work_item.id)
         review = ReviewRepository(self._session).get_active_review(work_item.id)
+        if review is None or draft is None or review.content_draft_id != draft.id:
+            raise RuntimeError("rework requires an ACTIVE review over the ACTIVE draft")
         artifact_refs: dict[str, Any] = dict(refs)
         if draft is not None:
             artifact_refs.update(

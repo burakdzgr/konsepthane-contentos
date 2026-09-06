@@ -581,6 +581,19 @@ verdict is `revise` and at least one rework cycle was entered; the Writer
 engine already carries the findings from the durable rework entry, and the
 EDITING branch still stops at `MAX_REWORK_CYCLES` for a human decision.
 
+### Stale editor reviews after a rewrite (2026-09-06)
+
+After the rework draft (v2) the ACTIVE review still covered v1: review
+persistence refused the v2 review ("superseding the active review requires an
+explicit reason"), the SUCCEEDED editor attempt lost its output
+(`ReviewGenerationMaterializationError`), and the planner was one in-flight
+window away from requesting rework again on the v1 verdict. Now: the snapshot
+carries `active_review_is_stale` (review's draft ≠ active draft); the EDITING
+branch asks for a fresh review when the review is stale, the DRAFTING rework
+branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
+supersedes a review of a superseded draft with a system reason when the caller
+gives none (a review of an old version is history by definition).
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

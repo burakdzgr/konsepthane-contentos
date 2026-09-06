@@ -187,6 +187,16 @@ class ReviewService:
             if active.content_hash == content_hash:
                 # Identical re-review of the same draft: idempotent reuse.
                 return ReviewCreation(review=active, created=False, superseded_review_id=None)
+            if active.content_draft_id != draft.id and (
+                supersede_reason is None or not supersede_reason.strip()
+            ):
+                # The active review judged a draft version that has since
+                # been superseded; it is history by definition, so the
+                # system names the reason instead of refusing the new one.
+                supersede_reason = (
+                    f"taslak v{draft.version} için yeni değerlendirme; önceki "
+                    "değerlendirme eski taslak sürümüne aitti"
+                )
             if supersede_reason is None or not supersede_reason.strip():
                 raise ReviewInputError("superseding the active review requires an explicit reason")
             cleaned_supersede_reason = _required_reason(supersede_reason)

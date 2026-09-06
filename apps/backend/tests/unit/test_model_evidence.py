@@ -598,3 +598,29 @@ class TestReworkRedraft:
         assert action.payload["content_brief_id"] == str(base.latest_brief_id)
         assert "döngü" in action.payload["supersede_reason"]
         assert plan(sent_back, AutopilotMode.SUPERVISED).name == ACTION_GENERATE_DRAFT
+
+    def test_a_stale_review_never_triggers_rework_and_asks_for_a_fresh_review(self) -> None:
+        from contentos.autopilot.planner import ACTION_GENERATE_DRAFT, ACTION_GENERATE_REVIEW
+        from contentos.reviews.enums import ReviewVerdict
+
+        # DRAFTING again but the REVISE review belongs to the superseded
+        # draft: no second rewrite on its account.
+        base = Snapshot(
+            work_item_id=uuid.uuid4(),
+            state=WorkflowState.DRAFTING,
+            opportunity_id=uuid.uuid4(),
+            disposition=OpportunityDisposition.COMMISSIONED,
+            latest_brief_id=uuid.uuid4(),
+            active_draft_id=uuid.uuid4(),
+            active_review_id=uuid.uuid4(),
+            active_review_verdict=ReviewVerdict.REVISE,
+            active_review_is_stale=True,
+            rework_cycles=1,
+        )
+        assert plan(base, AutopilotMode.AUTONOMOUS).name != ACTION_GENERATE_DRAFT
+
+        # EDITING with only a stale review: the Editor must judge v2, and the
+        # planner must not request rework on the old verdict.
+        editing = dataclasses.replace(base, state=WorkflowState.EDITING)
+        action = plan(editing, AutopilotMode.AUTONOMOUS)
+        assert action.kind == "enqueue" and action.name == ACTION_GENERATE_REVIEW
