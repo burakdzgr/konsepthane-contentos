@@ -44,6 +44,22 @@ class TransportConfigurationError(PublishingError):
     missing. Raised BEFORE any dispatch — never after."""
 
 
+MAX_CANONICAL_URL_LENGTH = 2048
+
+
+def absolute_url_or_none(value: object) -> str | None:
+    """An absolute http(s) URL exactly as reported, else None (a bare
+    reference or junk is never turned into an address)."""
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate.lower().startswith(("http://", "https://")):
+        return None
+    if len(candidate) > MAX_CANONICAL_URL_LENGTH or any(c.isspace() for c in candidate):
+        return None
+    return candidate
+
+
 @dataclass(frozen=True, slots=True)
 class TransportOutcome:
     """One dispatch outcome, exactly as it happened."""
@@ -51,6 +67,9 @@ class TransportOutcome:
     status: AttemptStatus
     remote_publication_ref: str | None = None
     error_class: str | None = None
+    # The public address Konsepthane reports for the publication, when it
+    # reports one; never guessed from the reference.
+    canonical_url: str | None = None
 
     def __post_init__(self) -> None:
         if (self.status == "succeeded") != (self.remote_publication_ref is not None):
@@ -249,7 +268,11 @@ class HttpPublishingTransport:
                 return TransportOutcome(
                     status="transport_error", error_class="publishing_api_missing_ref"
                 )
-            return TransportOutcome(status="succeeded", remote_publication_ref=ref)
+            return TransportOutcome(
+                status="succeeded",
+                remote_publication_ref=ref,
+                canonical_url=absolute_url_or_none(body.get("canonical_url")),
+            )
         return self._failure_for_status(response.status_code, prefix="publishing_api")
 
     @staticmethod

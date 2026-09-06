@@ -1167,6 +1167,7 @@ def register_editorial_pipeline_tasks(
                 publication_attempt_id=prior.id,
                 remote_publication_ref=prior.remote_publication_ref,
                 published_at=prior.created_at,
+                canonical_url=prior.canonical_url,
             )
             # No downstream dispatch: distribution/measuring are later phases.
             return _summary(

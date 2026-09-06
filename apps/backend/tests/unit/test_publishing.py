@@ -406,7 +406,9 @@ class TestPublishTask:
         work_item_id, package_id = self.scheduled(harness)
         transport = FakePublishingTransport(
             outcome=TransportOutcome(
-                status="succeeded", remote_publication_ref="konsepthane-pub-42"
+                status="succeeded",
+                remote_publication_ref="konsepthane-pub-42",
+                canonical_url="https://konsepthane.net/rehber/balon",
             )
         )
         app = self.worker_app(harness, transport)
@@ -420,6 +422,16 @@ class TestPublishTask:
             attempt = session.execute(select(PublicationAttempt)).scalar_one()
             assert attempt.status == "succeeded"
             assert attempt.remote_publication_ref == "konsepthane-pub-42"
+            assert attempt.canonical_url == "https://konsepthane.net/rehber/balon"
+            from contentos.performance.models import PublishedContent
+
+            content = session.scalar(
+                select(PublishedContent).where(
+                    PublishedContent.publication_attempt_id == attempt.id
+                )
+            )
+            assert content is not None
+            assert content.canonical_url == "https://konsepthane.net/rehber/balon"
             assert attempt.idempotency_key.startswith("contentos-pub-")
             assert transport.calls[0]["idempotency_key"] == attempt.idempotency_key
             event = (

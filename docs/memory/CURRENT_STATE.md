@@ -594,6 +594,23 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Published to the local Konsepthane; canonical URL now kept (2026-09-06)
+
+Burak approved the Cinderella package as reviewer `burak`; the autopilot
+assembled, scheduled and published it to the local Konsepthane (ilham) API on
+port 4000 (`guide:cfa338f6…`, `http://localhost:3200/rehber/cinderella-parti-
+motifleri-sato-cam-ayakkabi-fayton-ve-saat-nerede-kullanilir`, guide status
+PUBLISHED/PUBLIC/APPROVED/INDEX). Two gaps surfaced: (1) ContentOS dropped
+the `canonical_url` Konsepthane reports (the reference `guide:uuid` is not an
+address), so `published_contents.canonical_url` was NULL and the performance
+loop could not match GSC/GA4 rows — migration 0037 adds
+`publication_attempts.canonical_url`, the transport parses it, and
+`record_published` prefers it over a URL-shaped reference; (2) the Konsepthane
+page renders the two media blocks as literal markdown image syntax
+(`![alt](http://localhost:9000/ilham-media/…)`) instead of `<img>` — rendering
+is Konsepthane's (ilham) responsibility per the contract, so this is an
+ilham-side fix.
+
 ### First autonomous item reached awaiting_human_review (2026-09-06)
 
 Work item f48ee8f7 ("Beautiful Cinderella 4th Birthday Party", inspiration

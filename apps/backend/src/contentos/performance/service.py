@@ -159,6 +159,7 @@ class PerformanceService:
         remote_publication_ref: str,
         published_at: datetime,
         opportunity_id: uuid.UUID | None = None,
+        canonical_url: str | None = None,
     ) -> PublishedContent:
         """Start measurement for a work item (idempotent per work item)."""
         existing = self.get_by_work_item(work_item_id)
@@ -182,7 +183,10 @@ class PerformanceService:
             opportunity_id=opportunity_id,
             publication_package_id=publication_package_id,
             publication_attempt_id=publication_attempt_id,
-            canonical_url=canonical_url_from_ref(cleaned_ref),
+            # The address Konsepthane reported wins; a URL-shaped reference
+            # is the only fallback, and a bare reference stays unknown.
+            canonical_url=canonical_url_from_ref(canonical_url)
+            or canonical_url_from_ref(cleaned_ref),
             remote_publication_ref=cleaned_ref,
             published_at=published_at,
             topic_cluster_id=derived.topic_cluster_id,
@@ -485,6 +489,7 @@ def record_publication_fail_safe(
     publication_attempt_id: uuid.UUID | None,
     remote_publication_ref: str | None,
     published_at: datetime | None = None,
+    canonical_url: str | None = None,
 ) -> None:
     """Worker hook: start measurement after a successful publication.
 
@@ -501,6 +506,7 @@ def record_publication_fail_safe(
             publication_attempt_id=publication_attempt_id,
             remote_publication_ref=remote_publication_ref,
             published_at=published_at if published_at is not None else datetime.now(UTC),
+            canonical_url=canonical_url,
         )
         session.commit()
     except Exception as error:  # noqa: BLE001 - bookkeeping must never fail the publish

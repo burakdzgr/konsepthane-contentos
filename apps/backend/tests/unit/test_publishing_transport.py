@@ -164,7 +164,11 @@ class TestContractHappyPath:
             "contentos-pub-abc",
             request_id="req-42",
         )
-        assert outcome == TransportOutcome(status="succeeded", remote_publication_ref="article:1")
+        assert outcome == TransportOutcome(
+            status="succeeded",
+            remote_publication_ref="article:1",
+            canonical_url="https://konsepthane.com/x",
+        )
         put, post = double.requests
         assert put["method"] == "PUT"
         assert put["path"].endswith(f"/v1/media/{PNG_SHA}")

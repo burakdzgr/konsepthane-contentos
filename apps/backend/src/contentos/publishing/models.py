@@ -144,6 +144,7 @@ class PublicationAttempt(Base):
     status: Mapped[str] = mapped_column(String(length=32), nullable=False)
     error_class: Mapped[str | None] = mapped_column(String(length=100), nullable=True)
     remote_publication_ref: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    canonical_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
     transport_name: Mapped[str] = mapped_column(String(length=100), nullable=False)
     request_id: Mapped[str | None] = mapped_column(String(length=128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -197,6 +197,7 @@ class PublishingService:
             status=outcome.status,
             error_class=outcome.error_class,
             remote_publication_ref=outcome.remote_publication_ref,
+            canonical_url=outcome.canonical_url,
             transport_name=transport_name,
             request_id=request_id,
         )
