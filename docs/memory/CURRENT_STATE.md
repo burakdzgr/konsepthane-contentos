@@ -594,6 +594,19 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### First autonomous item reached awaiting_human_review (2026-09-06)
+
+Work item f48ee8f7 ("Beautiful Cinderella 4th Birthday Party", inspiration
+source Kara's Party Ideas + a second linked source) went from intake to
+`awaiting_human_review` in one afternoon on the real gateway: 8 verified
+facts, 38-item evidence pack, intent analysis, brief (compact template v4, 12
+claims), writer drafts v1→v3 with two editor rework cycles (verdicts revise,
+revise, pass with 5 minor findings), two generated images bound to their
+needs by the operator, QA report v2 `ready_for_human_review`. Remaining
+human steps: review the draft in the admin, then final approval (ADR 0004).
+Known costs: each writer draft needs 1–2 attempts against the policies
+(≈4 min each on the browser gateway), reviews ≈1 min, images ≈1–1.5 min.
+
 ### Generated images count as candidates for their need (2026-09-06)
 
 Once images were produced, the autopilot generated a second image for need 0
