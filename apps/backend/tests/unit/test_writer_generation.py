@@ -295,7 +295,8 @@ class TestWriterGeneration:
 def test_template_v3_forbids_claim_refs_on_placeholder_blocks() -> None:
     from contentos.drafts.generation import _TEMPLATE_V1, WRITER_DRAFT_TEMPLATE_VERSION
 
-    assert WRITER_DRAFT_TEMPLATE_VERSION == "4"
+    assert WRITER_DRAFT_TEMPLATE_VERSION == "5"
+    assert "kapsam-notlari-1" in _TEMPLATE_V1
     assert "YER TUTUCUDUR" in _TEMPLATE_V1
     assert "claim_refs" in _TEMPLATE_V1
 

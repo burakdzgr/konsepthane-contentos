@@ -70,6 +70,7 @@ from contentos.drafts.policies import (
 from contentos.drafts.repository import DraftRepository
 from contentos.drafts.service import DraftService
 from contentos.drafts.values import (
+    MAX_UNCERTAINTY_REFS_PER_BLOCK,
     WRITER_ENGINE_NAME,
     WRITER_ENGINE_VERSION,
     DraftBlock,
@@ -86,7 +87,7 @@ from contentos.workflow.enums import WorkflowState
 from contentos.workflow.repository import WorkflowRepository
 
 WRITER_DRAFT_TEMPLATE_NAME = "writer-draft"
-WRITER_DRAFT_TEMPLATE_VERSION = "4"
+WRITER_DRAFT_TEMPLATE_VERSION = "5"
 
 MAX_EVIDENCE_STATEMENT_CHARS = 500
 MAX_OUTPUT_TOKENS = 16_000
@@ -107,8 +108,14 @@ Türkçe bir TASLAĞA dönüştürmek. Kurallar bağlayıcıdır:
 3. inference türü iddiaları çıkarım diliyle yaz; bu iddiaya bağlı HER
    blokta şu ifadelerden en az biri geçmeli: {hedging}. Kesinliğe
    çevirme.
-4. required_handling listesindeki HER kaydı en az bir blokta
-   uncertainty_refs ile karşıla; uyarıları asla yumuşatma veya silme.
+4. required_handling listesindeki HER kaydı (toplam sayısı
+   required_handling_count) en az bir blokta uncertainty_refs ile karşıla;
+   uyarıları asla yumuşatma veya silme. Metinde doğal olarak işlediklerin
+   dışında kalan hiçbir kayıt açıkta kalmasın: son bölümün sonuna
+   "kapsam-notlari-1", "kapsam-notlari-2", ... adlı callout blokları ekle
+   ve required_handling'deki TÜM handling_id değerlerini bu bloklarda
+   uncertainty_refs olarak listele (blok başına en fazla
+   max_uncertainty_refs_per_block ref; sayım tutmalı).
 5. Bölüm anahtarları brief'in bölüm sözleşmesine uymalı; zorunlu her
    bölüm tam bir kez bulunmalı.
 6. Metinde URL, HTML, script, marka linki YOK. İç bağlantı ihtiyaçları
@@ -511,6 +518,8 @@ class WriterEngine:
             },
             "claims": claim_projection,
             "evidence_units": evidence_units,
+            "required_handling_count": len(manifest),
+            "max_uncertainty_refs_per_block": MAX_UNCERTAINTY_REFS_PER_BLOCK,
             "required_handling": [
                 {
                     "handling_id": entry.handling_id,

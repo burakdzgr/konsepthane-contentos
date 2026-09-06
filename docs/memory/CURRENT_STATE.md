@@ -594,6 +594,16 @@ branch and `_request_rework` ignore/refuse stale reviews, and `ReviewService`
 supersedes a review of a superseded draft with a system reason when the caller
 gives none (a review of an old version is history by definition).
 
+### Writer template v5: coverage blocks for every handling id (2026-09-06)
+
+The template-v4 draft discharged 51 of 52 mandatory handling ids and failed
+`validate_handling_coverage`. Template v5 tells the Writer to add
+`kapsam-notlari-N` callout blocks at the end of the last section listing EVERY
+handling id (at most `max_uncertainty_refs_per_block` per block), and the
+projection now carries `required_handling_count` and that limit so the model
+can count. The validator is unchanged; the manifest (one staleness entry per
+evidence unit, one per claim handling, notes, locale) stays mandatory.
+
 ### Writer template v4 and autopilot draft retries (2026-09-06)
 
 The third live draft (rework cycle 2) failed the writer policies twice over:
