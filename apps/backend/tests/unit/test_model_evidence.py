@@ -569,3 +569,32 @@ class TestOriginalityGuard:
         )
         action = plan(snapshot, AutopilotMode.AUTONOMOUS)
         assert action.kind == "wait" and action.name == "idea_originality"
+
+
+class TestReworkRedraft:
+    def test_drafting_after_rework_regenerates_the_draft_with_a_supersede_reason(self) -> None:
+        from contentos.autopilot.planner import ACTION_GENERATE_DRAFT
+        from contentos.reviews.enums import ReviewVerdict
+
+        base = Snapshot(
+            work_item_id=uuid.uuid4(),
+            state=WorkflowState.DRAFTING,
+            opportunity_id=uuid.uuid4(),
+            disposition=OpportunityDisposition.COMMISSIONED,
+            latest_brief_id=uuid.uuid4(),
+            active_draft_id=uuid.uuid4(),
+        )
+        # A draft that has not been reviewed yet is the system's to advance.
+        assert plan(base, AutopilotMode.AUTONOMOUS).kind == "none"
+
+        sent_back = dataclasses.replace(
+            base,
+            active_review_id=uuid.uuid4(),
+            active_review_verdict=ReviewVerdict.REVISE,
+            rework_cycles=1,
+        )
+        action = plan(sent_back, AutopilotMode.AUTONOMOUS)
+        assert action.kind == "enqueue" and action.name == ACTION_GENERATE_DRAFT
+        assert action.payload["content_brief_id"] == str(base.latest_brief_id)
+        assert "döngü" in action.payload["supersede_reason"]
+        assert plan(sent_back, AutopilotMode.SUPERVISED).name == ACTION_GENERATE_DRAFT

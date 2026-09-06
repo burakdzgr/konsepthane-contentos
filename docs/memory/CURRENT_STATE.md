@@ -569,6 +569,18 @@ review and media image generation with it. A duplicate returns
 `duplicate_in_flight` without touching the provider; the holder (or the
 autopilot's next sweep) owns the outcome.
 
+### Autopilot rework loop closed (2026-09-06)
+
+The first live editor review returned `revise` (one major claim-faithfulness
+finding, one minor style finding). The autopilot requested rework and resolved
+it back to DRAFTING, then idled with "taslak var; sistem editör aşamasına
+geçiriyor": the DRAFTING branch only generated a draft when none existed, and
+the sent-back draft was still the active one. The planner now enqueues
+`generate_draft` with an explicit supersede reason when the active review's
+verdict is `revise` and at least one rework cycle was entered; the Writer
+engine already carries the findings from the durable rework entry, and the
+EDITING branch still stops at `MAX_REWORK_CYCLES` for a human decision.
+
 ## Sitemap discovery made bounded, not brittle (2026-09-06)
 
 Registering the operator's real source list (PartiAVM, Düğün.com,

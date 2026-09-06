@@ -289,6 +289,17 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
                 "etkin taslak yok; yazar motoru çalıştırılıyor",
                 content_brief_id=str(s.latest_brief_id),
             )
+        if s.active_review_verdict is ReviewVerdict.REVISE and s.rework_cycles > 0:
+            # Back from CHANGES_REQUESTED: the active draft is the one the
+            # editor sent back, so a new version is owed. The Writer picks
+            # the findings up from the durable rework entry; the reason
+            # supersedes the old version explicitly.
+            return _enqueue(
+                ACTION_GENERATE_DRAFT,
+                f"editör düzeltme istedi (döngü {s.rework_cycles}); taslak yeniden yazılıyor",
+                content_brief_id=str(s.latest_brief_id),
+                supersede_reason=f"editör düzeltme istedi (yeniden çalışma döngüsü {s.rework_cycles})",
+            )
         return _none("taslak var; sistem editör aşamasına geçiriyor")
 
     if state is WorkflowState.EDITING:
