@@ -296,6 +296,17 @@ def create_mission(harness: Harness) -> uuid.UUID:
         return row.id
 
 
+class TestContracts:
+    def test_over_long_lists_are_cut_to_the_contract_not_refused(self) -> None:
+        from contentos.missions.schemas import MAX_WEB_SIGNALS, ResearchSignalsV1
+
+        signal = web_payload()["signals"][0]
+        payload = ResearchSignalsV1.model_validate(
+            {"signals": [signal] * (MAX_WEB_SIGNALS + 5), "search_notes": None}
+        )
+        assert len(payload.signals) == MAX_WEB_SIGNALS
+
+
 class TestDeterministicLayer:
     def test_quality_is_a_weighted_creative_score_never_demand(self) -> None:
         factors = {

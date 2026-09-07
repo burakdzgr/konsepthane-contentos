@@ -242,7 +242,9 @@ def _last_top_level_object(candidate: str) -> dict[str, Any] | None:
     Scanning from the end keeps a leaked draft or validation snippet from
     shadowing the answer; a decode attempt fails at the first invalid
     character, so trying every '{' stays cheap even for long replies."""
-    decoder = json.JSONDecoder()
+    # strict=False: a raw newline or tab inside a string (browser models
+    # emit them) is not a reason to lose an otherwise valid object.
+    decoder = json.JSONDecoder(strict=False)
     trailing_prose: dict[str, Any] | None = None
     position = candidate.rfind("{")
     while position != -1:

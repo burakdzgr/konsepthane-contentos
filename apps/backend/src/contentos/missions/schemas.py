@@ -7,7 +7,7 @@ validated here and again by the deterministic domain layer in
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 MISSION_PLAN_SCHEMA_NAME = "mission-plan"
 MISSION_PLAN_SCHEMA_VERSION = "1"
@@ -74,11 +74,24 @@ class WebSignalV1(BaseModel):
     query: Short | None = None
 
 
+def _bounded(values: object, limit: int) -> object:
+    """A list longer than the contract is cut, not refused: the bound is a
+    size guard, the items themselves are still validated one by one."""
+    if isinstance(values, list) and len(values) > limit:
+        return values[:limit]
+    return values
+
+
 class ResearchSignalsV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     signals: list[WebSignalV1] = Field(default_factory=list, max_length=MAX_WEB_SIGNALS)
     search_notes: Medium | None = None
+
+    @field_validator("signals", mode="before")
+    @classmethod
+    def _cap_signals(cls, value: object) -> object:
+        return _bounded(value, MAX_WEB_SIGNALS)
 
 
 class IdeaPrimitiveV1(BaseModel):
@@ -128,3 +141,13 @@ class IdeaSynthesisV1(BaseModel):
 
     primitives: list[IdeaPrimitiveV1] = Field(default_factory=list, max_length=MAX_PRIMITIVES)
     candidates: list[IdeaCandidateV1] = Field(min_length=1, max_length=MAX_SYNTHESIS_CANDIDATES)
+
+    @field_validator("primitives", mode="before")
+    @classmethod
+    def _cap_primitives(cls, value: object) -> object:
+        return _bounded(value, MAX_PRIMITIVES)
+
+    @field_validator("candidates", mode="before")
+    @classmethod
+    def _cap_candidates(cls, value: object) -> object:
+        return _bounded(value, MAX_SYNTHESIS_CANDIDATES)

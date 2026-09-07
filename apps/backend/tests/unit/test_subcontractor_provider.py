@@ -130,6 +130,11 @@ def test_scratch_work_before_the_answer_does_not_shadow_it() -> None:
     }
 
 
+def test_raw_control_characters_inside_strings_are_tolerated() -> None:
+    raw = '{"title": "Balon' + chr(10) + " partisi" + chr(9) + 'fikri"}'
+    assert extract_json_object(raw) == {"title": "Balon" + chr(10) + " partisi" + chr(9) + "fikri"}
+
+
 def test_the_answer_may_be_followed_by_prose_but_not_by_a_later_object() -> None:
     assert extract_json_object('{"title": "Balon"} — bitti.') == {"title": "Balon"}
     assert extract_json_object('taslak {"title": "eski"} son: {"title": "yeni"}') == {
