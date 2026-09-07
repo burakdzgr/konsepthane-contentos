@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from contentos.ai.attempts import next_retry_number
+from contentos.ai.attempts import consecutive_provider_failures, next_retry_number
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
 from contentos.auth.models import User
@@ -136,6 +136,11 @@ class StepOutcome:
     action: Action
     performed: bool
     detail: dict[str, Any]
+
+
+# Consecutive provider failures (timeouts/errors) for one AI action before the
+# autopilot stops re-queuing it and asks a human.
+MAX_PROVIDER_FAILURE_STREAK = 3
 
 
 class AutopilotRunner:
@@ -331,6 +336,10 @@ class AutopilotRunner:
         action = plan(snapshot, mode)
         if action.kind == "none":
             return StepOutcome(work_item_id, mode, action, False, {})
+        if action.kind == "enqueue":
+            exhausted = self._provider_exhausted(action, work_item)
+            if exhausted is not None:
+                action = exhausted
         if action.is_wait:
             self._autopilot.record_wait_once(
                 work_item_id=work_item_id, action=action.name, mode=mode, reason=action.reason
@@ -366,6 +375,35 @@ class AutopilotRunner:
         return StepOutcome(work_item_id, mode, action, True, detail)
 
     # --- enqueue --------------------------------------------------------------
+
+    def _provider_exhausted(self, action: Action, work_item: EditorialWorkItem) -> Action | None:
+        """After MAX_PROVIDER_FAILURE_STREAK provider failures in a row for the
+        same AI action, stop re-queuing it: one gateway account must not be
+        burned by a prompt that keeps timing out. A human decides."""
+        purpose = PURPOSE_BY_ACTION.get(action.name)
+        if purpose is None:
+            return None
+        payload = action.payload
+        streak = consecutive_provider_failures(
+            self._session,
+            purpose,
+            work_item_id=uuid.UUID(payload["work_item_id"])
+            if payload.get("work_item_id")
+            else work_item.id,
+            opportunity_id=uuid.UUID(payload["opportunity_id"])
+            if payload.get("opportunity_id")
+            else None,
+        )
+        if streak < MAX_PROVIDER_FAILURE_STREAK:
+            return None
+        return Action(
+            kind="wait",
+            name="ai_provider_failures",
+            reason=(
+                f"{action.name}: sağlayıcı arka arkaya {streak} kez başarısız oldu "
+                "(zaman aşımı/hata); gateway kontrolü ve yeniden deneme operatörde"
+            ),
+        )
 
     def _perform_enqueue(
         self, action: Action, actor_user_id: uuid.UUID | None, work_item_id: uuid.UUID

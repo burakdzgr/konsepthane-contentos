@@ -568,6 +568,70 @@ class TestAutopilotRetryNumbers:
         del opportunity
 
 
+class TestProviderFailureCap:
+    def test_three_provider_failures_in_a_row_turn_the_action_into_a_wait(
+        self, session: Session
+    ) -> None:
+        from contentos.ai.attempts import consecutive_provider_failures
+        from contentos.ai.enums import GenerationStatus
+        from contentos.autopilot.planner import ACTION_GENERATE_DRAFT, Action
+        from contentos.autopilot.runner import AutopilotRunner
+
+        source = make_source(session, "ilham")
+        document = make_document(session, source, title="Unicorn Birthday Party")
+        promote(session, document)
+        ModelEvidenceExtractor(session).extract(
+            document.id, provider=FakeStructuredProvider(failure=ProviderFailureKind.TIMEOUT)
+        )
+        session.commit()
+        template = session.scalar(select(AiGenerationAttempt))
+        assert template is not None
+        work_item_id = uuid.uuid4()
+        refs = {**template.input_refs, "work_item_id": str(work_item_id)}
+        template.purpose = GenerationPurpose.WRITER_DRAFT
+        template.input_refs = refs
+        template.status = GenerationStatus.TIMEOUT
+        session.flush()
+        for retry, status in ((1, GenerationStatus.PROVIDER_ERROR), (2, GenerationStatus.TIMEOUT)):
+            session.add(
+                AiGenerationAttempt(
+                    purpose=GenerationPurpose.WRITER_DRAFT,
+                    provider=template.provider,
+                    model_name=template.model_name,
+                    model_version=template.model_version,
+                    schema_name=template.schema_name,
+                    schema_version=template.schema_version,
+                    template_name=template.template_name,
+                    template_version=template.template_version,
+                    input_refs=refs,
+                    input_hash=template.input_hash,
+                    attempt_identity_hash=hashlib.sha256(f"cap-{retry}".encode()).hexdigest(),
+                    retry_number=retry,
+                    status=status,
+                    error_class="subcontractor_timeout",
+                    usage={},
+                )
+            )
+        session.flush()
+        assert (
+            consecutive_provider_failures(
+                session, GenerationPurpose.WRITER_DRAFT, work_item_id=work_item_id
+            )
+            == 3
+        )
+        runner = AutopilotRunner(session, enqueue=lambda name, payload: None)
+        action = Action(
+            kind="enqueue",
+            name=ACTION_GENERATE_DRAFT,
+            reason="test",
+            payload={"content_brief_id": str(uuid.uuid4())},
+        )
+        work_item = type("Item", (), {"id": work_item_id})()
+        waited = runner._provider_exhausted(action, work_item)  # type: ignore[arg-type]
+        assert waited is not None and waited.kind == "wait"
+        assert waited.name == "ai_provider_failures"
+
+
 class TestOriginalityGuard:
     def test_only_passed_ideas_are_auto_selected_and_stale_ideas_regenerate(self) -> None:
         from contentos.autopilot.planner import ACTION_GENERATE_IDEAS, ACTION_SELECT_IDEA
