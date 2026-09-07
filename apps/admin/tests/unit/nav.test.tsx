@@ -12,109 +12,62 @@ import { usePathname, useSearchParams } from "next/navigation";
 const usePathnameMock = vi.mocked(usePathname);
 const useSearchParamsMock = vi.mocked(useSearchParams);
 
-function withSearch(params: Record<string, string> = {}) {
-  useSearchParamsMock.mockReturnValue(
-    new URLSearchParams(params) as unknown as ReturnType<
-      typeof useSearchParams
-    >,
-  );
-}
-
 beforeEach(() => {
   vi.resetAllMocks();
-  withSearch();
+  useSearchParamsMock.mockReturnValue(
+    new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>,
+  );
 });
 
 describe("AppNav", () => {
-  it("renders the sectioned sidebar with the content bot first", () => {
+  it("renders the compact operator path in reference order", () => {
+    usePathnameMock.mockReturnValue("/");
+    render(<AppNav badges={{ calisma: 2, firsatlar: 5, onay: 3 }} />);
+    expect(
+      screen
+        .getAllByRole("link")
+        .map((link) => link.textContent?.replace(/\d+$/, "").trim()),
+    ).toEqual([
+      "Kontrol Merkezi",
+      "Kaynaklar",
+      "Araştırmalar",
+      "Fikirler",
+      "Fırsatlar",
+      "İçerikler",
+      "Onaylar",
+      "Strateji",
+      "Performans",
+      "Ajanlar",
+      "Entegrasyonlar",
+      "Sistem",
+    ]);
+    expect(
+      screen.getByRole("link", { name: /Araştırmalar/ }).textContent,
+    ).toContain("2");
+    expect(screen.getByRole("link", { name: /Onaylar/ }).textContent).toContain(
+      "3",
+    );
+  });
+
+  it("maps labels to real workspaces", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
-
-    const nav = screen.getByRole("navigation", { name: "Birincil" });
-    expect(nav).toBeTruthy();
-    expect(screen.getByText("Çalışma Alanı")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "İçerik Botu" }).getAttribute("href"),
-    ).toBe("/bot");
-    expect(
-      screen.getByRole("link", { name: "Strateji" }).getAttribute("href"),
-    ).toBe("/strateji");
+      screen
+        .getByRole("link", { name: "Kontrol Merkezi" })
+        .getAttribute("href"),
+    ).toBe("/kontrol");
     expect(
       screen.getByRole("link", { name: "Kaynaklar" }).getAttribute("href"),
     ).toBe("/sources");
     expect(
-      screen
-        .getByRole("link", { name: /Benden Bekleyenler/ })
-        .getAttribute("href"),
-    ).toBe("/firsatlar");
-  });
-
-  it("lists the operator's path in flow order, then the system section", () => {
-    usePathnameMock.mockReturnValue("/");
-    render(<AppNav badges={{ calisma: 2, firsatlar: 5 }} />);
-
-    const labels = screen
-      .getAllByRole("link")
-      .map((link) => link.textContent?.replace(/\d+$/, "").trim());
-    expect(labels).toEqual([
-      "İçerik Botu",
-      "Çalışmalar",
-      "Kaynaklar",
-      "İçerikler",
-      "Yayına Hazır",
-      "Benden Bekleyenler",
-      "Strateji",
-      "Nasıl Kullanırım?",
-      "Kontrol Merkezi",
-      "Fikirler",
-      "Performans",
-      "Entegrasyonlar",
-      "Sistem Sağlığı",
-      "Canlı Operasyon",
-      "Gelişmiş Motor",
-      "Teknik Görünümler",
-    ]);
-    expect(
-      screen.getByRole("link", { name: "Yayına Hazır" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Onaylar" }).getAttribute("href"),
     ).toBe("/yayina-hazir");
-    expect(
-      screen.getByRole("link", { name: "Fikirler" }).getAttribute("href"),
-    ).toBe("/fikirler");
-    expect(
-      screen.getByRole("link", { name: "Performans" }).getAttribute("href"),
-    ).toBe("/performans");
-    expect(
-      screen.getByRole("link", { name: "Entegrasyonlar" }).getAttribute("href"),
-    ).toBe("/entegrasyonlar");
-    // Badges: live runs and genuine human decisions only.
-    expect(
-      screen.getByRole("link", { name: /Çalışmalar/ }).textContent,
-    ).toContain("2");
-    expect(
-      screen.getByRole("link", { name: /Benden Bekleyenler/ }).textContent,
-    ).toContain("5");
   });
 
-  it("moves technical operations under the system section", () => {
-    usePathnameMock.mockReturnValue("/");
-    render(<AppNav />);
-
-    expect(screen.getByText("Sistem ve ayrıntılar")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Gelişmiş Motor" })).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Teknik Görünümler" }),
-    ).toBeTruthy();
-    expect(
-      screen
-        .getByRole("link", { name: "Canlı Operasyon" })
-        .getAttribute("href"),
-    ).toBe("/operasyon");
-  });
-
-  it("marks only the current page with aria-current", () => {
+  it("marks only the current page", () => {
     usePathnameMock.mockReturnValue("/sources");
     render(<AppNav />);
-
     expect(
       screen
         .getByRole("link", { name: "Kaynaklar" })
@@ -127,13 +80,15 @@ describe("AppNav", () => {
     ).toBeNull();
   });
 
-  it("keeps detailed state filters out of the primary navigation", () => {
+  it("keeps internal state filters out of navigation", () => {
     usePathnameMock.mockReturnValue("/editorial");
-    withSearch({ state: "drafting" });
+    useSearchParamsMock.mockReturnValue(
+      new URLSearchParams({ state: "drafting" }) as unknown as ReturnType<
+        typeof useSearchParams
+      >,
+    );
     render(<AppNav />);
-
     expect(screen.queryByRole("link", { name: "Taslaklar" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Briefler" })).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "İçerikler" })
@@ -141,15 +96,14 @@ describe("AppNav", () => {
     ).toBeNull();
   });
 
-  it("keeps Research current on detail pages", () => {
+  it("keeps Araştırmalar current on run details", () => {
     usePathnameMock.mockReturnValue(
-      "/research/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+      "/calisma/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
     );
     render(<AppNav />);
-
     expect(
       screen
-        .getByRole("link", { name: "Teknik Görünümler" })
+        .getByRole("link", { name: "Araştırmalar" })
         .getAttribute("aria-current"),
     ).toBe("page");
   });

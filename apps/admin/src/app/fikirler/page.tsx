@@ -184,14 +184,11 @@ export default async function IdeasPage() {
     <section className="panel panel-wide" aria-labelledby="fikirler-title">
       <div className="kontrol-header">
         <div>
-          <p className="eyebrow">Sistemin bulduğu fikirler</p>
           <h1 id="fikirler-title">Fikirler</h1>
           <p className="muted">
-            Kaynaklardan çıkarılan, gruplanan ve değerlendirilen fikirler.
-            Hangileri güçlü, neden güçlü, arama ve trend verisi ne diyor,
-            Konsepthane&apos;nin kendi geçmişi ne söylüyor — hepsi burada.
-            Üretim kararı <Link href="/firsatlar">Benden Bekleyenler</Link>
-            &apos;de verilir.
+            Farklı kaynaklardan keşfedilen ve güçlü içerik fırsatlarına
+            dönüşebilecek fikirleri inceleyin. Üretim kararları{" "}
+            <Link href="/firsatlar">Fırsatlar</Link> alanında verilir.
           </p>
         </div>
         <AutoRefresh

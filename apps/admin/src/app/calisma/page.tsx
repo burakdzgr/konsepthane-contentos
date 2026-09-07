@@ -39,9 +39,8 @@ export default async function RunsPage({
         <div>
           <h1 id="runs-title">Çalışmalar</h1>
           <p className="muted">
-            Otonom alım çalışmaları: keşif → ön filtre → sınırlı getirme →
-            fırsat yükseltme. Geçmiş kalıcıdır; sayfa yenilemek hiçbir şey
-            kaybettirmez.
+            Tüm tarama, analiz ve keşif çalışmalarını takip edin. İçerik
+            otomasyonunun ne yaptığını şeffaf biçimde görün.
           </p>
         </div>
         {result.kind === "ok" && (

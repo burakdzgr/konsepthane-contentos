@@ -55,18 +55,18 @@ describe("Sources page", () => {
     await renderPage();
 
     expect(screen.getByRole("heading", { name: "Kaynaklar" })).toBeTruthy();
-    expect(screen.getByText("Örnek Kaynak")).toBeTruthy();
+    expect(screen.getAllByText("Örnek Kaynak")).toHaveLength(2);
     expect(screen.getByText("ornek-kaynak")).toBeTruthy();
     expect(badge("Etkin")).toBeTruthy();
     expect(badge("Duraklatıldı")).toBeTruthy();
-    expect(screen.getByText("4 öğe")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /4 öğe/ })).toBeTruthy();
     expect(
       screen.getByText("1 yeni · 1 kabul edildi · 1 getirildi · 1 başarısız"),
     ).toBeTruthy();
     // Both fixture rows share the same updated_at timestamp.
-    expect(screen.getAllByText("2026-09-01 10:00 UTC")).toHaveLength(2);
+    expect(screen.getAllByText("2026-09-01 10:00 UTC")).toHaveLength(1);
 
-    const itemsLink = screen.getByRole("link", { name: "4 öğe" });
+    const itemsLink = screen.getByRole("link", { name: /4 öğe/ });
     expect(itemsLink.getAttribute("href")).toBe(
       "/research?source=11111111-2222-4333-8444-555555555555",
     );
@@ -83,7 +83,7 @@ describe("Sources page", () => {
     ]);
     expect(screen.queryByRole("button", { name: "Keşfi başlat" })).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Kaynak kaydet" }).getAttribute("href"),
+      screen.getByRole("link", { name: /Kaynak Ekle/ }).getAttribute("href"),
     ).toBe("/sources/new");
   });
 

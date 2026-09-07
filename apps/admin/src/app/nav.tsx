@@ -30,49 +30,34 @@ type NavSection = {
   entries: NavEntry[];
 };
 
-// The operator's path through the product, in the order the work flows:
-// manage sources → watch the runs → read what was found → produce → decide
-// → learn from performance. Technical views live under "Sistem".
+// Keep the normal operator path deliberately flat. Technical implementation
+// pages remain reachable from the System workspace, not from the main rail.
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: "Çalışma Alanı",
+    title: "",
     entries: [
-      { href: "/bot", label: "İçerik Botu", icon: "home" },
+      { href: "/kontrol", label: "Kontrol Merkezi", icon: "home" },
+      { href: "/sources", label: "Kaynaklar", icon: "source" },
       {
         href: "/calisma",
-        label: "Çalışmalar",
-        icon: "activity",
+        label: "Araştırmalar",
+        icon: "search",
         badge: "calisma",
       },
-      { href: "/sources", label: "Kaynaklar", icon: "source" },
+      { href: "/fikirler", label: "Fikirler", icon: "spark" },
+      { href: "/firsatlar", label: "Fırsatlar", icon: "research" },
       { href: "/editorial", label: "İçerikler", icon: "content" },
       {
         href: "/yayina-hazir",
-        label: "Yayına Hazır",
+        label: "Onaylar",
         icon: "approval",
         badge: "onay",
       },
-      {
-        href: "/firsatlar",
-        label: "Benden Bekleyenler",
-        icon: "spark",
-        badge: "firsatlar",
-      },
-      { href: "/strateji", label: "Strateji", icon: "spark" },
-      { href: "/baslangic", label: "Nasıl Kullanırım?", icon: "home" },
-    ],
-  },
-  {
-    title: "Sistem",
-    entries: [
-      { href: "/kontrol", label: "Kontrol Merkezi", icon: "activity" },
-      { href: "/fikirler", label: "Fikirler", icon: "spark" },
+      { href: "/strateji", label: "Strateji", icon: "agents" },
       { href: "/performans", label: "Performans", icon: "activity" },
+      { href: "/motor", label: "Ajanlar", icon: "agents" },
       { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: "health" },
-      { href: "/", label: "Sistem Sağlığı", icon: "health" },
-      { href: "/operasyon", label: "Canlı Operasyon", icon: "activity" },
-      { href: "/motor", label: "Gelişmiş Motor", icon: "motor" },
-      { href: "/research", label: "Teknik Görünümler", icon: "research" },
+      { href: "/", label: "Sistem", icon: "settings" },
     ],
   },
 ];
@@ -112,24 +97,10 @@ function SidebarLinks({ badges }: { badges: NavBadges }) {
   return (
     <nav className="app-nav" aria-label="Birincil">
       {NAV_SECTIONS.map((section) => {
-        const Container = section.title === "Sistem" ? "details" : "div";
+        const Container = "div";
         return (
-          <Container
-            key={section.title}
-            className="nav-section"
-            {...(section.title === "Sistem"
-              ? {
-                  open: section.entries.some((entry) =>
-                    isCurrent(entry, pathname, stateParam),
-                  ),
-                }
-              : {})}
-          >
-            {section.title === "Sistem" ? (
-              <summary className="nav-section-title">
-                Sistem ve ayrıntılar
-              </summary>
-            ) : (
+          <Container key={section.title} className="nav-section">
+            {section.title !== "" && (
               <span className="nav-section-title">{section.title}</span>
             )}
             {section.entries.map((entry) => {

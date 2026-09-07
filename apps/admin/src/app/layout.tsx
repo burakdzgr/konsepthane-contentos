@@ -15,6 +15,7 @@ import { ContentOsMark } from "./icons";
 import { AppNav, type NavBadges } from "./nav";
 
 import "./globals.css";
+import "./studio.css";
 
 export const metadata: Metadata = {
   title: "ContentOS",
@@ -37,9 +38,6 @@ export default async function RootLayout({
   let environment: string | null = null;
   let health: "ok" | "bad" | "unknown" = "unknown";
   let badges: NavBadges = {};
-  let aiUsed: number | null = null;
-  let aiBudget: number | null = null;
-  let queueDepth: number | null = null;
   if ((await getSessionToken()) !== null) {
     const [userResult, liveness, readiness, summaryResult, runsResult] =
       await Promise.all([
@@ -73,9 +71,6 @@ export default async function RootLayout({
           (summary.work_item_states["scheduled"] ?? 0) +
           (summary.work_item_states["publishing"] ?? 0),
       };
-      aiUsed = summary.ai.attempts_today;
-      aiBudget = summary.ai.daily_budget;
-      queueDepth = summary.queue.depth;
     }
     if (runsResult.kind === "ok") {
       badges = {
@@ -86,10 +81,6 @@ export default async function RootLayout({
       };
     }
   }
-  const budgetPercent =
-    aiBudget !== null && aiBudget > 0 && aiUsed !== null
-      ? Math.min(100, Math.round((aiUsed / aiBudget) * 100))
-      : null;
   return (
     <html lang="tr">
       <body>
@@ -98,39 +89,19 @@ export default async function RootLayout({
             <div className="app-identity">
               <ContentOsMark />
               <span className="app-identity-copy">
+                <span className="app-brand-kicker">Konsepthane</span>
                 <span className="app-name">ContentOS</span>
-                <span className="app-role">Konsepthane İçerik Stüdyosu</span>
               </span>
             </div>
             <AppNav badges={badges} />
-            <div className="sidebar-stats">
-              {budgetPercent !== null && (
-                <div>
-                  <span className="sidebar-stat-label">
-                    <span>AI Bütçe (günlük deneme)</span>
-                    <span>
-                      {aiUsed}/{aiBudget}
-                    </span>
-                  </span>
-                  <span className="sidebar-stat-bar">
-                    <span style={{ width: `${budgetPercent}%` }} />
-                  </span>
-                </div>
-              )}
-              {queueDepth !== null && (
-                <span className="sidebar-stat-label">
-                  <span>Kuyruk derinliği</span>
-                  <span>{queueDepth}</span>
-                </span>
-              )}
-            </div>
-            <div className="sidebar-health" data-tone={health}>
-              <span className="sidebar-health-title">Sistem Sağlığı</span>
-              <span className="sidebar-health-state">
-                {health === "ok" && "● Tüm sistemler çevrimiçi"}
-                {health === "bad" && "● Altyapı hazır değil"}
-                {health === "unknown" && "● Durum bilinmiyor"}
-              </span>
+            <div className="sidebar-manifesto">
+              <span className="manifesto-spark">✦</span>
+              <p>
+                Daha iyi fikirler,
+                <br />
+                daha güçlü içerikler.
+              </p>
+              <small>Konsepthane ContentOS</small>
             </div>
           </aside>
           <div className="app-body">

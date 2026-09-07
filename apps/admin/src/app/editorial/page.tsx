@@ -241,10 +241,10 @@ export default async function EditorialPage({
   return (
     <section className="panel panel-wide" aria-labelledby="editorial-title">
       <span className="page-eyebrow">İÇERİK KÜTÜPHANESİ</span>
-      <h1 id="editorial-title">Tüm içerikler</h1>
+      <h1 id="editorial-title">İçerikler</h1>
       <p className="muted">
-        Bulunan fikirlerden yayınlanan içeriklere kadar tüm çalışmaları burada
-        arayabilir ve aşamasına göre süzebilirsiniz.
+        Taslaktan yayındaki içeriklere kadar tüm üretim sürecini tek yerden
+        yönetin.
       </p>
       <ControlNotice
         notice={firstParam(rawParams.notice)}

@@ -1,13 +1,21 @@
 ﻿# Konsepthane ContentOS - Current State
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
+
+## Konsepthane ContentOS visual system (2026-09-07)
+
+- The operator application now uses the supplied Konsepthane ContentOS design language: fixed navigation rail, purple/blue brand mark, global command search, production-state pill, deep navy surfaces and semantic status colors.
+- The primary navigation is flat and Turkish: Kontrol Merkezi, Kaynaklar, Araştırmalar, Fikirler, Fırsatlar, İçerikler, Onaylar, Strateji, Performans, Ajanlar, Entegrasyonlar and Sistem.
+- `/sources` is now a real-data master/detail workspace with compact rows, explainable roles and signal counts, a selected-source panel and progressively disclosed controls.
+- Existing research, provenance, editorial approval and publishing invariants are unchanged. Reference-screen sample metrics and integrations are not fabricated.
 
 ## Daily preparation bot increment (2026-09-06)
 
-`/bot` is the new first navigation destination: selected sources, daily target
-(1–50), start/pause, actual progress and preparations. Technical dashboard is
-retained under System. Additive migration `0038` stores target, source choices
-and one reservation per work item. Istanbul daily completion counts first real
+`/bot` remains the focused daily automation configuration screen: selected
+sources, daily target (1–50), start/pause, actual progress and preparations.
+The visual primary navigation now starts at `/kontrol`; the bot screen remains
+reachable from the control workflow. Additive migration `0038` stores target,
+source choices and one reservation per work item. Istanbul daily completion counts first real
 human-review transition, never queue success. Unfinished reservations carry
 over; singleton locking bounds admission. Daily source research uses existing
 intake budgets, and a beat watchdog recovers the sweep timer. Final publication

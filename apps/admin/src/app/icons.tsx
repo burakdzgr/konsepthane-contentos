@@ -228,9 +228,20 @@ export function ContentOsMark() {
   return (
     <span className="contentos-mark" aria-hidden="true">
       <svg viewBox="0 0 40 40" role="presentation">
-        <path d="M20 3 34 11v18L20 37 6 29V11Z" />
-        <path d="m27 14-7-4-7 4v12l7 4 7-4" />
-        <path d="m24 17-4-2-4 2v6l4 2 4-2" />
+        <defs>
+          <linearGradient id="contentos-brand" x1="5" y1="4" x2="34" y2="36">
+            <stop stopColor="#7768ff" />
+            <stop offset="1" stopColor="#335dff" />
+          </linearGradient>
+        </defs>
+        <path
+          fill="url(#contentos-brand)"
+          d="M20 3c4.1 5.7 8.8 10.8 12.5 17.2 3.9 6.8-1 15.8-8.8 15.8-5.2 0-9.3-4-9.3-9 0-4.6 2.9-8.1 5.6-11.5 2.7 3.4 5.6 6.9 5.6 11.5 0 1.4-.3 2.8-.9 4 5.3-2.7 6.8-9.7 3.4-14.6C25.4 12.4 22.6 7.8 20 3Z"
+        />
+        <path
+          fill="#9d8cff"
+          d="M15.4 6.4C11.8 11.2 7 16.8 5.8 22.2 4.2 29.7 10 36 17 36c1.7 0 3.4-.4 4.8-1.1-4.2-1-7.4-4.8-7.4-9.4 0-4.4 2.8-7.9 5.5-11.3-1.5-2.4-3.1-5-4.5-7.8Z"
+        />
       </svg>
     </span>
   );

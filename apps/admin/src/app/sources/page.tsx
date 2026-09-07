@@ -228,20 +228,35 @@ export default async function SourcesPage({
       }
     }
   }
+  const selectedSource =
+    result.kind === "ok"
+      ? (result.data.items.find(
+          (source) => source.slug === "karas-party-ideas",
+        ) ?? result.data.items[0])
+      : undefined;
 
   return (
-    <section className="panel" aria-labelledby="sources-title">
-      <h1 id="sources-title">Kaynaklar</h1>
-      <p className="muted">
-        Yönetilen araştırma kaynakları ve keşif öğesi sayıları.{" "}
-        <Link href="/sources/new">Kaynak kaydet</Link>
-      </p>
+    <section className="source-page" aria-labelledby="sources-title">
+      <header className="page-heading source-heading">
+        <div>
+          <h1 id="sources-title">Kaynaklar</h1>
+          <p>
+            İlham veren, trendleri yakalayan ve pazar sinyalleri sunan içerik
+            kaynaklarını yönetin.
+          </p>
+        </div>
+        <Link className="button-link source-add-button" href="/sources/new">
+          ＋ Kaynak Ekle
+        </Link>
+      </header>
       <ControlNotice
         notice={firstParam(params.notice)}
         error={firstParam(params.error)}
         noticeMessages={SOURCE_NOTICES}
       />
-      <FilterForm filters={filters} />
+      <div className="source-toolbar">
+        <FilterForm filters={filters} />
+      </div>
       {result.kind === "unreachable" && (
         <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
       )}
@@ -255,93 +270,203 @@ export default async function SourcesPage({
       )}
       {result.kind === "ok" && result.data.items.length > 0 && (
         <>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">Kaynak</th>
-                  <th scope="col">Tür / Strateji</th>
-                  <th scope="col">Amaç</th>
-                  <th scope="col">Durum</th>
-                  <th scope="col">Güven</th>
-                  <th scope="col">Yerel ayar</th>
-                  <th scope="col">Keşif öğeleri</th>
-                  <th scope="col">Temel URL</th>
-                  <th scope="col">Güncellendi</th>
-                  <th scope="col">Kontroller</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data.items.map((source) => (
-                  <tr key={source.id}>
-                    <td>
-                      <span className="cell-primary">{source.name}</span>
-                      <span className="mono muted cell-secondary">
-                        {source.slug}
-                      </span>
-                    </td>
-                    <td>
-                      {trLabel(source.kind)} /{" "}
-                      {trLabel(source.discovery_strategy)}
-                    </td>
-                    <td>
-                      <span className="badge" data-tone="info">
-                        {roleLabel(source.primary_role)}
-                      </span>
-                      <span className="purpose-badges">
-                        {source.capabilities.map((capability) => (
-                          <span
-                            key={capability}
-                            className="badge purpose-badge"
-                            data-tone="idle"
-                          >
-                            {capabilityLabel(capability)}
-                          </span>
-                        ))}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className="badge"
-                        data-tone={
-                          source.lifecycle_state === "active"
-                            ? "ok"
-                            : source.lifecycle_state === "blocked"
-                              ? "bad"
-                              : "warn"
-                        }
-                      >
-                        {trLabel(source.lifecycle_state)}
-                      </span>
-                    </td>
-                    <td>{trLabel(source.trust_tier)}</td>
-                    <td>
-                      {source.locale} / {source.market}
-                    </td>
-                    <td>
-                      <Link href={`/research?source=${source.id}`}>
-                        {source.total_discovery_items} öğe
-                      </Link>
-                      {source.total_discovery_items > 0 && (
-                        <span className="muted cell-secondary">
-                          {itemCounts(source)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="cell-url" title={source.base_url}>
-                      {source.base_url}
-                    </td>
-                    <td>{formatUtcTimestamp(source.updated_at)}</td>
-                    <td>
-                      <SourceControls
-                        source={source}
-                        liveRunId={liveRuns.get(source.id) ?? null}
-                      />
-                    </td>
+          <div className="source-workspace">
+            <div className="table-scroll source-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Kaynak</th>
+                    <th scope="col">Tür</th>
+                    <th scope="col">Roller</th>
+                    <th scope="col">Durum</th>
+                    <th scope="col">Sinyaller</th>
+                    <th scope="col">İşlemler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {result.data.items.map((source) => (
+                    <tr
+                      key={source.id}
+                      className={
+                        source.id === selectedSource?.id
+                          ? "source-row-selected"
+                          : undefined
+                      }
+                    >
+                      <td>
+                        <span className="source-monogram" aria-hidden="true">
+                          {source.name.slice(0, 2).toLocaleUpperCase("tr-TR")}
+                        </span>
+                        <span className="source-name-copy">
+                          <span className="cell-primary">{source.name}</span>
+                          <span className="mono muted cell-secondary">
+                            {source.slug}
+                          </span>
+                        </span>
+                      </td>
+                      <td>◉ {trLabel(source.kind)}</td>
+                      <td>
+                        <span className="badge" data-tone="info">
+                          {roleLabel(source.primary_role)}
+                        </span>
+                        <span className="purpose-badges">
+                          {source.capabilities.map((capability) => (
+                            <span
+                              key={capability}
+                              className="badge purpose-badge"
+                              data-tone="idle"
+                            >
+                              {capabilityLabel(capability)}
+                            </span>
+                          ))}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className="badge"
+                          data-tone={
+                            source.lifecycle_state === "active"
+                              ? "ok"
+                              : source.lifecycle_state === "blocked"
+                                ? "bad"
+                                : "warn"
+                          }
+                        >
+                          {trLabel(source.lifecycle_state)}
+                        </span>
+                      </td>
+                      <td>
+                        <Link href={`/research?source=${source.id}`}>
+                          <strong className="source-signal-count">
+                            ▥ {source.total_discovery_items} öğe
+                          </strong>
+                        </Link>
+                        {source.total_discovery_items > 0 && (
+                          <span className="muted cell-secondary">
+                            {itemCounts(source)}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <details className="source-actions">
+                          <summary aria-label={`${source.name} işlemleri`}>
+                            •••
+                          </summary>
+                          <div className="source-actions-popover">
+                            <SourceControls
+                              source={source}
+                              liveRunId={liveRuns.get(source.id) ?? null}
+                            />
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {(() => {
+              const source = selectedSource!;
+              return (
+                <aside className="source-detail-card">
+                  <div className="source-detail-head">
+                    <span className="source-monogram source-monogram-large">
+                      {source.name.slice(0, 2).toLocaleUpperCase("tr-TR")}
+                    </span>
+                    <div>
+                      <h2>{source.name}</h2>
+                      <a
+                        href={source.base_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {source.base_url} ↗
+                      </a>
+                    </div>
+                  </div>
+                  <p>
+                    Konsepthane için fikir, eğilim ve içerik sinyalleri sağlayan
+                    araştırma kaynağı.
+                  </p>
+                  <div className="purpose-badges">
+                    <span className="badge" data-tone="info">
+                      {roleLabel(source.primary_role)}
+                    </span>
+                    {source.capabilities.map((capability) => (
+                      <span
+                        key={capability}
+                        className="badge purpose-badge"
+                        data-tone="ok"
+                      >
+                        {capabilityLabel(capability)}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="source-detail-stats">
+                    <span>
+                      <strong>{source.total_discovery_items}</strong>Toplam
+                      sinyal
+                    </span>
+                    <span>
+                      <strong>{source.fetched_count}</strong>Getirilen
+                    </span>
+                    <span>
+                      <strong>{source.accepted_count}</strong>Kabul edilen
+                    </span>
+                  </div>
+                  <dl className="source-facts">
+                    <div>
+                      <dt>Kaynak türü</dt>
+                      <dd>{trLabel(source.kind)}</dd>
+                    </div>
+                    <div>
+                      <dt>Tarama yöntemi</dt>
+                      <dd>{trLabel(source.discovery_strategy)}</dd>
+                    </div>
+                    <div>
+                      <dt>Durum</dt>
+                      <dd>
+                        <span
+                          className="badge"
+                          data-tone={
+                            source.lifecycle_state === "active" ? "ok" : "warn"
+                          }
+                        >
+                          {trLabel(source.lifecycle_state)}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Son güncelleme</dt>
+                      <dd>{formatUtcTimestamp(source.updated_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>Pazar</dt>
+                      <dd>
+                        {source.locale} / {source.market}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Güven</dt>
+                      <dd>{trLabel(source.trust_tier)}</dd>
+                    </div>
+                  </dl>
+                  <div className="source-detail-actions">
+                    <Link
+                      className="button-link"
+                      href={`/research?source=${source.id}`}
+                    >
+                      Sinyalleri incele
+                    </Link>
+                    {liveRuns.get(source.id) !== undefined && (
+                      <Link href={`/calisma/${liveRuns.get(source.id)}`}>
+                        Aktif çalışmayı aç
+                      </Link>
+                    )}
+                  </div>
+                </aside>
+              );
+            })()}
           </div>
           <nav className="pagination" aria-label="Kaynaklar sayfalama">
             <span className="muted">

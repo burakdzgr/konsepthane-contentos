@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import { AppIcon } from "./icons";
@@ -47,38 +47,15 @@ function normalizeSearch(value: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function routeTitle(pathname: string): string {
-  if (pathname === "/bot") return "İçerik Botu";
-  if (pathname.startsWith("/yayina-hazir")) return "Yayına Hazır";
-  if (pathname === "/baslangic") return "Nasıl Kullanırım?";
-  if (pathname === "/kontrol") return "Kontrol Merkezi";
-  if (pathname.startsWith("/calisma/")) return "Çalışma Detayı";
-  if (pathname === "/calisma") return "Çalışmalar";
-  if (pathname.startsWith("/sources")) return "Kaynaklar";
-  if (pathname.startsWith("/fikirler")) return "Fikirler";
-  if (pathname.startsWith("/firsatlar")) return "Benden Bekleyenler";
-  if (pathname.startsWith("/editorial")) return "İçerikler";
-  if (pathname.startsWith("/strateji")) return "Strateji";
-  if (pathname.startsWith("/performans")) return "Performans";
-  if (pathname.startsWith("/entegrasyonlar")) return "Entegrasyonlar";
-  if (pathname.startsWith("/operasyon")) return "Canlı Operasyon";
-  if (pathname.startsWith("/motor")) return "Motor Kontrolü";
-  if (pathname.startsWith("/research")) return "Araştırma";
-  if (pathname === "/login") return "Giriş";
-  return "Sistem Sağlığı";
-}
-
 function roleLabel(roles: string[]): string {
   if (roles.includes("operator")) return "Operatör";
   if (roles.includes("reviewer")) return "İncelemeci";
   return roles[0] ?? "Kullanıcı";
 }
 
-export function HeaderChrome({ environment, health, user }: HeaderChromeProps) {
-  const pathname = usePathname() ?? "/";
+export function HeaderChrome({ user }: HeaderChromeProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const currentTitle = routeTitle(pathname);
   const authenticated = user !== null;
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -97,44 +74,31 @@ export function HeaderChrome({ environment, health, user }: HeaderChromeProps) {
   return (
     <header className="app-header">
       <div className="app-header-location">
-        {authenticated && pathname !== "/bot" ? (
-          <Link
-            href="/bot"
-            className="header-back"
-            aria-label="İçerik Botuna dön"
-          >
-            <AppIcon name="arrow-left" size={18} />
-          </Link>
-        ) : (
-          <span
-            className="header-status-dot"
-            data-tone={health}
-            aria-hidden="true"
+        <form className="header-search" role="search" onSubmit={submitSearch}>
+          <AppIcon name="search" size={19} />
+          <input
+            aria-label="Sayfalarda ara"
+            list="contentos-destinations"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="İçerik, kaynak, fikir ara..."
+            value={query}
           />
-        )}
-        <span className="header-route-title">{currentTitle}</span>
-        {environment !== null && (
-          <span className="header-environment">{environment}</span>
-        )}
+          <kbd>Ctrl + K</kbd>
+          <datalist id="contentos-destinations">
+            {SEARCH_DESTINATIONS.map((item) => (
+              <option key={item.href} value={item.label} />
+            ))}
+          </datalist>
+        </form>
       </div>
 
       {authenticated && (
         <div className="app-header-tools">
-          <form className="header-search" role="search" onSubmit={submitSearch}>
-            <AppIcon name="search" size={16} />
-            <input
-              aria-label="Sayfalarda ara"
-              list="contentos-destinations"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Ara..."
-              value={query}
-            />
-            <datalist id="contentos-destinations">
-              {SEARCH_DESTINATIONS.map((item) => (
-                <option key={item.href} value={item.label} />
-              ))}
-            </datalist>
-          </form>
+          <span className="production-pill">
+            <span />
+            Üretim Ortamı
+            <AppIcon name="chevron-down" size={13} />
+          </span>
 
           <nav className="header-shortcuts" aria-label="Hızlı erişim">
             <Link

@@ -38,7 +38,7 @@ describe("Editorial work queue page", () => {
 
     await renderPage();
 
-    expect(screen.getByRole("heading", { name: "Tüm içerikler" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "İçerikler" })).toBeTruthy();
     expect(badge("Brif hazırlığı")).toBeTruthy();
     expect(badge("Güçlü / Görevlendirilebilir")).toBeTruthy();
     expect(screen.getByText("1 eksik sinyal")).toBeTruthy();
