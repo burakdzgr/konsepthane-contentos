@@ -99,7 +99,7 @@ export default async function RootLayout({
               <ContentOsMark />
               <span className="app-identity-copy">
                 <span className="app-name">ContentOS</span>
-                <span className="app-role">Content Operations Engine</span>
+                <span className="app-role">Konsepthane İçerik Stüdyosu</span>
               </span>
             </div>
             <AppNav badges={badges} />

@@ -3909,3 +3909,307 @@ body {
   margin: 0 0 0.25rem;
   font-size: 1.05rem;
 }
+
+/* --------------------------------------------------------------------------
+   ContentOS Studio UI — 2026 visual system
+   One calm operator surface; old domain screens inherit the same primitives.
+   -------------------------------------------------------------------------- */
+:root {
+  --color-background: #07131d;
+  --color-surface: #0d1e2b;
+  --color-surface-raised: #142936;
+  --color-border: #223b49;
+  --color-text: #edf4f5;
+  --color-text-muted: #93a9b5;
+  --color-accent: #70d9b3;
+  --studio-blue: #62a7ff;
+  --studio-shadow: 0 18px 55px rgba(0, 0, 0, 0.18);
+}
+
+html {
+  background: #07131d;
+}
+body {
+  background:
+    radial-gradient(
+      circle at 70% -10%,
+      rgba(51, 123, 139, 0.12),
+      transparent 32rem
+    ),
+    var(--color-background);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -0.008em;
+}
+
+.app-shell {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+.app-sidebar {
+  width: 232px;
+  padding: 22px 14px;
+  background: linear-gradient(180deg, #0c1e2b 0%, #091722 100%);
+  border-right: 1px solid #203947;
+  box-shadow: 12px 0 45px rgba(0, 0, 0, 0.12);
+}
+.app-sidebar .app-identity {
+  padding: 0 8px 22px;
+}
+.app-sidebar .app-name {
+  color: #f4f7f8;
+  font-size: 17px;
+  letter-spacing: -0.4px;
+}
+.app-sidebar .app-role {
+  color: #79909c;
+  font-size: 9px;
+  letter-spacing: 0.35px;
+}
+.nav-section {
+  margin-top: 14px;
+}
+.nav-section-title {
+  padding: 0 10px 8px;
+  color: #718994;
+  font-size: 9px;
+  letter-spacing: 1.3px;
+  font-weight: 800;
+}
+.app-sidebar .app-nav {
+  gap: 3px;
+}
+.app-sidebar .app-nav a,
+.nav-entry-disabled {
+  min-height: 39px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 580;
+  transition: 150ms ease;
+}
+.app-sidebar .app-nav a:hover {
+  background: #122b38;
+  color: #eaf4f3;
+  transform: translateX(2px);
+}
+.app-sidebar .app-nav a[aria-current="page"] {
+  color: #dffff3;
+  background: linear-gradient(110deg, #1d5145, #173b3b);
+  border-color: #347061;
+  box-shadow:
+    inset 3px 0 #76e0b7,
+    0 8px 25px rgba(0, 0, 0, 0.16);
+}
+.app-sidebar .app-nav a[aria-current="page"] svg {
+  color: #80e3bd;
+}
+.nav-badge {
+  background: #1d3542;
+  border: 1px solid #36515f;
+  color: #b8c9d0;
+}
+.app-sidebar .app-nav a[aria-current="page"] .nav-badge {
+  background: #82dfbb;
+  color: #09251b;
+  border-color: transparent;
+}
+.sidebar-stats,
+.sidebar-health {
+  border-color: #203744;
+}
+.sidebar-stat-bar {
+  background: #172e3a;
+}
+.sidebar-stat-bar > span {
+  background: linear-gradient(90deg, #4f9cf9, #6de0b3);
+}
+
+.app-header {
+  min-height: 68px;
+  padding: 13px 28px;
+  background: rgba(7, 19, 29, 0.82);
+  backdrop-filter: blur(18px);
+  border-color: #213744;
+}
+.header-route-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.header-environment {
+  border-radius: 20px;
+  background: #132834;
+  border-color: #2a4554;
+  color: #8fa6b2;
+}
+.header-search {
+  min-width: min(320px, 38vw);
+  background: #0c1c28;
+  border-radius: 12px;
+  border-color: #233d4c;
+}
+.header-search:focus-within {
+  border-color: #5dbb9a;
+  box-shadow: 0 0 0 3px rgba(93, 187, 154, 0.1);
+}
+.header-shortcuts a {
+  border-radius: 10px;
+}
+.user-avatar {
+  background: linear-gradient(135deg, #3a5a68, #1b3440);
+}
+.app-main {
+  padding: 28px 30px 56px;
+  max-width: none;
+}
+
+.panel {
+  border-radius: 20px;
+  border-color: #243e4c;
+  background: linear-gradient(
+    145deg,
+    rgba(16, 35, 47, 0.97),
+    rgba(10, 25, 36, 0.97)
+  );
+  padding: 28px 30px;
+  box-shadow: var(--studio-shadow);
+}
+.panel h1 {
+  font-size: clamp(25px, 3vw, 38px);
+  letter-spacing: -1.2px;
+  line-height: 1.12;
+}
+.panel h2 {
+  letter-spacing: -0.3px;
+}
+.page-eyebrow {
+  display: block;
+  color: var(--color-accent);
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+button,
+.button-link {
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  border: 1px solid #3a5967;
+  background: #16303e;
+  color: #e9f2f4;
+  font-weight: 650;
+}
+button:hover,
+.button-link:hover {
+  background: #1d3c4b;
+  border-color: #5c7b88;
+}
+.filter-form {
+  padding: 14px;
+  border-radius: 13px;
+  background: rgba(6, 18, 27, 0.72);
+  border-color: #253e4c;
+}
+.filter-form select,
+.filter-form input[type="text"],
+input,
+select,
+textarea {
+  border-radius: 9px;
+  border-color: #304b5a;
+  background: #0a1a26;
+}
+.table-scroll {
+  border-radius: 14px;
+  border-color: #294351;
+  background: #0a1a25;
+}
+.data-table th,
+.data-table td {
+  padding: 12px 14px;
+  border-color: #203846;
+}
+.data-table thead th {
+  background: #0b1c28;
+  color: #7f98a5;
+  font-size: 10px;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+}
+.data-table tbody tr {
+  transition: 120ms ease;
+}
+.data-table tbody tr:hover {
+  background: #102936;
+}
+.data-table a {
+  color: #e9f5f4;
+  font-weight: 680;
+  text-decoration-color: #3c7568;
+}
+.badge {
+  border-radius: 99px;
+  padding: 4px 8px;
+  font-size: 9px;
+  letter-spacing: 0.25px;
+}
+.advanced-tools {
+  margin-top: 26px;
+  border-top: 1px solid #29414e;
+  padding-top: 18px;
+}
+.advanced-tools > summary {
+  cursor: pointer;
+  color: #829ba7;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    display: block;
+  }
+  .app-sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 12px;
+  }
+  .app-sidebar .app-identity,
+  .sidebar-stats,
+  .sidebar-health {
+    display: none;
+  }
+  .app-sidebar .app-nav {
+    display: flex;
+    overflow-x: auto;
+    flex-direction: row;
+  }
+  .app-sidebar .nav-section:first-child {
+    display: contents;
+  }
+  .app-sidebar .nav-section:first-child .nav-section-title {
+    display: none;
+  }
+  .app-sidebar .nav-section:first-child a {
+    flex: 0 0 auto;
+  }
+  .app-sidebar details.nav-section {
+    display: none;
+  }
+  .app-header {
+    padding: 10px 14px;
+  }
+  .header-search,
+  .header-shortcuts {
+    display: none;
+  }
+  .app-main {
+    padding: 18px 12px 40px;
+  }
+  .panel {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
+}

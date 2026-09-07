@@ -2,6 +2,27 @@
 
 Last updated: 2026-09-06
 
+## Daily preparation bot increment (2026-09-06)
+
+`/bot` is the new first navigation destination: selected sources, daily target
+(1–50), start/pause, actual progress and preparations. Technical dashboard is
+retained under System. Additive migration `0038` stores target, source choices
+and one reservation per work item. Istanbul daily completion counts first real
+human-review transition, never queue success. Unfinished reservations carry
+over; singleton locking bounds admission. Daily source research uses existing
+intake budgets, and a beat watchdog recovers the sweep timer. Final publication
+approval and existing media/quality/evidence gates remain intact.
+Local UI saved target 10 with Kara's, Catch My Party and Pretty My Party and
+started real research. No claim that 10 finished contents exist. Details and
+operator guide: `docs/DAILY_BOT.md`.
+
+The full admin shell now uses the 2026 Studio visual system (navigation,
+header, page surfaces, tables, forms and responsive layout). `/yayina-hazir`
+is a separate primary destination for `awaiting_human_review`, with distinct
+tabs for approved and scheduled content. It never treats briefing/drafting or
+queue success as publication-ready. The final approve/change/reject commands
+remain on the governed editorial detail page.
+
 ## Operator and editorial direction increment (2026-09-06)
 
 Seven everyday navigation links; technical/analysis screens collapse under

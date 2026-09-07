@@ -37,7 +37,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Çalışma Alanı",
     entries: [
-      { href: "/kontrol", label: "Kontrol Merkezi", icon: "home" },
+      { href: "/bot", label: "İçerik Botu", icon: "home" },
       {
         href: "/calisma",
         label: "Çalışmalar",
@@ -46,6 +46,12 @@ const NAV_SECTIONS: NavSection[] = [
       },
       { href: "/sources", label: "Kaynaklar", icon: "source" },
       { href: "/editorial", label: "İçerikler", icon: "content" },
+      {
+        href: "/yayina-hazir",
+        label: "Yayına Hazır",
+        icon: "approval",
+        badge: "onay",
+      },
       {
         href: "/firsatlar",
         label: "Benden Bekleyenler",
@@ -59,6 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Sistem",
     entries: [
+      { href: "/kontrol", label: "Kontrol Merkezi", icon: "activity" },
       { href: "/fikirler", label: "Fikirler", icon: "spark" },
       { href: "/performans", label: "Performans", icon: "activity" },
       { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: "health" },

@@ -33,6 +33,11 @@ _logger = structlog.get_logger("contentos.worker.intake")
 def register_intake_tasks(app: Celery, runtime: WorkerRuntime) -> None:
     def intake_step(self: Any, run_id: str) -> dict[str, Any]:
         parsed_id = uuid.UUID(str(run_id))
+        lock = runtime.execution_lock()
+        lock_key = f"contentos:intake:step:{parsed_id}"
+        token = lock.acquire(lock_key, 600)
+        if token is None:
+            return {"status": "duplicate_in_flight", "run_id": run_id}
         session = runtime.create_session()
         try:
             orchestrator = IntakeOrchestrator(
@@ -52,6 +57,7 @@ def register_intake_tasks(app: Celery, runtime: WorkerRuntime) -> None:
             raise self.retry(countdown=STEP_RETRY_SECONDS) from None
         finally:
             session.close()
+            lock.release(lock_key, token)
 
         for item_id in outcome.fetch_dispatches:
             self.app.send_task(FETCH_DISCOVERY_ITEM_TASK, args=[item_id])

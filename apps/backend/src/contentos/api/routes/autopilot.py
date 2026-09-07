@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from contentos.api.security import require_operator
 from contentos.auth.models import User
+from contentos.autopilot.daily import DailyPreparationService
 from contentos.autopilot.enums import AutopilotEventKind, AutopilotMode
 from contentos.autopilot.service import (
     AutopilotService,
@@ -150,3 +151,54 @@ def _arm(request: Request) -> None:
             status_code=503,
             detail=f"autopilot mode saved but the sweep could not be queued ({type(error).__name__})",
         ) from None
+
+
+class DailyPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: int = Field(ge=1, le=50)
+    source_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    enabled: bool
+
+
+@router.get("/daily-plan")
+def daily_plan(
+    session: Annotated[Session, Depends(get_db_session)],
+    _operator: Annotated[User, Depends(require_operator)],
+) -> dict[str, Any]:
+    return DailyPreparationService(session).view()
+
+
+@router.put("/daily-plan")
+def configure_daily_plan(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+    operator: Annotated[User, Depends(require_operator)],
+    body: DailyPlanRequest,
+) -> dict[str, Any]:
+    try:
+        AutopilotService(session).set_mode(
+            AutopilotMode.AUTONOMOUS if body.enabled else AutopilotMode.OFF,
+            actor_user_id=operator.id,
+            reason=f"Günlük {body.target} içerik hazırlama planı {'başlatıldı' if body.enabled else 'duraklatıldı'}.",
+            request_id=_request_id(),
+        )
+        DailyPreparationService(session).configure(body.target, body.source_ids)
+        AutopilotService(session).record(
+            AutopilotEventKind.ACTION,
+            work_item_id=None,
+            action="daily_plan_configured",
+            mode=AutopilotMode.AUTONOMOUS if body.enabled else AutopilotMode.OFF,
+            detail={
+                "target": body.target,
+                "source_ids": sorted(str(value) for value in set(body.source_ids)),
+                "actor_user_id": str(operator.id),
+            },
+            request_id=_request_id(),
+        )
+    except ValueError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    session.commit()
+    if body.enabled:
+        _arm(request)
+    return DailyPreparationService(session).view()

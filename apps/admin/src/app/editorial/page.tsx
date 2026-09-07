@@ -240,11 +240,11 @@ export default async function EditorialPage({
 
   return (
     <section className="panel panel-wide" aria-labelledby="editorial-title">
-      <h1 id="editorial-title">Editoryal İş Kuyruğu</h1>
+      <span className="page-eyebrow">İÇERİK KÜTÜPHANESİ</span>
+      <h1 id="editorial-title">Tüm içerikler</h1>
       <p className="muted">
-        Faz-3 editoryal hattı: araştırma yükseltmesinden kabul edilmiş
-        brief&apos;e kadar. Her durum ve artefakt kalıcı kayıtlardan gelir;
-        buradaki hiçbir şey içerik yayınlamaz.
+        Bulunan fikirlerden yayınlanan içeriklere kadar tüm çalışmaları burada
+        arayabilir ve aşamasına göre süzebilirsiniz.
       </p>
       <ControlNotice
         notice={firstParam(rawParams.notice)}
@@ -347,7 +347,10 @@ export default async function EditorialPage({
           </nav>
         </>
       )}
-      <ResearchIntakeForms />
+      <details className="advanced-tools">
+        <summary>Gelişmiş araştırma araçları</summary>
+        <ResearchIntakeForms />
+      </details>
     </section>
   );
 }

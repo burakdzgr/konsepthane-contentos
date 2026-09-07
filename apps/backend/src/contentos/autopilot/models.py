@@ -7,11 +7,12 @@ actor for every acceptance the autopilot makes on their behalf.
 wait with its reason, every error. Nothing here is ever edited."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -37,6 +38,10 @@ class AutopilotSetting(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_autopilot_settings_singleton"),
         CheckConstraint(
+            "daily_target IS NULL OR daily_target BETWEEN 1 AND 50",
+            name="ck_autopilot_daily_target",
+        ),
+        CheckConstraint(
             "(mode = 'off') OR (actor_user_id IS NOT NULL)",
             name="ck_autopilot_settings_named_actor",
         ),
@@ -52,9 +57,31 @@ class AutopilotSetting(Base):
         Uuid(), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    daily_target: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class AutopilotSource(Base):
+    """Explicit source selection for the daily preparation plan."""
+
+    __tablename__ = "autopilot_sources"
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("sources.id", ondelete="RESTRICT"), primary_key=True
+    )
+    last_researched_on: Mapped[date | None] = mapped_column(Date(), nullable=True)
+
+
+class DailyPreparation(Base):
+    """One durable reservation per editorial identity, never a queue counter."""
+
+    __tablename__ = "daily_preparations"
+    work_item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("editorial_work_items.id", ondelete="RESTRICT"), primary_key=True
+    )
+    reserved_on: Mapped[date] = mapped_column(Date(), nullable=False)
+    completed_on: Mapped[date | None] = mapped_column(Date(), nullable=True, index=True)
 
 
 class AutopilotEvent(Base):

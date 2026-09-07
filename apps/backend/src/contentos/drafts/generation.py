@@ -292,7 +292,9 @@ class WriterEngine:
             input_projection=context.projection,
             generation_bounds={"max_output_tokens": MAX_OUTPUT_TOKENS},
             retry_number=retry_number,
-            instructions=_TEMPLATE_V1 + KONSEPTHANE_EDITORIAL_MISSION + (
+            instructions=_TEMPLATE_V1
+            + KONSEPTHANE_EDITORIAL_MISSION
+            + (
                 "\nYazar olarak yalnızca kabul edilmiş brief içinde planlanmış "
                 "önerileri, bölümleri ve topluluk davetini işle; yeni bölüm "
                 "veya iddia ekleme."

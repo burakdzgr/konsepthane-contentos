@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 describe("AppNav", () => {
-  it("renders the sectioned sidebar with the control center first", () => {
+  it("renders the sectioned sidebar with the content bot first", () => {
     usePathnameMock.mockReturnValue("/");
     render(<AppNav />);
 
@@ -34,10 +34,8 @@ describe("AppNav", () => {
     expect(nav).toBeTruthy();
     expect(screen.getByText("Çalışma Alanı")).toBeTruthy();
     expect(
-      screen
-        .getByRole("link", { name: "Kontrol Merkezi" })
-        .getAttribute("href"),
-    ).toBe("/kontrol");
+      screen.getByRole("link", { name: "İçerik Botu" }).getAttribute("href"),
+    ).toBe("/bot");
     expect(
       screen.getByRole("link", { name: "Strateji" }).getAttribute("href"),
     ).toBe("/strateji");
@@ -59,13 +57,15 @@ describe("AppNav", () => {
       .getAllByRole("link")
       .map((link) => link.textContent?.replace(/\d+$/, "").trim());
     expect(labels).toEqual([
-      "Kontrol Merkezi",
+      "İçerik Botu",
       "Çalışmalar",
       "Kaynaklar",
       "İçerikler",
+      "Yayına Hazır",
       "Benden Bekleyenler",
       "Strateji",
       "Nasıl Kullanırım?",
+      "Kontrol Merkezi",
       "Fikirler",
       "Performans",
       "Entegrasyonlar",
@@ -74,6 +74,9 @@ describe("AppNav", () => {
       "Gelişmiş Motor",
       "Teknik Görünümler",
     ]);
+    expect(
+      screen.getByRole("link", { name: "Yayına Hazır" }).getAttribute("href"),
+    ).toBe("/yayina-hazir");
     expect(
       screen.getByRole("link", { name: "Fikirler" }).getAttribute("href"),
     ).toBe("/fikirler");

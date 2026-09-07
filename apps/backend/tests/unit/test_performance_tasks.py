@@ -341,10 +341,10 @@ class TestScheduleAndRegistration:
         schedule = enabled.conf.beat_schedule
         assert {entry["task"] for entry in schedule.values()} == (
             set(PERFORMANCE_TASK_NAMES) - {SYNC_ALL_TASK}
-        ) | {"contentos.trends.sync_google_trends_bigquery"}
+        ) | {"contentos.trends.sync_google_trends_bigquery", "contentos.autopilot.sweep"}
         assert str(schedule["performance-sync-search-console"]["schedule"]).startswith("<crontab")
         disabled = create_celery_app(settings(performance_schedule_enabled=False))
-        assert not disabled.conf.beat_schedule
+        assert set(disabled.conf.beat_schedule) == {"autopilot-watchdog"}
 
     def test_schedule_hours_come_from_settings(self) -> None:
         schedule = performance_beat_schedule(

@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 from celery import Celery
 
+from contentos.autopilot.daily import DailyPreparationService
 from contentos.autopilot.enums import AutopilotMode
 from contentos.autopilot.runner import AutopilotRunner
 from contentos.autopilot.service import AutopilotService
@@ -76,16 +77,28 @@ def register_autopilot_tasks(app: Celery, runtime: WorkerRuntime) -> None:
         }
 
     def autopilot_sweep(self: Any) -> dict[str, Any]:
+        # Keep one live timer chain even after repeated UI starts / watchdog ticks.
+        # TTL intentionally expires rather than releasing at the end of a sweep.
+        token = runtime.execution_lock().acquire("contentos:autopilot:sweep", 18)
+        if token is None:
+            return {"status": "already_armed", "steps": 0}
         session = runtime.create_session()
         try:
             mode = AutopilotService(session).mode()
             if mode is AutopilotMode.OFF:
                 return {"status": "off", "steps": 0}
-            work_item_ids = AutopilotRunner(session).actionable_work_item_ids(MAX_STEPS_PER_SWEEP)
+            candidates = AutopilotRunner(session).actionable_work_item_ids(1000)
+            work_item_ids = DailyPreparationService(session).reserve(candidates)[
+                :MAX_STEPS_PER_SWEEP
+            ]
+            research_runs = DailyPreparationService(session).start_daily_research(runtime.settings)
+            session.commit()
         finally:
             session.close()
         for work_item_id in work_item_ids:
             app.send_task(AUTOPILOT_STEP_TASK, args=[str(work_item_id)])
+        for run_id in research_runs:
+            app.send_task("contentos.intake.step", args=[str(run_id)])
         app.send_task(AUTOPILOT_SWEEP_TASK, countdown=SWEEP_INTERVAL_SECONDS)
         return {"status": "armed", "mode": mode.value, "steps": len(work_item_ids)}
 

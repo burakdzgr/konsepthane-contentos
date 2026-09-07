@@ -14,6 +14,8 @@ type HeaderChromeProps = {
 };
 
 const SEARCH_DESTINATIONS = [
+  { label: "İçerik Botu", href: "/bot" },
+  { label: "Yayına Hazır", href: "/yayina-hazir" },
   { label: "Kontrol Merkezi", href: "/kontrol" },
   { label: "Nasıl Kullanırım?", href: "/baslangic" },
   { label: "Çalışmalar", href: "/calisma" },
@@ -46,6 +48,8 @@ function normalizeSearch(value: string): string {
 }
 
 function routeTitle(pathname: string): string {
+  if (pathname === "/bot") return "İçerik Botu";
+  if (pathname.startsWith("/yayina-hazir")) return "Yayına Hazır";
   if (pathname === "/baslangic") return "Nasıl Kullanırım?";
   if (pathname === "/kontrol") return "Kontrol Merkezi";
   if (pathname.startsWith("/calisma/")) return "Çalışma Detayı";
@@ -93,11 +97,11 @@ export function HeaderChrome({ environment, health, user }: HeaderChromeProps) {
   return (
     <header className="app-header">
       <div className="app-header-location">
-        {authenticated && pathname !== "/kontrol" ? (
+        {authenticated && pathname !== "/bot" ? (
           <Link
-            href="/kontrol"
+            href="/bot"
             className="header-back"
-            aria-label="Kontrol Merkezine dön"
+            aria-label="İçerik Botuna dön"
           >
             <AppIcon name="arrow-left" size={18} />
           </Link>
@@ -134,9 +138,9 @@ export function HeaderChrome({ environment, health, user }: HeaderChromeProps) {
 
           <nav className="header-shortcuts" aria-label="Hızlı erişim">
             <Link
-              href="/kontrol"
-              aria-label="Bekleyen kararlar"
-              title="Bekleyen kararlar"
+              href="/yayina-hazir"
+              aria-label="Yayına hazır içerikler"
+              title="Yayına hazır içerikler"
             >
               <AppIcon name="bell" size={17} />
             </Link>

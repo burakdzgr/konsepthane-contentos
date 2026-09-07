@@ -163,6 +163,8 @@ def test_declarative_base_registers_exactly_the_known_tables() -> None:
         "operational_pauses",
         "operational_pause_events",
         "autopilot_settings",
+        "autopilot_sources",
+        "daily_preparations",
         "autopilot_events",
         "published_contents",
         "content_performance_snapshots",

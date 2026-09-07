@@ -29,6 +29,11 @@ def create_celery_app(settings: Settings) -> Celery:
         # Keep the structured logging foundation authoritative in workers.
         worker_hijack_root_logger=False,
     )
+    # Recovery timer: OFF is a no-op; a failed/lost self-rescheduling sweep
+    # must not silently stop tomorrow's daily plan. The sweep coalesces ticks.
+    app.conf.beat_schedule = {
+        "autopilot-watchdog": {"task": "contentos.autopilot.sweep", "schedule": 60.0},
+    }
     if getattr(settings, "performance_schedule_enabled", False):
         # The performance loop is the ONLY beat-driven work (agent E); the
         # autopilot keeps its self-re-arming sweep. Lazy import: the worker

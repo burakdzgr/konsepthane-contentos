@@ -21,6 +21,7 @@ from contentos.ai.attempts import next_retry_number
 from contentos.ai.enums import GenerationPurpose, GenerationStatus
 from contentos.ai.models import AiGenerationAttempt
 from contentos.auth.models import User
+from contentos.autopilot.daily import DailyPreparationService
 from contentos.autopilot.enums import AutopilotEventKind, AutopilotMode
 from contentos.autopilot.planner import (
     ACTION_ACCEPT_BRIEF,
@@ -317,6 +318,14 @@ class AutopilotRunner:
         work_item = WorkflowRepository(self._session).get_by_id(work_item_id)
         if work_item is None:
             return None
+        if not DailyPreparationService(self._session).permits(work_item):
+            return StepOutcome(
+                work_item_id,
+                mode,
+                Action(kind="none", name="daily_plan", reason="Günlük plana alınması bekleniyor."),
+                False,
+                {},
+            )
         snapshot = self.snapshot(work_item)
         action = plan(snapshot, mode)
         if action.kind == "none":
