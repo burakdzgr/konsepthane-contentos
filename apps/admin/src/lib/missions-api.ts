@@ -85,13 +85,17 @@ export type MissionCreateInput = {
   topic_cluster_id: string | null;
 };
 
-export async function fetchMissions(): Promise<BackendResult<ResearchMission[]>> {
+export async function fetchMissions(): Promise<
+  BackendResult<ResearchMission[]>
+> {
   const response = await requestBackend("/internal/research-missions");
   if (!response) return { kind: "unreachable" };
   return parseBackendResponse(response, z.array(missionSchema), [200]);
 }
 
-export async function fetchMission(id: string): Promise<BackendResult<MissionDetail>> {
+export async function fetchMission(
+  id: string,
+): Promise<BackendResult<MissionDetail>> {
   const response = await requestBackend(`/internal/research-missions/${id}`);
   if (!response) return { kind: "unreachable" };
   return parseBackendResponse(response, detailSchema, [200]);
@@ -107,13 +111,18 @@ export async function createMission(
   });
   if (!response || response.status !== 201) return null;
   const parsed = queuedSchema.safeParse(await response.json());
-  return parsed.success ? { id: parsed.data.mission.id, queued: parsed.data.queued } : null;
+  return parsed.success
+    ? { id: parsed.data.mission.id, queued: parsed.data.queued }
+    : null;
 }
 
 export async function runMission(id: string): Promise<boolean> {
-  const response = await requestBackend(`/internal/research-missions/${id}/run`, {
-    method: "POST",
-  });
+  const response = await requestBackend(
+    `/internal/research-missions/${id}/run`,
+    {
+      method: "POST",
+    },
+  );
   return response?.status === 200;
 }
 
@@ -163,6 +172,9 @@ export const CONFIDENCE_LABELS: Record<string, string> = {
   pending: "Bekliyor",
 };
 
-export function stateLabel(map: Record<string, string>, value: unknown): string {
+export function stateLabel(
+  map: Record<string, string>,
+  value: unknown,
+): string {
   return typeof value === "string" ? (map[value] ?? value) : "Bilinmiyor";
 }

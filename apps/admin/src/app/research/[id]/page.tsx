@@ -69,7 +69,11 @@ function stageState(
   const entries = log.filter((entry) => entry.stage === stage);
   if (entries.some((entry) => entry.status === "failed")) return "failed";
   if (entries.some((entry) => entry.status === "done")) return "done";
-  if (stage === currentStage && (status === "running" || status === "grounding")) return "active";
+  if (
+    stage === currentStage &&
+    (status === "running" || status === "grounding")
+  )
+    return "active";
   if (stage === currentStage && status === "completed") return "done";
   const currentIndex = STAGE_ORDER.indexOf(currentStage);
   return STAGE_ORDER.indexOf(stage) < currentIndex ? "done" : "todo";
@@ -78,7 +82,10 @@ function stageState(
 function CandidateCard({ candidate }: { candidate: MissionCandidate }) {
   const factors = candidate.quality_factors as Record<string, unknown>;
   return (
-    <article className={styles.candidate} data-recommendation={candidate.recommendation}>
+    <article
+      className={styles.candidate}
+      data-recommendation={candidate.recommendation}
+    >
       <div className={styles.candidateHead}>
         <div>
           <h3>{candidate.title}</h3>
@@ -94,16 +101,23 @@ function CandidateCard({ candidate }: { candidate: MissionCandidate }) {
           {stateLabel(RECOMMENDATION_LABELS, candidate.recommendation)}
         </span>
         <span className={styles.pill}>
-          {candidate.candidate_kind === "synthesized" ? "Sentezlenmiş" : "Sinyalden çıkarılmış"}
+          {candidate.candidate_kind === "synthesized"
+            ? "Sentezlenmiş"
+            : "Sinyalden çıkarılmış"}
         </span>
         <span className={styles.pill}>
-          Fikir güveni: {stateLabel(CONFIDENCE_LABELS, candidate.idea_confidence)}
+          Fikir güveni:{" "}
+          {stateLabel(CONFIDENCE_LABELS, candidate.idea_confidence)}
         </span>
         <span className={styles.pill}>
-          Kanıt güveni: {stateLabel(CONFIDENCE_LABELS, candidate.factual_evidence_confidence)}
+          Kanıt güveni:{" "}
+          {stateLabel(CONFIDENCE_LABELS, candidate.factual_evidence_confidence)}
         </span>
         {candidate.work_item_id ? (
-          <Link className={styles.pillLink} href={`/editorial/${candidate.work_item_id}`}>
+          <Link
+            className={styles.pillLink}
+            href={`/editorial/${candidate.work_item_id}`}
+          >
             İçerik fırsatını aç →
           </Link>
         ) : candidate.opportunity_id ? (
@@ -131,7 +145,8 @@ function CandidateCard({ candidate }: { candidate: MissionCandidate }) {
       ) : null}
       {candidate.factual_claims_needed.length > 0 ? (
         <p className={styles.note}>
-          Kanıt gerektiren iddialar: {candidate.factual_claims_needed.join("; ")}
+          Kanıt gerektiren iddialar:{" "}
+          {candidate.factual_claims_needed.join("; ")}
         </p>
       ) : null}
       <div className={styles.factors}>
@@ -161,17 +176,28 @@ export default async function MissionDetailPage({
   const { mission, signals, candidates } = result.data;
   const summary = mission.result_summary;
   const elimination = mission.elimination_summary;
-  const counts = (mission.surface_summary.counts ?? {}) as Record<string, number>;
+  const counts = (mission.surface_summary.counts ?? {}) as Record<
+    string,
+    number
+  >;
   const unavailable = (mission.surface_summary.unavailable ?? []) as string[];
   const promoted = candidates.filter((candidate) => candidate.opportunity_id);
   const strong = candidates.filter(
-    (candidate) => candidate.recommendation === "promote" && !candidate.opportunity_id,
+    (candidate) =>
+      candidate.recommendation === "promote" && !candidate.opportunity_id,
   );
-  const continued = candidates.filter((candidate) => candidate.recommendation === "continue_research");
+  const continued = candidates.filter(
+    (candidate) => candidate.recommendation === "continue_research",
+  );
   const eliminated = candidates.filter(
-    (candidate) => candidate.recommendation === "eliminate" || candidate.recommendation === "merged",
+    (candidate) =>
+      candidate.recommendation === "eliminate" ||
+      candidate.recommendation === "merged",
   );
-  const busy = mission.status === "queued" || mission.status === "running" || mission.status === "grounding";
+  const busy =
+    mission.status === "queued" ||
+    mission.status === "running" ||
+    mission.status === "grounding";
 
   return (
     <main className={styles.page}>
@@ -200,7 +226,8 @@ export default async function MissionDetailPage({
       ) : null}
       {error === "queue" ? (
         <p role="alert" className={styles.alert}>
-          Araştırma kaydedildi ama kuyruğa alınamadı; worker ve kuyruğu kontrol et.
+          Araştırma kaydedildi ama kuyruğa alınamadı; worker ve kuyruğu kontrol
+          et.
         </p>
       ) : null}
       {mission.failure_reason ? (
@@ -211,8 +238,15 @@ export default async function MissionDetailPage({
 
       <section className={styles.progress} aria-label="Araştırma ilerlemesi">
         {STAGE_ORDER.map((stage) => {
-          const state = stageState(stage, mission.stage, mission.status, mission.progress_log);
-          const last = [...mission.progress_log].reverse().find((entry) => entry.stage === stage);
+          const state = stageState(
+            stage,
+            mission.stage,
+            mission.status,
+            mission.progress_log,
+          );
+          const last = [...mission.progress_log]
+            .reverse()
+            .find((entry) => entry.stage === stage);
           return (
             <div className={styles.progressStep} data-state={state} key={stage}>
               <b>{stateLabel(MISSION_STAGE_LABELS, stage)}</b>
@@ -237,7 +271,9 @@ export default async function MissionDetailPage({
         </article>
         <article>
           <span>Güçlü aday</span>
-          <strong>{Number(elimination.promotable ?? summary.promotable ?? 0)}</strong>
+          <strong>
+            {Number(elimination.promotable ?? summary.promotable ?? 0)}
+          </strong>
         </article>
         <article>
           <span>İçerik fırsatı</span>
@@ -245,7 +281,13 @@ export default async function MissionDetailPage({
         </article>
         <article>
           <span>Arama verisi</span>
-          <strong>{summary.search_demand === "observed" ? "Var" : summary.search_demand === "not_observed" ? "Görülmedi" : "Bilinmiyor"}</strong>
+          <strong>
+            {summary.search_demand === "observed"
+              ? "Var"
+              : summary.search_demand === "not_observed"
+                ? "Görülmedi"
+                : "Bilinmiyor"}
+          </strong>
         </article>
       </section>
 
@@ -259,24 +301,34 @@ export default async function MissionDetailPage({
           </div>
           {candidates.length === 0 ? (
             <div className={styles.empty}>
-              {busy ? "Fikirler henüz çıkarılmadı; araştırma sürüyor." : "Bu turda fikir bulunamadı."}
+              {busy
+                ? "Fikirler henüz çıkarılmadı; araştırma sürüyor."
+                : "Bu turda fikir bulunamadı."}
             </div>
           ) : null}
-          {promoted.length > 0 ? <h3 className={styles.group}>İçerik fırsatına dönüşenler</h3> : null}
+          {promoted.length > 0 ? (
+            <h3 className={styles.group}>İçerik fırsatına dönüşenler</h3>
+          ) : null}
           {promoted.map((candidate) => (
             <CandidateCard candidate={candidate} key={candidate.id} />
           ))}
-          {strong.length > 0 ? <h3 className={styles.group}>Güçlü adaylar</h3> : null}
+          {strong.length > 0 ? (
+            <h3 className={styles.group}>Güçlü adaylar</h3>
+          ) : null}
           {strong.map((candidate) => (
             <CandidateCard candidate={candidate} key={candidate.id} />
           ))}
-          {continued.length > 0 ? <h3 className={styles.group}>Araştırmaya devam</h3> : null}
+          {continued.length > 0 ? (
+            <h3 className={styles.group}>Araştırmaya devam</h3>
+          ) : null}
           {continued.map((candidate) => (
             <CandidateCard candidate={candidate} key={candidate.id} />
           ))}
           {eliminated.length > 0 ? (
             <details className={styles.details}>
-              <summary>Elenen ve birleştirilen adaylar ({eliminated.length})</summary>
+              <summary>
+                Elenen ve birleştirilen adaylar ({eliminated.length})
+              </summary>
               {eliminated.map((candidate) => (
                 <CandidateCard candidate={candidate} key={candidate.id} />
               ))}
@@ -343,10 +395,13 @@ export default async function MissionDetailPage({
             </table>
           )}
 
-          {Array.isArray(mission.plan.cliche_patterns) && mission.plan.cliche_patterns.length > 0 ? (
+          {Array.isArray(mission.plan.cliche_patterns) &&
+          mission.plan.cliche_patterns.length > 0 ? (
             <>
               <h2>Klişe kalıpları</h2>
-              <p className={styles.note}>{(mission.plan.cliche_patterns as string[]).join(" · ")}</p>
+              <p className={styles.note}>
+                {(mission.plan.cliche_patterns as string[]).join(" · ")}
+              </p>
             </>
           ) : null}
         </aside>
@@ -359,7 +414,9 @@ export default async function MissionDetailPage({
             <p>Bunlar ilham sinyalidir; hiçbiri olgu kanıtı değildir.</p>
           </div>
         </div>
-        {signals.length === 0 ? <div className={styles.empty}>Henüz sinyal toplanmadı.</div> : null}
+        {signals.length === 0 ? (
+          <div className={styles.empty}>Henüz sinyal toplanmadı.</div>
+        ) : null}
         {signals.slice(0, 40).map((signal) => (
           <div className={styles.mission} key={signal.id}>
             <div className={styles.missionIcon}>↗</div>
@@ -368,7 +425,11 @@ export default async function MissionDetailPage({
               <p>{signal.snippet ?? ""}</p>
               <span>
                 {stateLabel(SURFACE_LABELS, signal.surface_kind)} ·{" "}
-                {String(signal.provenance.source_name ?? signal.provenance.method ?? "Kaynak")}
+                {String(
+                  signal.provenance.source_name ??
+                    signal.provenance.method ??
+                    "Kaynak",
+                )}
                 {signal.normalized_document_id ? " · belge getirildi" : ""}
               </span>
             </div>

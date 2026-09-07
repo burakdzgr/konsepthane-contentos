@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/missions-api", async () => {
   const actual =
-    await vi.importActual<typeof import("@/lib/missions-api")>("@/lib/missions-api");
+    await vi.importActual<typeof import("@/lib/missions-api")>(
+      "@/lib/missions-api",
+    );
   return { ...actual, fetchMissions: vi.fn(), fetchMission: vi.fn() };
 });
 vi.mock("@/lib/strategy-api", () => ({
@@ -38,7 +40,10 @@ const mission = {
   market: "TR",
   status: "completed",
   stage: "completed",
-  plan: { intent_summary: "Klişe olmayan fikir arayışı", cliche_patterns: ["sahilde teklif"] },
+  plan: {
+    intent_summary: "Klişe olmayan fikir arayışı",
+    cliche_patterns: ["sahilde teklif"],
+  },
   query_plan: [],
   keyword_plan: [
     {
@@ -47,7 +52,10 @@ const mission = {
       trend: { state: "not_observed" },
     },
   ],
-  surface_summary: { counts: { open_web: 3, registered_source: 2 }, unavailable: [] },
+  surface_summary: {
+    counts: { open_web: 3, registered_source: 2 },
+    unavailable: [],
+  },
   elimination_summary: {
     found: 25,
     generic_eliminated: 8,
@@ -56,9 +64,19 @@ const mission = {
     retained: 11,
     promotable: 4,
   },
-  result_summary: { ideas: 25, promotable: 4, promoted: 1, search_demand: "unknown", factual_evidence: "not_evaluated" },
+  result_summary: {
+    ideas: 25,
+    promotable: 4,
+    promoted: 1,
+    search_demand: "unknown",
+    factual_evidence: "not_evaluated",
+  },
   progress_log: [
-    { stage: "planning", status: "done", note: "12 anahtar ifade, 8 sorgu (model)" },
+    {
+      stage: "planning",
+      status: "done",
+      note: "12 anahtar ifade, 8 sorgu (model)",
+    },
     { stage: "completed", status: "done", note: "1 fırsat açıldı" },
   ],
   failure_reason: null,
@@ -94,18 +112,30 @@ describe("Research missions page", () => {
   });
 
   it("asks only for the goal fields and lists missions with their outcomes", async () => {
-    vi.mocked(fetchMissions).mockResolvedValue({ kind: "ok", data: [mission], requestId: null });
+    vi.mocked(fetchMissions).mockResolvedValue({
+      kind: "ok",
+      data: [mission],
+      requestId: null,
+    });
     render(await ResearchMissionsPage({}));
-    expect(screen.getByRole("heading", { name: "Yeni araştırma başlat" })).toBeTruthy();
-    expect(screen.getByPlaceholderText("Örn. İlginç evlilik teklifleri")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Yeni araştırma başlat" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Örn. İlginç evlilik teklifleri"),
+    ).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: /Kaynak/ })).toBeNull();
     expect(screen.queryByText(/Fetch et|Normalize et/)).toBeNull();
-    const link = screen.getByRole("link", { name: /İlginç Evlilik Teklifleri/ });
+    const link = screen.getByRole("link", {
+      name: /İlginç Evlilik Teklifleri/,
+    });
     expect(link.getAttribute("href")).toBe(`/research/${MISSION_ID}`);
     expect(screen.getByText("Tamamlandı · Tamamlandı")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Araştırma hattı (gelişmiş)" }).getAttribute("href")).toBe(
-      "/research/hat",
-    );
+    expect(
+      screen
+        .getByRole("link", { name: "Araştırma hattı (gelişmiş)" })
+        .getAttribute("href"),
+    ).toBe("/research/hat");
   });
 
   it("shows live progress, elimination counts, keywords and promoted ideas", async () => {
@@ -114,15 +144,23 @@ describe("Research missions page", () => {
       data: { mission, signals: [], candidates: [candidate] },
       requestId: null,
     });
-    render(await MissionDetailPage({ params: Promise.resolve({ id: MISSION_ID }) }));
+    render(
+      await MissionDetailPage({ params: Promise.resolve({ id: MISSION_ID }) }),
+    );
     expect(screen.getByText("12 anahtar ifade, 8 sorgu (model)")).toBeTruthy();
-    expect(screen.getByText("Klişe elendi").nextElementSibling?.textContent).toBe("8");
-    expect(screen.getByText("Birleştirildi").nextElementSibling?.textContent).toBe("6");
+    expect(
+      screen.getByText("Klişe elendi").nextElementSibling?.textContent,
+    ).toBe("8");
+    expect(
+      screen.getByText("Birleştirildi").nextElementSibling?.textContent,
+    ).toBe("6");
     expect(screen.getByText("yaratıcı evlilik teklifi")).toBeTruthy();
     expect(screen.getAllByText("Bilinmiyor").length).toBeGreaterThan(0);
     expect(screen.getByText("Listede yok")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "İçerik fırsatını aç →" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "İçerik fırsatını aç →" })
+        .getAttribute("href"),
     ).toBe(`/editorial/${candidate.work_item_id}`);
     expect(screen.getByText("Kanıt güveni: Bilinmiyor")).toBeTruthy();
     expect(screen.getByText("Fikir güveni: Yüksek")).toBeTruthy();

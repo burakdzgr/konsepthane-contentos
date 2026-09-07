@@ -32,7 +32,10 @@ export default async function ResearchMissionsPage({
 }) {
   const params = searchParams ? await searchParams : {};
   const error = typeof params.error === "string" ? params.error : null;
-  const [missions, strategy] = await Promise.all([fetchMissions(), fetchStrategyOverview()]);
+  const [missions, strategy] = await Promise.all([
+    fetchMissions(),
+    fetchStrategyOverview(),
+  ]);
   const items = missions.kind === "ok" ? missions.data : [];
   const clusters = strategy.kind === "ok" ? strategy.data.clusters : [];
 
@@ -43,16 +46,18 @@ export default async function ResearchMissionsPage({
           <span className={styles.eyebrow}>FİKİR KEŞİF MERKEZİ</span>
           <h1>Araştırmalar</h1>
           <p>
-            Kaynak seçmek zorunda değilsin. Ne aradığını söyle; ContentOS konuyu anlar,
-            anahtar kelimeleri genişletir, kayıtlı kaynakları ve açık webi tarar, klişeleri
-            eler ve yalnızca güçlü, uygulanabilir fikirleri içerik fırsatına dönüştürür.
+            Kaynak seçmek zorunda değilsin. Ne aradığını söyle; ContentOS konuyu
+            anlar, anahtar kelimeleri genişletir, kayıtlı kaynakları ve açık
+            webi tarar, klişeleri eler ve yalnızca güçlü, uygulanabilir
+            fikirleri içerik fırsatına dönüştürür.
           </p>
         </div>
         <div className={styles.truth}>
           <b>İki ayrı güven ölçüsü</b>
           <span>
-            Fikir güveni yaratıcı kaliteyi anlatır; kanıt güveni yalnızca doğrulanabilir
-            iddiaları. Arama hacmi veya trend verisi yoksa &ldquo;Bilinmiyor&rdquo; kalır.
+            Fikir güveni yaratıcı kaliteyi anlatır; kanıt güveni yalnızca
+            doğrulanabilir iddiaları. Arama hacmi veya trend verisi yoksa
+            &ldquo;Bilinmiyor&rdquo; kalır.
           </span>
         </div>
       </header>
@@ -69,7 +74,10 @@ export default async function ResearchMissionsPage({
             <span>✦</span>
             <div>
               <h2>Yeni araştırma başlat</h2>
-              <p>Dört kısa bilgi yeterli. Kaynak, sorgu ve agent seçimlerini sistem yapar.</p>
+              <p>
+                Dört kısa bilgi yeterli. Kaynak, sorgu ve agent seçimlerini
+                sistem yapar.
+              </p>
             </div>
           </div>
           <label>
@@ -94,13 +102,22 @@ export default async function ResearchMissionsPage({
           <div className={styles.two}>
             <label>
               <span>Hedef kitle</span>
-              <input name="audience" required maxLength={300} placeholder="20–35 yaş çiftler" />
+              <input
+                name="audience"
+                required
+                maxLength={300}
+                placeholder="20–35 yaş çiftler"
+              />
             </label>
             <label>
               <span>
                 Odak kelime <small>isteğe bağlı</small>
               </span>
-              <input name="seed_keyword" maxLength={240} placeholder="ilginç evlilik teklifleri" />
+              <input
+                name="seed_keyword"
+                maxLength={240}
+                placeholder="ilginç evlilik teklifleri"
+              />
             </label>
           </div>
           <label>
@@ -120,8 +137,8 @@ export default async function ResearchMissionsPage({
             <span>▶</span> Araştırmayı başlat
           </button>
           <p className={styles.help}>
-            Araştırma kuyruğa alınır ve sayfada canlı ilerler; sen fırsatları ve fikirleri
-            görürsün, mekanik adımları değil.
+            Araştırma kuyruğa alınır ve sayfada canlı ilerler; sen fırsatları ve
+            fikirleri görürsün, mekanik adımları değil.
           </p>
         </form>
 
@@ -136,9 +153,10 @@ export default async function ResearchMissionsPage({
           <div className={styles.separation}>
             <b>Kaynak sayısı ölçüt değil</b>
             <p>
-              Özgün bir fikir başka sitelerde bulunmayabilir. Fırsatın gücü fikrin kalitesi,
-              okur ihtiyacı, strateji uyumu ve uygulanabilirlikle ölçülür; olgusal iddialar
-              için kanıt kuralları aynen sürer.
+              Özgün bir fikir başka sitelerde bulunmayabilir. Fırsatın gücü
+              fikrin kalitesi, okur ihtiyacı, strateji uyumu ve
+              uygulanabilirlikle ölçülür; olgusal iddialar için kanıt kuralları
+              aynen sürer.
             </p>
           </div>
           <p className={styles.help}>
@@ -156,12 +174,20 @@ export default async function ResearchMissionsPage({
           </div>
         </div>
         {missions.kind !== "ok" ? (
-          <div className={styles.empty}>Araştırma listesi şu an okunamıyor.</div>
+          <div className={styles.empty}>
+            Araştırma listesi şu an okunamıyor.
+          </div>
         ) : items.length === 0 ? (
-          <div className={styles.empty}>Henüz araştırma görevi yok. İlk konunu yukarıdan başlat.</div>
+          <div className={styles.empty}>
+            Henüz araştırma görevi yok. İlk konunu yukarıdan başlat.
+          </div>
         ) : (
           items.map((mission) => (
-            <Link className={styles.mission} href={`/research/${mission.id}`} key={mission.id}>
+            <Link
+              className={styles.mission}
+              href={`/research/${mission.id}`}
+              key={mission.id}
+            >
               <div className={styles.missionIcon}>⌕</div>
               <div className={styles.missionBody}>
                 <h3>{mission.topic}</h3>

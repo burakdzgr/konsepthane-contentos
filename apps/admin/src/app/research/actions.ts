@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 
 import { createMission, runMission } from "@/lib/missions-api";
 
-const field = (data: FormData, name: string) => String(data.get(name) ?? "").trim();
+const field = (data: FormData, name: string) =>
+  String(data.get(name) ?? "").trim();
 
 export async function createMissionAction(data: FormData): Promise<void> {
   const created = await createMission({
