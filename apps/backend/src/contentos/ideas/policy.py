@@ -85,3 +85,13 @@ DEFAULT_IDEA_ORIGINALITY_POLICY = IdeaOriginalityPolicy(
     min_distinct_sources=2,
     title_similarity_failure_threshold=0.90,
 )
+
+# Idea-led opportunities: the concept was synthesized by a research mission
+# from many signals; a single grounded source never makes it unoriginal.
+# Title similarity against the admitted inputs still fails closed.
+IDEA_LED_IDEA_ORIGINALITY_POLICY = IdeaOriginalityPolicy(
+    name="idea-led",
+    version="1",
+    min_distinct_sources=1,
+    title_similarity_failure_threshold=0.90,
+)

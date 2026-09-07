@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import ResearchDetailPage from "@/app/research/[id]/page";
+import ResearchDetailPage from "@/app/research/hat/[id]/page";
 import { fetchPipelineDetail } from "@/lib/research-api";
 import { notFound } from "next/navigation";
 import { ITEM_ID, pipelineDetail } from "./research-fixtures";

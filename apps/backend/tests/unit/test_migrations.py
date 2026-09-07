@@ -55,8 +55,9 @@ def test_alembic_config_points_at_migrations_directory() -> None:
 def test_migration_chain_has_expected_metadata() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
-    assert script.get_heads() == ["0038"]
+    assert script.get_heads() == ["0039"]
     assert script.get_revision("0038").down_revision == "0037"
+    assert script.get_revision("0039").down_revision == "0038"
 
     initial = script.get_revision("0001")
     assert initial.down_revision is None

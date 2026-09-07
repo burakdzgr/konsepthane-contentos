@@ -19,6 +19,7 @@ from contentos.fetching import snapshots as _fetch_snapshots  # noqa: F401
 from contentos.ideas import models as _idea_models  # noqa: F401
 from contentos.inspiration import models as _inspiration_models  # noqa: F401
 from contentos.intake import models as _intake_models  # noqa: F401
+from contentos.missions import models as _mission_models  # noqa: F401
 from contentos.normalization import models as _normalization_models  # noqa: F401
 from contentos.operations import models as _operations_models  # noqa: F401
 from contentos.opportunities import models as _opportunity_models  # noqa: F401

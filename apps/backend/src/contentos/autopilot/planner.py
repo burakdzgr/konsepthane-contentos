@@ -101,6 +101,8 @@ class Snapshot:
     # a narrower source base; distinct sources behind the admitted inputs.
     ideas_predate_research_inputs: bool = False
     distinct_input_sources: int = 0
+    # Promoted by a research mission: judged by the idea, not by source count.
+    idea_led: bool = False
     # The pinned idea's originality; brief acceptance refuses anything but PASSED.
     selected_idea_passed: bool = True
     intent_analysis_id: uuid.UUID | None = None
@@ -196,7 +198,9 @@ def _plan(s: Snapshot, mode: AutopilotMode) -> Action:  # noqa: PLR0911, PLR0912
                     idea_id=str(s.best_idea_id),
                 )
             if s.best_idea_id is None and s.idea_count > 0:
-                if s.ideas_predate_research_inputs and s.distinct_input_sources >= 2:
+                if s.ideas_predate_research_inputs and (
+                    s.distinct_input_sources >= 2 or s.idea_led
+                ):
                     # The source base widened after these ideas were judged:
                     # one more generation sees every admitted input.
                     return _enqueue(

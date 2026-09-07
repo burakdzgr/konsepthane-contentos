@@ -2,6 +2,57 @@
 
 Last updated: 2026-09-07
 
+## Research-Driven Idea Engine: Research Missions (2026-09-07)
+
+ContentOS stopped being source-driven. The primary starting object is now a
+**Research Mission** (topic, goal, audience, optional keyword/cluster);
+sources are research surfaces, not the precondition. See
+`docs/RESEARCH_MISSIONS.md`.
+
+- Durable state: `research_missions`, `mission_signals` (inspiration
+  provenance, never evidence), `mission_idea_candidates`; migration 0039 also
+  adds `editorial_opportunities.mission_candidate_id`, the `research_mission`
+  work-item origin and the `mission_planning` / `web_research` /
+  `idea_synthesis` generation purposes.
+- Engine (`missions/engine.py`): PLANNING (model: intent, keywords, TR/EN
+  queries incl. `site:pinterest.com`, cliché patterns, primitive hints) →
+  KEYWORDS (Search Console demand + Google Trends BigQuery match per keyword;
+  `unknown` / `not_observed` / `observed`, never estimated) → SEARCHING
+  (registered discovery items matched by title/snippet/URL-slug tokens; open
+  web / visual / community via the model, live browsing first and a labelled
+  `model_recall` fallback without URLs; trend matches) → EXTRACTING (model
+  idea synthesis: primitives, extracted + synthesized candidates, factors) →
+  CLUSTERING (cluster_key / Jaccard ≥ 0.6 merge) → EVALUATING (weighted
+  creative quality, cliché patterns, strategy-fit bonus, promote ≥ 65 /
+  continue ≥ 50 / eliminate; elimination summary "found / generic / merged /
+  weak / retained") → GROUNDING (open-web pages behind promotable ideas go
+  through the normal intake chain under an ad-hoc `SEARCH`-role
+  `web-<domain>` source, which never promotes on its own) → PROMOTING
+  (`finalize_mission` re-checks each minute for 15 min; grounded promotable
+  candidates become idea-led opportunities and are queued for scoring).
+- Two confidences are explicit: idea confidence (creative) vs factual
+  evidence confidence (`unknown` until the evidence pipeline says otherwise).
+- Idea-led production: `IdeaLedScoringEngine` (idea quality = EDITORIAL_VALUE
+  0.45, diversity 0.03, bands 0.70/0.55), `IDEA_LED_EVIDENCE_POLICY`
+  (1 item / 1 source / 0 key facts), `IDEA_LED_IDEA_ORIGINALITY_POLICY`
+  (1 source) + `mission_seed` in the idea prompt, `Snapshot.idea_led` in the
+  autopilot. Intake promotions keep every previous policy; Writer/Editor/QA/
+  media/publishing/human approval untouched.
+- Worker: `contentos.research.run_mission`, `contentos.research.finalize_mission`.
+  API: `POST /internal/research-missions` creates and queues; admin `/research`
+  is the mission studio (four fields, live stages), `/research/hat` keeps the
+  mechanical pipeline view.
+- Live acceptance (mission 8b93e710, "İlginç Evlilik Teklifleri", goal only):
+  8 keywords / 12 queries planned by the model, demand + trend consulted and
+  `not_observed`, 70 signals from 4 surfaces, 22 candidates → 2 merged, 8
+  strong, 4 idea-led opportunities opened (one commissionable at 0.74, three
+  needs-operator-review at 0.58 because their grounding pages were old
+  duplicates without evidence). Details in `docs/RESEARCH_MISSIONS.md`.
+- Live: the browser gateway freezes on ChatGPT web search (protocolTimeout,
+  same failure family as long image jobs); the engine records the failure and
+  continues with recall signals + registered sources so a mission never
+  pretends it searched.
+
 ## Konsepthane ContentOS visual system (2026-09-07)
 
 - The operator application now uses the supplied Konsepthane ContentOS design language: fixed navigation rail, purple/blue brand mark, global command search, production-state pill, deep navy surfaces and semantic status colors.

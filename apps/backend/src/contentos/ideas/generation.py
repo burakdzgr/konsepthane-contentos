@@ -25,6 +25,7 @@ typed IncompleteMaterializationError (recover with retry_number + 1).
 import json
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -54,10 +55,15 @@ from contentos.ideas.generation_schemas import (
 )
 from contentos.ideas.models import Idea
 from contentos.ideas.originality import evaluate_originality, find_fake_ugc_violations
-from contentos.ideas.policy import DEFAULT_IDEA_ORIGINALITY_POLICY, IdeaOriginalityPolicy
+from contentos.ideas.policy import (
+    DEFAULT_IDEA_ORIGINALITY_POLICY,
+    IDEA_LED_IDEA_ORIGINALITY_POLICY,
+    IdeaOriginalityPolicy,
+)
 from contentos.ideas.repository import IdeaRepository
 from contentos.ideas.service import originality_inputs_for_opportunity
 from contentos.ideas.values import validate_exclusions, validate_planning_dimensions
+from contentos.missions.models import MissionIdeaCandidate
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.enums import OpportunityDisposition
 from contentos.opportunities.errors import OpportunityNotFoundError
@@ -110,6 +116,14 @@ Each candidate MUST NOT:
 - treat this output as factual evidence — it is a proposal only.
 
 Propose the idea only. Do not write the article.
+
+If `mission_seed` is present, a research mission already synthesized this
+concept from many inspiration signals: keep its core mechanic and audience,
+and propose the requested candidates as concrete angles/variations of THAT
+concept (different formats, scopes or hooks), never as unrelated topics. The
+seed is the editorial intent, not a source article; treat
+`factual_claims_needed` as things the Writer must ground later, never as
+facts you may assert.
 """
 
 
@@ -161,6 +175,13 @@ class IdeaGenerationEngine:
         work_item = self._session.get(EditorialWorkItem, opportunity.work_item_id)
         if work_item is None:  # pragma: no cover - RESTRICT FK guarantees this
             raise OpportunityNotFoundError("opportunity has no resolvable work item")
+        if (
+            policy is DEFAULT_IDEA_ORIGINALITY_POLICY
+            and opportunity.mission_candidate_id is not None
+        ):
+            # Idea-led: the concept was synthesized from many signals; one
+            # grounded source is not a lack of originality.
+            policy = IDEA_LED_IDEA_ORIGINALITY_POLICY
 
         request = self._build_request(opportunity, work_item, candidate_count, policy, retry_number)
         spec: StructuredOutputSpec[IdeaCandidateBatchV1] = StructuredOutputSpec(
@@ -274,6 +295,28 @@ class IdeaGenerationEngine:
             self._session.flush()
         return ideas
 
+    def _mission_seed(self, opportunity: EditorialOpportunity) -> dict[str, Any] | None:
+        """The research mission's synthesized concept, when this opportunity
+        is idea-led: the Writer's seed, never a source to keep away from."""
+        if opportunity.mission_candidate_id is None:
+            return None
+        candidate = self._session.get(MissionIdeaCandidate, opportunity.mission_candidate_id)
+        if candidate is None:
+            return None
+        return {
+            "title": candidate.title,
+            "angle": candidate.angle,
+            "kind": candidate.candidate_kind.value,
+            "primitives": [
+                entry.get("label") or entry.get("key") for entry in candidate.primitives
+            ],
+            "implementation_steps": list(candidate.implementation_steps),
+            "factual_claims_needed": list(candidate.factual_claims_needed),
+            "idea_quality": candidate.idea_quality,
+            "quality_factors": dict(candidate.quality_factors),
+            "rationale": candidate.rationale,
+        }
+
     def _build_request(
         self,
         opportunity: EditorialOpportunity,
@@ -367,9 +410,16 @@ class IdeaGenerationEngine:
             "opportunity_score_id": str(score.id) if score is not None else None,
             "originality_policy_name": policy.name,
             "originality_policy_version": policy.version,
+            "mission_candidate_id": (
+                str(opportunity.mission_candidate_id)
+                if opportunity.mission_candidate_id is not None
+                else None
+            ),
         }
+        mission_seed = self._mission_seed(opportunity)
         input_projection = {
             "topic_summary": opportunity.topic_summary,
+            "mission_seed": mission_seed,
             "locale": work_item.locale,
             "market": work_item.market,
             "documents": document_entries,

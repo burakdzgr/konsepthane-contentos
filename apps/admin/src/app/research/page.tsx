@@ -1,339 +1,195 @@
 import Link from "next/link";
 
-import { trLabel } from "@/lib/tr-labels";
+import {
+  MISSION_STAGE_LABELS,
+  MISSION_STATUS_LABELS,
+  fetchMissions,
+  stateLabel,
+} from "@/lib/missions-api";
+import { fetchStrategyOverview } from "@/lib/strategy-api";
 
-import {
-  DISCOVERY_LIFECYCLE_STATES,
-  DISCOVERY_METHODS,
-  DUPLICATE_OUTCOMES,
-  FETCH_OUTCOMES,
-  NORMALIZATION_STATUSES,
-  fetchPipelineItems,
-  isUuid,
-  type PipelineListItem,
-} from "@/lib/research-api";
-import { formatUtcTimestamp } from "@/lib/format";
-import {
-  discoveryStateTone,
-  duplicateOutcomeTone,
-  evidenceCountTone,
-  fetchOutcomeTone,
-  normalizationStatusTone,
-} from "@/lib/pipeline-display";
-import {
-  buildPageQuery,
-  firstParam,
-  parseBooleanParam,
-  parseOffset,
-  parseUrlSearchText,
-  pickEnum,
-  type RawSearchParams,
-} from "@/lib/search-params";
+import { createMissionAction } from "./actions";
+import styles from "./research.module.css";
 
-// The operational pipeline view must reflect durable PostgreSQL state at
-// request time; queue state never appears here.
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 50;
+const FLOW = [
+  "Konu ve okur niyeti",
+  "Anahtar kelimeler ve arama sinyalleri",
+  "Kayıtlı kaynaklar, açık web, görsel ilham, topluluk",
+  "Fikir mekanikleri ve adaylar",
+  "Klişe eleme ve gruplama",
+  "Fikir kalitesi ve strateji uyumu",
+  "Sayfa temellendirme ve içerik fırsatı",
+];
 
-type PipelineFilterState = {
-  source?: string;
-  state?: (typeof DISCOVERY_LIFECYCLE_STATES)[number];
-  method?: (typeof DISCOVERY_METHODS)[number];
-  fetch?: (typeof FETCH_OUTCOMES)[number];
-  normalize?: (typeof NORMALIZATION_STATUSES)[number];
-  duplicate?: (typeof DUPLICATE_OUTCOMES)[number];
-  evidence?: boolean;
-  q?: string;
-  offset: number;
-};
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-function parseFilters(params: RawSearchParams): PipelineFilterState {
-  const source = firstParam(params.source);
-  return {
-    source: source !== undefined && isUuid(source) ? source : undefined,
-    state: pickEnum(params.state, DISCOVERY_LIFECYCLE_STATES),
-    method: pickEnum(params.method, DISCOVERY_METHODS),
-    fetch: pickEnum(params.fetch, FETCH_OUTCOMES),
-    normalize: pickEnum(params.normalize, NORMALIZATION_STATUSES),
-    duplicate: pickEnum(params.duplicate, DUPLICATE_OUTCOMES),
-    evidence: parseBooleanParam(params.evidence),
-    q: parseUrlSearchText(params.q),
-    offset: parseOffset(params.offset),
-  };
-}
-
-function pageHref(filters: PipelineFilterState, offset: number): string {
-  return `/research${buildPageQuery({
-    source: filters.source,
-    state: filters.state,
-    method: filters.method,
-    fetch: filters.fetch,
-    normalize: filters.normalize,
-    duplicate: filters.duplicate,
-    evidence: filters.evidence,
-    q: filters.q,
-    offset: offset > 0 ? offset : undefined,
-  })}`;
-}
-
-function EnumSelect({
-  label,
-  name,
-  values,
-  selected,
-}: {
-  label: string;
-  name: string;
-  values: readonly string[];
-  selected: string | undefined;
-}) {
-  return (
-    <label>
-      {label}
-      <select name={name} defaultValue={selected ?? ""}>
-        <option value="">Tümü</option>
-        {values.map((value) => (
-          <option key={value} value={value}>
-            {trLabel(value)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function FilterForm({ filters }: { filters: PipelineFilterState }) {
-  return (
-    <form className="filter-form" method="get" action="/research">
-      {filters.source !== undefined && (
-        <input type="hidden" name="source" value={filters.source} />
-      )}
-      <EnumSelect
-        label="Keşif"
-        name="state"
-        values={DISCOVERY_LIFECYCLE_STATES}
-        selected={filters.state}
-      />
-      <EnumSelect
-        label="Yöntem"
-        name="method"
-        values={DISCOVERY_METHODS}
-        selected={filters.method}
-      />
-      <EnumSelect
-        label="Getirme"
-        name="fetch"
-        values={FETCH_OUTCOMES}
-        selected={filters.fetch}
-      />
-      <EnumSelect
-        label="Normalleştirme"
-        name="normalize"
-        values={NORMALIZATION_STATUSES}
-        selected={filters.normalize}
-      />
-      <EnumSelect
-        label="Kopya"
-        name="duplicate"
-        values={DUPLICATE_OUTCOMES}
-        selected={filters.duplicate}
-      />
-      <label>
-        Kanıt
-        <select
-          name="evidence"
-          defaultValue={
-            filters.evidence === undefined ? "" : String(filters.evidence)
-          }
-        >
-          <option value="">Tümü</option>
-          <option value="true">kanıt var</option>
-          <option value="false">kanıt yok</option>
-        </select>
-      </label>
-      <label>
-        URL içerir
-        <input
-          type="text"
-          name="q"
-          defaultValue={filters.q ?? ""}
-          maxLength={200}
-          placeholder="kanonik URL parçası"
-        />
-      </label>
-      <button type="submit">Uygula</button>
-    </form>
-  );
-}
-
-function FetchCell({ item }: { item: PipelineListItem }) {
-  if (item.fetch_outcome === null) {
-    return <span className="muted">—</span>;
-  }
-  return (
-    <span className="badge" data-tone={fetchOutcomeTone(item.fetch_outcome)}>
-      {trLabel(item.fetch_outcome)}
-      {item.status_code !== null ? ` ${item.status_code}` : ""}
-    </span>
-  );
-}
-
-function NormalizeCell({ item }: { item: PipelineListItem }) {
-  if (item.normalization_status === null) {
-    return <span className="muted">—</span>;
-  }
-  return (
-    <span
-      className="badge"
-      data-tone={normalizationStatusTone(item.normalization_status)}
-    >
-      {trLabel(item.normalization_status)}
-      {item.normalization_failure_code !== null
-        ? ` (${trLabel(item.normalization_failure_code)})`
-        : ""}
-    </span>
-  );
-}
-
-function DuplicateCell({ item }: { item: PipelineListItem }) {
-  if (item.duplicate_outcome === null) {
-    return <span className="muted">—</span>;
-  }
-  return (
-    <span
-      className="badge"
-      data-tone={duplicateOutcomeTone(item.duplicate_outcome)}
-    >
-      {trLabel(item.duplicate_outcome)}
-    </span>
-  );
-}
-
-export default async function ResearchPage({
+export default async function ResearchMissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<RawSearchParams>;
+  searchParams?: SearchParams;
 }) {
-  const filters = parseFilters(await searchParams);
-  const result = await fetchPipelineItems({
-    sourceId: filters.source,
-    lifecycleState: filters.state,
-    discoveryMethod: filters.method,
-    fetchOutcome: filters.fetch,
-    normalizationStatus: filters.normalize,
-    duplicateOutcome: filters.duplicate,
-    hasEvidence: filters.evidence,
-    urlContains: filters.q,
-    limit: PAGE_SIZE,
-    offset: filters.offset,
-  });
+  const params = searchParams ? await searchParams : {};
+  const error = typeof params.error === "string" ? params.error : null;
+  const [missions, strategy] = await Promise.all([fetchMissions(), fetchStrategyOverview()]);
+  const items = missions.kind === "ok" ? missions.data : [];
+  const clusters = strategy.kind === "ok" ? strategy.data.clusters : [];
 
   return (
-    <section className="panel panel-wide" aria-labelledby="research-title">
-      <h1 id="research-title">Araştırma Hattı</h1>
-      <p className="muted">
-        Keşfedilen her URL&apos;ye aşama aşama ne olduğu, kalıcı durumdan. Salt
-        okunur.
-      </p>
-      <FilterForm filters={filters} />
-      {result.kind === "unreachable" && (
-        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
-      )}
-      {result.kind === "malformed" && (
-        <p role="status">Arka uç API&apos;si beklenmeyen veri döndürdü.</p>
-      )}
-      {result.kind === "ok" && result.data.items.length === 0 && (
-        <p className="empty-note" role="status">
-          Geçerli görünümle eşleşen keşif öğesi yok.
+    <main className={styles.page}>
+      <header className={styles.hero}>
+        <div>
+          <span className={styles.eyebrow}>FİKİR KEŞİF MERKEZİ</span>
+          <h1>Araştırmalar</h1>
+          <p>
+            Kaynak seçmek zorunda değilsin. Ne aradığını söyle; ContentOS konuyu anlar,
+            anahtar kelimeleri genişletir, kayıtlı kaynakları ve açık webi tarar, klişeleri
+            eler ve yalnızca güçlü, uygulanabilir fikirleri içerik fırsatına dönüştürür.
+          </p>
+        </div>
+        <div className={styles.truth}>
+          <b>İki ayrı güven ölçüsü</b>
+          <span>
+            Fikir güveni yaratıcı kaliteyi anlatır; kanıt güveni yalnızca doğrulanabilir
+            iddiaları. Arama hacmi veya trend verisi yoksa &ldquo;Bilinmiyor&rdquo; kalır.
+          </span>
+        </div>
+      </header>
+
+      {error === "create" ? (
+        <p role="alert" className={styles.alert}>
+          Araştırma oluşturulamadı. Konu, amaç ve hedef kitle zorunludur.
         </p>
-      )}
-      {result.kind === "ok" && result.data.items.length > 0 && (
-        <>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">Keşfedildi</th>
-                  <th scope="col">Kaynak</th>
-                  <th scope="col">URL</th>
-                  <th scope="col">Keşif</th>
-                  <th scope="col">Getirme</th>
-                  <th scope="col">Normalleştirme</th>
-                  <th scope="col">Kopya</th>
-                  <th scope="col">Kanıt</th>
-                  <th scope="col">Son görülme</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{formatUtcTimestamp(item.discovered_at)}</td>
-                    <td title={item.source_name}>{item.source_slug}</td>
-                    <td className="cell-url" title={item.canonical_url}>
-                      <Link href={`/research/${item.id}`}>
-                        {item.canonical_url}
-                      </Link>
-                    </td>
-                    <td>
-                      <span
-                        className="badge"
-                        data-tone={discoveryStateTone(item.lifecycle_state)}
-                      >
-                        {trLabel(item.lifecycle_state)}
-                      </span>
-                      {item.rejection_reason !== null && (
-                        <span className="muted cell-secondary">
-                          {item.rejection_reason}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <FetchCell item={item} />
-                    </td>
-                    <td>
-                      <NormalizeCell item={item} />
-                    </td>
-                    <td>
-                      <DuplicateCell item={item} />
-                    </td>
-                    <td>
-                      <span
-                        className="badge"
-                        data-tone={evidenceCountTone(item.evidence_count)}
-                      >
-                        {item.evidence_count}
-                      </span>
-                    </td>
-                    <td>{formatUtcTimestamp(item.last_seen_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      ) : null}
+
+      <section className={styles.grid}>
+        <form action={createMissionAction} className={styles.composer}>
+          <div className={styles.title}>
+            <span>✦</span>
+            <div>
+              <h2>Yeni araştırma başlat</h2>
+              <p>Dört kısa bilgi yeterli. Kaynak, sorgu ve agent seçimlerini sistem yapar.</p>
+            </div>
           </div>
-          <nav className="pagination" aria-label="Hat sayfalaması">
-            <span className="muted">
-              {result.data.total} kayıttan {filters.offset + 1}–
-              {filters.offset + result.data.items.length} gösteriliyor
+          <label>
+            <span>Ne araştırmak istiyorsun?</span>
+            <input
+              name="topic"
+              required
+              maxLength={300}
+              placeholder="Örn. İlginç evlilik teklifleri"
+            />
+          </label>
+          <label>
+            <span>Bu araştırmadan beklediğin sonuç</span>
+            <textarea
+              name="goal"
+              required
+              maxLength={2000}
+              rows={3}
+              placeholder="Türkiye için gerçekten yaratıcı ve uygulanabilir 20 fikir bul"
+            />
+          </label>
+          <div className={styles.two}>
+            <label>
+              <span>Hedef kitle</span>
+              <input name="audience" required maxLength={300} placeholder="20–35 yaş çiftler" />
+            </label>
+            <label>
+              <span>
+                Odak kelime <small>isteğe bağlı</small>
+              </span>
+              <input name="seed_keyword" maxLength={240} placeholder="ilginç evlilik teklifleri" />
+            </label>
+          </div>
+          <label>
+            <span>
+              Konu kümesi <small>isteğe bağlı</small>
             </span>
-            {filters.offset > 0 && (
-              <Link
-                href={pageHref(
-                  filters,
-                  Math.max(filters.offset - PAGE_SIZE, 0),
-                )}
-              >
-                Önceki
-              </Link>
-            )}
-            {filters.offset + result.data.items.length < result.data.total && (
-              <Link href={pageHref(filters, filters.offset + PAGE_SIZE)}>
-                Sonraki
-              </Link>
-            )}
-          </nav>
-        </>
-      )}
-    </section>
+            <select name="topic_cluster_id" defaultValue="">
+              <option value="">Sistem eşleştirsin</option>
+              {clusters.map((cluster) => (
+                <option value={cluster.id} key={cluster.id}>
+                  {cluster.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className={styles.primary} type="submit">
+            <span>▶</span> Araştırmayı başlat
+          </button>
+          <p className={styles.help}>
+            Araştırma kuyruğa alınır ve sayfada canlı ilerler; sen fırsatları ve fikirleri
+            görürsün, mekanik adımları değil.
+          </p>
+        </form>
+
+        <section className={styles.flow}>
+          <h2>Bu görev nasıl ilerler?</h2>
+          {FLOW.map((step, index) => (
+            <div className={styles.step} key={step}>
+              <b>{index + 1}</b>
+              <span>{step}</span>
+            </div>
+          ))}
+          <div className={styles.separation}>
+            <b>Kaynak sayısı ölçüt değil</b>
+            <p>
+              Özgün bir fikir başka sitelerde bulunmayabilir. Fırsatın gücü fikrin kalitesi,
+              okur ihtiyacı, strateji uyumu ve uygulanabilirlikle ölçülür; olgusal iddialar
+              için kanıt kuralları aynen sürer.
+            </p>
+          </div>
+          <p className={styles.help}>
+            Mekanik hattı (keşif, getirme, normalizasyon) görmek için{" "}
+            <Link href="/research/hat">Araştırma hattı (gelişmiş)</Link>.
+          </p>
+        </section>
+      </section>
+
+      <section className={styles.list}>
+        <div className={styles.listHead}>
+          <div>
+            <h2>Son araştırmalar</h2>
+            <p>{items.length} kalıcı görev</p>
+          </div>
+        </div>
+        {missions.kind !== "ok" ? (
+          <div className={styles.empty}>Araştırma listesi şu an okunamıyor.</div>
+        ) : items.length === 0 ? (
+          <div className={styles.empty}>Henüz araştırma görevi yok. İlk konunu yukarıdan başlat.</div>
+        ) : (
+          items.map((mission) => (
+            <Link className={styles.mission} href={`/research/${mission.id}`} key={mission.id}>
+              <div className={styles.missionIcon}>⌕</div>
+              <div className={styles.missionBody}>
+                <h3>{mission.topic}</h3>
+                <p>
+                  {mission.audience} · {mission.goal}
+                </p>
+                <span>
+                  {stateLabel(MISSION_STATUS_LABELS, mission.status)} ·{" "}
+                  {stateLabel(MISSION_STAGE_LABELS, mission.stage)}
+                </span>
+              </div>
+              <div className={styles.stats}>
+                <b>{Number(mission.result_summary.ideas ?? 0)}</b>
+                <span>fikir</span>
+              </div>
+              <div className={styles.stats}>
+                <b>{Number(mission.result_summary.promotable ?? 0)}</b>
+                <span>güçlü aday</span>
+              </div>
+              <div className={styles.stats}>
+                <b>{Number(mission.result_summary.promoted ?? 0)}</b>
+                <span>fırsat</span>
+              </div>
+              <span className={styles.arrow}>→</span>
+            </Link>
+          ))
+        )}
+      </section>
+    </main>
   );
 }

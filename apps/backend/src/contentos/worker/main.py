@@ -14,6 +14,7 @@ from contentos.worker.autopilot_tasks import (
 )
 from contentos.worker.editorial_tasks import register_editorial_pipeline_tasks
 from contentos.worker.intake_tasks import register_intake_tasks
+from contentos.worker.mission_tasks import register_mission_tasks
 from contentos.worker.performance_tasks import register_performance_tasks
 from contentos.worker.research_tasks import register_research_pipeline_tasks
 from contentos.worker.runtime import WorkerRuntime
@@ -33,6 +34,7 @@ def create_worker_app(settings: Settings | None = None) -> Celery:
     app = create_celery_app(resolved_settings)
     runtime = WorkerRuntime(resolved_settings)
     register_research_pipeline_tasks(app, runtime)
+    register_mission_tasks(app, runtime)
     register_editorial_pipeline_tasks(app, runtime)
     register_intake_tasks(app, runtime)
     register_autopilot_tasks(app, runtime)

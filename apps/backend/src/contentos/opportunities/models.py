@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+import contentos.missions.models  # noqa: F401  (FK target: mission_idea_candidates)
 from contentos.db.base import Base
 from contentos.db.types import JSON_DICT, JSON_LIST, string_enum
 from contentos.opportunities.enums import (
@@ -79,6 +80,11 @@ class EditorialOpportunity(Base):
         nullable=False,
     )
     topic_summary: Mapped[str] = mapped_column(Text(), nullable=False)
+    # Set when a research mission promoted this opportunity: the item is
+    # idea-led, so its strength is the idea's quality, not its source count.
+    mission_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(), ForeignKey("mission_idea_candidates.id", ondelete="SET NULL"), nullable=True
+    )
     update_of_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
     disposition: Mapped[OpportunityDisposition] = mapped_column(
         string_enum(OpportunityDisposition, "ck_editorial_opportunities_disposition", 16),

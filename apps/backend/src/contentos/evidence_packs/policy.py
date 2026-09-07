@@ -66,3 +66,16 @@ DEFAULT_EVIDENCE_POLICY = EvidenceSufficiencyPolicy(
     min_key_facts=1,
     staleness_days=180,
 )
+
+# Idea-led opportunities (promoted by a research mission) are judged by the
+# idea, not by how many sites already wrote about it: one grounded document
+# is enough to start, and a creative guide owes no key fact by policy —
+# every factual claim the Writer makes is still bound to evidence.
+IDEA_LED_EVIDENCE_POLICY = EvidenceSufficiencyPolicy(
+    name="idea-led",
+    version="1",
+    min_evidence_items=1,
+    min_distinct_sources=1,
+    min_key_facts=0,
+    staleness_days=365,
+)

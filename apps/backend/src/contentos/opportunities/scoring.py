@@ -148,6 +148,10 @@ class ScoringInputs:
     documents_with_evidence: int
     sources_with_evidence: int
     evaluated_at: datetime
+    # Idea-led opportunities only: the research mission's creative quality
+    # (0..1) and the candidate it came from. Never set for intake promotions.
+    idea_quality: float | None = None
+    mission_candidate_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +221,9 @@ class OpportunityScoringEngine:
 
     name = OPPORTUNITY_ENGINE_NAME
     version = OPPORTUNITY_ENGINE_VERSION
+    weights: dict[ScoreComponent, float] = V1_WEIGHTS
+    core_components: frozenset[ScoreComponent] = CORE_COMPONENTS
+    band_thresholds: dict[str, float] = V1_BAND_THRESHOLDS
 
     def evaluate(self, inputs: ScoringInputs) -> ScoringResult:
         evaluations = [
@@ -225,6 +232,7 @@ class OpportunityScoringEngine:
             self._source_trust(inputs),
             self._duplicate_overlap(inputs),
             self._evidence_availability(inputs),
+            *self._extra_evaluations(inputs),
         ]
         computed = {evaluation.component for evaluation in evaluations}
         for component in ScoreComponent:
@@ -244,16 +252,17 @@ class OpportunityScoringEngine:
             for evaluation in evaluations
             if evaluation.availability is ComponentAvailability.KNOWN
         ]
-        known_weight = sum(V1_WEIGHTS[evaluation.component] for evaluation in known)
+        known_weight = sum(self.weights[evaluation.component] for evaluation in known)
         overall_value: float | None = None
         if known and known_weight > 0:
             weighted = sum(
-                (evaluation.value or 0.0) * V1_WEIGHTS[evaluation.component] for evaluation in known
+                (evaluation.value or 0.0) * self.weights[evaluation.component]
+                for evaluation in known
             )
             overall_value = round(weighted / known_weight, 4)
 
         band = self._band(overall_value)
-        known_core = sum(1 for evaluation in known if evaluation.component in CORE_COMPONENTS)
+        known_core = sum(1 for evaluation in known if evaluation.component in self.core_components)
         coverage_ok = (
             known_core >= V1_MIN_KNOWN_CORE_COMPONENTS
             and known_weight >= V1_MIN_KNOWN_WEIGHT_FRACTION
@@ -279,17 +288,26 @@ class OpportunityScoringEngine:
             components=tuple(evaluations),
             missing_signals=missing,
             risk_flags=(),
-            weights_snapshot=weights_snapshot(),
-            threshold_snapshot=threshold_snapshot(),
+            weights_snapshot=self._weights_snapshot(),
+            threshold_snapshot=self._threshold_snapshot(),
         )
 
-    @staticmethod
-    def _band(overall_value: float | None) -> ScoreBand:
+    def _extra_evaluations(self, inputs: ScoringInputs) -> list[ComponentEvaluation]:
+        del inputs
+        return []
+
+    def _weights_snapshot(self) -> dict[str, Any]:
+        return weights_snapshot()
+
+    def _threshold_snapshot(self) -> dict[str, Any]:
+        return threshold_snapshot()
+
+    def _band(self, overall_value: float | None) -> ScoreBand:
         if overall_value is None:
             return ScoreBand.WEAK
-        if overall_value >= V1_BAND_THRESHOLDS["strong"]:
+        if overall_value >= self.band_thresholds["strong"]:
             return ScoreBand.STRONG
-        if overall_value >= V1_BAND_THRESHOLDS["moderate"]:
+        if overall_value >= self.band_thresholds["moderate"]:
             return ScoreBand.MODERATE
         return ScoreBand.WEAK
 
@@ -443,3 +461,96 @@ def evidence_snapshot(evidence_ids: list[uuid.UUID]) -> dict[str, Any]:
         "set_hash": set_hash,
         "basis": "research_evidence rows for the opportunity's input documents",
     }
+
+
+# --- Idea-led opportunities (research missions) -----------------------------------
+
+IDEA_LED_ENGINE_NAME = "idea-led-opportunity-engine"
+IDEA_LED_ENGINE_VERSION = "1"
+
+# The idea's own quality carries the score; source diversity stays visible
+# but weighs almost nothing: an original concept is rarely on four sites.
+IDEA_LED_WEIGHTS: dict[ScoreComponent, float] = {
+    ScoreComponent.EDITORIAL_VALUE: 0.45,
+    ScoreComponent.EVIDENCE_AVAILABILITY: 0.15,
+    ScoreComponent.SOURCE_TRUST: 0.12,
+    ScoreComponent.DUPLICATE_OVERLAP_RISK: 0.12,
+    ScoreComponent.RECENCY: 0.08,
+    ScoreComponent.SOURCE_DIVERSITY: 0.03,
+    ScoreComponent.SEARCH_DEMAND: 0.02,
+    ScoreComponent.COMPETITION: 0.01,
+    ScoreComponent.AUDIENCE_FIT: 0.01,
+    ScoreComponent.SEASONALITY: 0.005,
+    ScoreComponent.POLICY_RISK: 0.005,
+    ScoreComponent.PRODUCTION_COST_ESTIMATE: 0.00,
+}
+# A single grounded page keeps the source-shaped components deliberately
+# low; the bands make room for that so a strong idea is not "moderate" by
+# construction.
+IDEA_LED_BAND_THRESHOLDS: dict[str, float] = {"strong": 0.70, "moderate": 0.55}
+IDEA_LED_CORE_COMPONENTS: frozenset[ScoreComponent] = frozenset(
+    {
+        ScoreComponent.EDITORIAL_VALUE,
+        ScoreComponent.EVIDENCE_AVAILABILITY,
+        ScoreComponent.SOURCE_TRUST,
+        ScoreComponent.DUPLICATE_OVERLAP_RISK,
+        ScoreComponent.RECENCY,
+    }
+)
+
+
+class IdeaLedScoringEngine(OpportunityScoringEngine):
+    """Scores an opportunity a research mission promoted: the synthesized
+    idea's quality (EDITORIAL_VALUE) is the dominant known component."""
+
+    name = IDEA_LED_ENGINE_NAME
+    version = IDEA_LED_ENGINE_VERSION
+    weights = IDEA_LED_WEIGHTS
+    core_components = IDEA_LED_CORE_COMPONENTS
+    band_thresholds = IDEA_LED_BAND_THRESHOLDS
+
+    def _extra_evaluations(self, inputs: ScoringInputs) -> list[ComponentEvaluation]:
+        if inputs.idea_quality is None:
+            return [
+                ComponentEvaluation(
+                    component=ScoreComponent.EDITORIAL_VALUE,
+                    availability=ComponentAvailability.UNKNOWN,
+                    value=None,
+                    provenance={"reason": "no research-mission idea quality on record"},
+                )
+            ]
+        value = round(max(0.0, min(1.0, float(inputs.idea_quality))), 4)
+        return [
+            ComponentEvaluation(
+                component=ScoreComponent.EDITORIAL_VALUE,
+                availability=ComponentAvailability.KNOWN,
+                value=value,
+                provenance={
+                    "basis": "research_mission_idea_quality",
+                    "mission_candidate_id": (
+                        str(inputs.mission_candidate_id)
+                        if inputs.mission_candidate_id is not None
+                        else None
+                    ),
+                },
+            )
+        ]
+
+    def _weights_snapshot(self) -> dict[str, Any]:
+        base = weights_snapshot()
+        return {
+            **base,
+            "engine": self.name,
+            "engine_version": self.version,
+            "weights": {component.value: weight for component, weight in self.weights.items()},
+            "note": "idea-led policy: the mission's idea quality dominates; source count is context",
+        }
+
+    def _threshold_snapshot(self) -> dict[str, Any]:
+        base = threshold_snapshot()
+        return {
+            **base,
+            "engine": self.name,
+            "engine_version": self.version,
+            "bands": dict(self.band_thresholds),
+        }

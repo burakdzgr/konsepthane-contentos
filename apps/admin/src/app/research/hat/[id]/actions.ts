@@ -38,13 +38,13 @@ function errorCode(result: ControlResult<unknown>): string {
 }
 
 function detailPath(itemId: string, query: string): string {
-  return `/research/${itemId}?${query}`;
+  return `/research/hat/${itemId}?${query}`;
 }
 
 function requireItemId(formData: FormData): string {
   const itemId = field(formData, "discovery_item_id");
   if (!isUuid(itemId)) {
-    redirect("/research?error=invalid");
+    redirect("/research/hat?error=invalid");
   }
   return itemId;
 }

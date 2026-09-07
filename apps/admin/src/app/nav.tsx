@@ -38,10 +38,11 @@ const NAV_SECTIONS: NavSection[] = [
     entries: [
       { href: "/kontrol", label: "Kontrol Merkezi", icon: "home" },
       { href: "/sources", label: "Kaynaklar", icon: "source" },
+      { href: "/research", label: "Araştırmalar", icon: "search" },
       {
         href: "/calisma",
-        label: "Araştırmalar",
-        icon: "search",
+        label: "Çalışmalar",
+        icon: "activity",
         badge: "calisma",
       },
       { href: "/fikirler", label: "Fikirler", icon: "spark" },

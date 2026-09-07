@@ -1,472 +1,385 @@
 import Link from "next/link";
-
-import { trLabel } from "@/lib/tr-labels";
 import { notFound } from "next/navigation";
 
 import {
-  DISCOVERY_REJECTION_REASONS,
-  fetchPipelineDetail,
-  type PipelineDetail,
-} from "@/lib/research-api";
-import { formatUtcTimestamp } from "@/lib/format";
-import {
-  discoveryStateTone,
-  duplicateOutcomeTone,
-  fetchOutcomeTone,
-  normalizationStatusTone,
-} from "@/lib/pipeline-display";
-import { firstParam, type RawSearchParams } from "@/lib/search-params";
-import { ControlNotice } from "../../notices";
-import {
-  acceptDiscoveryItemAction,
-  rejectDiscoveryItemAction,
-  requeueDiscoveryItemAction,
-  startDiscoveryItemFetchAction,
-} from "./actions";
+  CONFIDENCE_LABELS,
+  MISSION_STAGE_LABELS,
+  MISSION_STATUS_LABELS,
+  RECOMMENDATION_LABELS,
+  SURFACE_LABELS,
+  fetchMission,
+  stateLabel,
+  type MissionCandidate,
+} from "@/lib/missions-api";
 
-// One DiscoveryItem's full pipeline history from durable state, at request
-// time, plus the explicit operator decisions valid for its current state.
-// No payload access, no article body, no pipeline-stage bypass.
+import { rerunMissionAction } from "../actions";
+import styles from "../research.module.css";
+
 export const dynamic = "force-dynamic";
 
-const DETAIL_NOTICES: Record<string, string> = {
-  accepted: "Öğe kabul edildi. Getirmeyi başlatmak ayrı bir eylemdir.",
-  rejected: "Öğe reddedildi. Reddetme kalıcıdır.",
-  requeued:
-    "Öğe kabul edilmiş olarak yeniden kuyruğa alındı. Getirmeyi başlatmak ayrı bir eylemdir.",
-  "fetch-queued":
-    "Getirme kuyruğa alındı. Başarılı bir getirmeden sonra hat otomatik olarak devam eder.",
+const STAGE_ORDER = [
+  "planning",
+  "keywords",
+  "searching",
+  "extracting",
+  "clustering",
+  "evaluating",
+  "grounding",
+  "promoting",
+  "completed",
+];
+
+const FACTOR_LABELS: Record<string, string> = {
+  novelty: "Özgünlük",
+  usefulness: "Fayda",
+  specificity: "Somutluk",
+  visual_potential: "Görsel güç",
+  shareability: "Paylaşılabilirlik",
+  emotional_impact: "Duygusal etki",
+  audience_fit: "Kitle uyumu",
+  turkey_applicability: "Türkiye uygulanabilirliği",
 };
 
-function Row({ name, children }: { name: string; children: React.ReactNode }) {
-  return (
-    <div className="status-row">
-      <dt>{name}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function TruncationNote({
-  shown,
-  total,
-  noun,
-}: {
-  shown: number;
-  total: number;
-  noun: string;
-}) {
-  if (total <= shown) {
-    return null;
+function demandText(entry: Record<string, unknown>): string {
+  const demand = (entry.demand ?? {}) as Record<string, unknown>;
+  if (demand.state === "observed") {
+    return `${Number(demand.clicks ?? 0)} tık / ${Number(demand.impressions ?? 0)} gösterim`;
   }
-  return (
-    <p className="muted" role="note">
-      {total} {noun} içinden en son {shown} tanesi gösteriliyor.
-    </p>
-  );
+  if (demand.state === "not_observed") return "Sitede görülmedi";
+  return "Bilinmiyor";
 }
 
-function DiscoverySection({ detail }: { detail: PipelineDetail }) {
-  const item = detail.discovery_item;
-  return (
-    <section aria-labelledby="detail-discovery">
-      <h2 id="detail-discovery">Keşif</h2>
-      <dl className="status-list">
-        <Row name="Durum">
-          <span
-            className="badge"
-            data-tone={discoveryStateTone(item.lifecycle_state)}
-          >
-            {trLabel(item.lifecycle_state)}
-          </span>
-        </Row>
-        <Row name="Kaynak">
-          {detail.source.name}{" "}
-          <span className="mono muted">({detail.source.slug})</span>
-        </Row>
-        <Row name="Kanonik URL">
-          <span className="cell-url" title={item.canonical_url}>
-            {item.canonical_url}
-          </span>
-        </Row>
-        {item.discovered_url !== item.canonical_url && (
-          <Row name="Keşfedilen URL">
-            <span className="cell-url" title={item.discovered_url}>
-              {item.discovered_url}
-            </span>
-          </Row>
-        )}
-        <Row name="Yöntem">{item.discovery_method}</Row>
-        {item.title_hint !== null && (
-          <Row name="Başlık ipucu (güvenilmez)">{item.title_hint}</Row>
-        )}
-        {item.rejection_reason !== null && (
-          <Row name="Reddetme">
-            {item.rejection_reason}
-            {item.rejection_note !== null ? ` — ${item.rejection_note}` : ""}
-          </Row>
-        )}
-        <Row name="Keşfedilme zamanı">
-          {formatUtcTimestamp(item.discovered_at)}
-        </Row>
-        <Row name="Son görülme">{formatUtcTimestamp(item.last_seen_at)}</Row>
-        {item.external_published_at !== null && (
-          <Row name="Kaynağın beyan ettiği yayın tarihi">
-            {formatUtcTimestamp(item.external_published_at)}
-          </Row>
-        )}
-        <Row name="Öğe kimliği">
-          <span className="mono muted">{item.id}</span>
-        </Row>
-      </dl>
-    </section>
-  );
+function trendText(entry: Record<string, unknown>): string {
+  const trend = (entry.trend ?? {}) as Record<string, unknown>;
+  if (trend.state === "observed") {
+    return `${String(trend.term)} (${String(trend.trend_type ?? "")}${
+      trend.rank != null ? ` #${String(trend.rank)}` : ""
+    })`;
+  }
+  if (trend.state === "not_observed") return "Listede yok";
+  return "Bilinmiyor";
 }
 
-function FetchSection({ detail }: { detail: PipelineDetail }) {
+function stageState(
+  stage: string,
+  currentStage: string,
+  status: string,
+  log: Record<string, unknown>[],
+): "done" | "active" | "todo" | "failed" {
+  const entries = log.filter((entry) => entry.stage === stage);
+  if (entries.some((entry) => entry.status === "failed")) return "failed";
+  if (entries.some((entry) => entry.status === "done")) return "done";
+  if (stage === currentStage && (status === "running" || status === "grounding")) return "active";
+  if (stage === currentStage && status === "completed") return "done";
+  const currentIndex = STAGE_ORDER.indexOf(currentStage);
+  return STAGE_ORDER.indexOf(stage) < currentIndex ? "done" : "todo";
+}
+
+function CandidateCard({ candidate }: { candidate: MissionCandidate }) {
+  const factors = candidate.quality_factors as Record<string, unknown>;
   return (
-    <section aria-labelledby="detail-fetch">
-      <h2 id="detail-fetch">Getirme geçmişi</h2>
-      {detail.fetch_attempts.length === 0 && (
-        <p className="empty-note">Kayıtlı getirme denemesi yok.</p>
-      )}
-      {detail.fetch_attempts.length > 0 && (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Getirildi</th>
-                <th scope="col">Sonuç</th>
-                <th scope="col">Durum</th>
-                <th scope="col">Tür</th>
-                <th scope="col">Boyut</th>
-                <th scope="col">Robots</th>
-                <th scope="col">Yeniden deneme</th>
-                <th scope="col">Ayrıntı</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.fetch_attempts.map((attempt) => (
-                <tr key={attempt.id}>
-                  <td>{formatUtcTimestamp(attempt.fetched_at)}</td>
-                  <td>
-                    <span
-                      className="badge"
-                      data-tone={fetchOutcomeTone(attempt.fetch_outcome)}
-                    >
-                      {trLabel(attempt.fetch_outcome)}
-                    </span>
-                  </td>
-                  <td>{attempt.status_code ?? "—"}</td>
-                  <td>{attempt.content_type ?? "—"}</td>
-                  <td>
-                    {attempt.body_size_bytes !== null
-                      ? `${attempt.body_size_bytes} B`
-                      : "—"}
-                  </td>
-                  <td>{trLabel(attempt.robots_decision)}</td>
-                  <td>{trLabel(attempt.retry_classification)}</td>
-                  <td>{attempt.failure_detail ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <article className={styles.candidate} data-recommendation={candidate.recommendation}>
+      <div className={styles.candidateHead}>
+        <div>
+          <h3>{candidate.title}</h3>
+          <p>{candidate.angle}</p>
         </div>
-      )}
-      <TruncationNote
-        shown={detail.fetch_attempts.length}
-        total={detail.total_fetch_attempts}
-        noun="getirme denemesi"
-      />
-    </section>
-  );
-}
-
-function NormalizationSection({ detail }: { detail: PipelineDetail }) {
-  return (
-    <section aria-labelledby="detail-normalization">
-      <h2 id="detail-normalization">Normalleştirme geçmişi</h2>
-      {detail.normalization_attempts.length === 0 && (
-        <p className="empty-note">Kayıtlı normalleştirme denemesi yok.</p>
-      )}
-      {detail.normalization_attempts.length > 0 && (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Normalleştirildi</th>
-                <th scope="col">Durum</th>
-                <th scope="col">Çıkarıcı</th>
-                <th scope="col">Başlık</th>
-                <th scope="col">Yazar</th>
-                <th scope="col">Yayınlanma</th>
-                <th scope="col">Hata</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.normalization_attempts.map((attempt) => (
-                <tr key={attempt.id}>
-                  <td>{formatUtcTimestamp(attempt.normalized_at)}</td>
-                  <td>
-                    <span
-                      className="badge"
-                      data-tone={normalizationStatusTone(
-                        attempt.normalization_status,
-                      )}
-                    >
-                      {trLabel(attempt.normalization_status)}
-                    </span>
-                  </td>
-                  <td className="mono">
-                    {attempt.extractor_name}/{attempt.extractor_version}
-                  </td>
-                  <td>{attempt.title ?? "—"}</td>
-                  <td>{attempt.author_name ?? "—"}</td>
-                  <td>{formatUtcTimestamp(attempt.external_published_at)}</td>
-                  <td>
-                    {attempt.failure_code ?? "—"}
-                    {attempt.failure_detail !== null
-                      ? ` — ${attempt.failure_detail}`
-                      : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className={styles.stats}>
+          <b>{candidate.idea_quality}</b>
+          <span>fikir kalitesi</span>
         </div>
-      )}
-      <TruncationNote
-        shown={detail.normalization_attempts.length}
-        total={detail.total_normalization_attempts}
-        noun="normalleştirme denemesi"
-      />
-    </section>
-  );
-}
-
-function DuplicateSection({ detail }: { detail: PipelineDetail }) {
-  return (
-    <section aria-labelledby="detail-duplicates">
-      <h2 id="detail-duplicates">Kopya kararları</h2>
-      {detail.duplicate_decisions.length === 0 && (
-        <p className="empty-note">Kayıtlı kopya kararı yok.</p>
-      )}
-      {detail.duplicate_decisions.length > 0 && (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Değerlendirildi</th>
-                <th scope="col">Karar</th>
-                <th scope="col">Motor</th>
-                <th scope="col">Gerekçe</th>
-                <th scope="col">Eşleşmeler</th>
-                <th scope="col">Doküman</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.duplicate_decisions.map((decision) => (
-                <tr key={decision.id}>
-                  <td>{formatUtcTimestamp(decision.evaluated_at)}</td>
-                  <td>
-                    <span
-                      className="badge"
-                      data-tone={duplicateOutcomeTone(decision.decision)}
-                    >
-                      {trLabel(decision.decision)}
-                    </span>
-                  </td>
-                  <td className="mono">
-                    {decision.engine_name}/{decision.engine_version}
-                  </td>
-                  <td>
-                    {decision.rationale_codes.length > 0
-                      ? decision.rationale_codes.join(", ")
-                      : "—"}
-                  </td>
-                  <td>{decision.match_count}</td>
-                  <td className="mono muted">
-                    {decision.normalized_document_id}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <TruncationNote
-        shown={detail.duplicate_decisions.length}
-        total={detail.total_duplicate_decisions}
-        noun="kopya kararı"
-      />
-    </section>
-  );
-}
-
-function EvidenceSection({ detail }: { detail: PipelineDetail }) {
-  const evidence = detail.evidence;
-  return (
-    <section aria-labelledby="detail-evidence">
-      <h2 id="detail-evidence">Kanıt özeti</h2>
-      <p className="muted">
-        Yalnızca sayılar: kanıt ifadeleri ve alıntılar burada gösterilmez.
-      </p>
-      <dl className="status-list">
-        <Row name="Toplam kanıt">{evidence.total}</Row>
-        <Row name="Doğrulama durumuna göre">
-          {Object.entries(evidence.by_verification_status)
-            .map(([status, count]) => `${status}: ${count}`)
-            .join(" · ") || "—"}
-        </Row>
-        <Row name="Kanıt türüne göre">
-          {Object.entries(evidence.by_evidence_type)
-            .map(([type, count]) => `${type}: ${count}`)
-            .join(" · ") || "—"}
-        </Row>
-        <Row name="En yeni kanıt">
-          {formatUtcTimestamp(evidence.latest_extracted_at)}
-        </Row>
-      </dl>
-    </section>
-  );
-}
-
-function ActionPanel({ detail }: { detail: PipelineDetail }) {
-  const item = detail.discovery_item;
-  const state = item.lifecycle_state;
-  return (
-    <section aria-labelledby="detail-actions">
-      <h2 id="detail-actions">Operatör eylemleri</h2>
-      {state === "discovered" && (
-        <div className="control-stack">
-          <form action={acceptDiscoveryItemAction} className="control-form">
-            <input type="hidden" name="discovery_item_id" value={item.id} />
-            <button type="submit">Kabul et</button>
-            <span className="muted">
-              Kabul, öğeyi getirme için onaylar; getirme ayrı bir eylem olarak
-              kalır.
-            </span>
-          </form>
-          <form action={rejectDiscoveryItemAction} className="control-form">
-            <input type="hidden" name="discovery_item_id" value={item.id} />
-            <select
-              name="reason"
-              required
-              defaultValue=""
-              aria-label="Reddetme gerekçesi"
-            >
-              <option value="" disabled>
-                Reddetme gerekçesi…
-              </option>
-              {DISCOVERY_REJECTION_REASONS.map((reason) => (
-                <option key={reason} value={reason}>
-                  {trLabel(reason)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              name="note"
-              maxLength={2000}
-              placeholder="isteğe bağlı not"
-              aria-label="Reddetme notu"
-            />
-            <button type="submit">Reddet</button>
-          </form>
-        </div>
-      )}
-      {state === "accepted" && (
-        <form action={startDiscoveryItemFetchAction} className="control-form">
-          <input type="hidden" name="discovery_item_id" value={item.id} />
-          <button type="submit">Getirmeyi başlat</button>
-          <span className="muted">
-            Başarılı bir getirmeden sonra hat otomatik olarak devam eder:
-            normalleştirme → kopya denetimi → kanıt.
-          </span>
-        </form>
-      )}
-      {state === "fetch_failed" && (
-        <form action={requeueDiscoveryItemAction} className="control-form">
-          <input type="hidden" name="discovery_item_id" value={item.id} />
-          <input
-            type="text"
-            name="reason"
-            required
-            maxLength={1000}
-            placeholder="yeniden kuyruğa alma gerekçesi"
-            aria-label="Yeniden kuyruğa alma gerekçesi"
-          />
-          <button type="submit">Yeniden kuyruğa al</button>
-          <span className="muted">
-            Yeniden kuyruğa alma öğeyi kabul edilmiş durumuna döndürür;
-            getirmeyi başlatmaz.
-          </span>
-        </form>
-      )}
-      {state === "fetched" && (
-        <p className="muted">
-          Bu öğe getirildi; hat, öğenin anlık görüntüsünden çalıştı. Burada
-          kullanılabilir eylem yok.
+      </div>
+      <div className={styles.pills}>
+        <span className={styles.pill}>
+          {stateLabel(RECOMMENDATION_LABELS, candidate.recommendation)}
+        </span>
+        <span className={styles.pill}>
+          {candidate.candidate_kind === "synthesized" ? "Sentezlenmiş" : "Sinyalden çıkarılmış"}
+        </span>
+        <span className={styles.pill}>
+          Fikir güveni: {stateLabel(CONFIDENCE_LABELS, candidate.idea_confidence)}
+        </span>
+        <span className={styles.pill}>
+          Kanıt güveni: {stateLabel(CONFIDENCE_LABELS, candidate.factual_evidence_confidence)}
+        </span>
+        {candidate.work_item_id ? (
+          <Link className={styles.pillLink} href={`/editorial/${candidate.work_item_id}`}>
+            İçerik fırsatını aç →
+          </Link>
+        ) : candidate.opportunity_id ? (
+          <span className={styles.pill}>İçerik fırsatı açıldı</span>
+        ) : null}
+      </div>
+      {candidate.is_cliche && candidate.cliche_reason ? (
+        <p className={styles.note}>Klişe: {candidate.cliche_reason}</p>
+      ) : null}
+      {candidate.primitives.length > 0 ? (
+        <p className={styles.note}>
+          Mekanikler:{" "}
+          {candidate.primitives
+            .map((primitive) => String(primitive.label ?? primitive.key ?? ""))
+            .filter(Boolean)
+            .join(" + ")}
         </p>
-      )}
-      {state === "rejected" && (
-        <p className="muted">
-          Bu öğe reddedildi. Reddetme kalıcıdır; kullanılabilir eylem yok.
+      ) : null}
+      {candidate.implementation_steps.length > 0 ? (
+        <ol className={styles.steps}>
+          {candidate.implementation_steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      ) : null}
+      {candidate.factual_claims_needed.length > 0 ? (
+        <p className={styles.note}>
+          Kanıt gerektiren iddialar: {candidate.factual_claims_needed.join("; ")}
         </p>
-      )}
-    </section>
+      ) : null}
+      <div className={styles.factors}>
+        {Object.entries(FACTOR_LABELS).map(([key, label]) => (
+          <span key={key}>
+            {label} <b>{Number(factors[key] ?? 0)}</b>
+          </span>
+        ))}
+      </div>
+      <p className={styles.rationale}>{candidate.rationale}</p>
+    </article>
   );
 }
 
-export default async function ResearchDetailPage({
+export default async function MissionDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<RawSearchParams>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const query = searchParams === undefined ? {} : await searchParams;
-  const result = await fetchPipelineDetail(id);
+  const query = searchParams ? await searchParams : {};
+  const error = typeof query.error === "string" ? query.error : null;
+  const result = await fetchMission(id);
+  if (result.kind !== "ok") notFound();
+  const { mission, signals, candidates } = result.data;
+  const summary = mission.result_summary;
+  const elimination = mission.elimination_summary;
+  const counts = (mission.surface_summary.counts ?? {}) as Record<string, number>;
+  const unavailable = (mission.surface_summary.unavailable ?? []) as string[];
+  const promoted = candidates.filter((candidate) => candidate.opportunity_id);
+  const strong = candidates.filter(
+    (candidate) => candidate.recommendation === "promote" && !candidate.opportunity_id,
+  );
+  const continued = candidates.filter((candidate) => candidate.recommendation === "continue_research");
+  const eliminated = candidates.filter(
+    (candidate) => candidate.recommendation === "eliminate" || candidate.recommendation === "merged",
+  );
+  const busy = mission.status === "queued" || mission.status === "running" || mission.status === "grounding";
 
-  if (result.kind === "not_found") {
-    notFound();
-  }
-  if (result.kind === "unreachable") {
-    return (
-      <section className="panel" aria-labelledby="detail-title">
-        <h1 id="detail-title">Keşif öğesi</h1>
-        <p role="status">Arka uç API&apos;sine şu anda ulaşılamıyor.</p>
-      </section>
-    );
-  }
-  if (result.kind === "malformed") {
-    return (
-      <section className="panel" aria-labelledby="detail-title">
-        <h1 id="detail-title">Keşif öğesi</h1>
-        <p role="status">Arka uç API&apos;si beklenmeyen veri döndürdü.</p>
-      </section>
-    );
-  }
-
-  const detail = result.data;
   return (
-    <section className="panel panel-wide" aria-labelledby="detail-title">
-      <h1 id="detail-title">Keşif öğesi</h1>
-      <p className="muted">
-        <Link href="/research">← Araştırma Hattına dön</Link>
-      </p>
-      <ControlNotice
-        notice={firstParam(query.notice)}
-        error={firstParam(query.error)}
-        noticeMessages={DETAIL_NOTICES}
-      />
-      <DiscoverySection detail={detail} />
-      <ActionPanel detail={detail} />
-      <FetchSection detail={detail} />
-      <NormalizationSection detail={detail} />
-      <DuplicateSection detail={detail} />
-      <EvidenceSection detail={detail} />
-    </section>
+    <main className={styles.page}>
+      <header className={styles.hero}>
+        <div>
+          <Link href="/research">← Araştırmalar</Link>
+          <h1>{mission.topic}</h1>
+          <p>{mission.goal}</p>
+          <span className={styles.status} data-status={mission.status}>
+            {stateLabel(MISSION_STATUS_LABELS, mission.status)} ·{" "}
+            {stateLabel(MISSION_STAGE_LABELS, mission.stage)}
+          </span>
+        </div>
+        <form action={rerunMissionAction}>
+          <input type="hidden" name="id" value={mission.id} />
+          <button className={styles.primary} disabled={busy}>
+            {busy ? "Araştırma sürüyor…" : "Araştırmayı yeniden çalıştır"}
+          </button>
+        </form>
+      </header>
+
+      {error === "run" ? (
+        <p role="alert" className={styles.alert}>
+          Araştırma yeniden kuyruğa alınamadı.
+        </p>
+      ) : null}
+      {error === "queue" ? (
+        <p role="alert" className={styles.alert}>
+          Araştırma kaydedildi ama kuyruğa alınamadı; worker ve kuyruğu kontrol et.
+        </p>
+      ) : null}
+      {mission.failure_reason ? (
+        <p role="alert" className={styles.alert}>
+          Araştırma başarısız oldu: {mission.failure_reason}
+        </p>
+      ) : null}
+
+      <section className={styles.progress} aria-label="Araştırma ilerlemesi">
+        {STAGE_ORDER.map((stage) => {
+          const state = stageState(stage, mission.stage, mission.status, mission.progress_log);
+          const last = [...mission.progress_log].reverse().find((entry) => entry.stage === stage);
+          return (
+            <div className={styles.progressStep} data-state={state} key={stage}>
+              <b>{stateLabel(MISSION_STAGE_LABELS, stage)}</b>
+              <span>{last ? String(last.note ?? "") : "Bekliyor"}</span>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="stats-grid">
+        <article>
+          <span>Bulunan fikir</span>
+          <strong>{Number(elimination.found ?? summary.ideas ?? 0)}</strong>
+        </article>
+        <article>
+          <span>Klişe elendi</span>
+          <strong>{Number(elimination.generic_eliminated ?? 0)}</strong>
+        </article>
+        <article>
+          <span>Birleştirildi</span>
+          <strong>{Number(elimination.merged ?? 0)}</strong>
+        </article>
+        <article>
+          <span>Güçlü aday</span>
+          <strong>{Number(elimination.promotable ?? summary.promotable ?? 0)}</strong>
+        </article>
+        <article>
+          <span>İçerik fırsatı</span>
+          <strong>{Number(summary.promoted ?? 0)}</strong>
+        </article>
+        <article>
+          <span>Arama verisi</span>
+          <strong>{summary.search_demand === "observed" ? "Var" : summary.search_demand === "not_observed" ? "Görülmedi" : "Bilinmiyor"}</strong>
+        </article>
+      </section>
+
+      <section className={styles.grid}>
+        <section className={styles.list}>
+          <div className={styles.listHead}>
+            <div>
+              <h2>Fikir adayları</h2>
+              <p>Kaynak sayısı değil, fikrin kendi niteliği değerlendirilir.</p>
+            </div>
+          </div>
+          {candidates.length === 0 ? (
+            <div className={styles.empty}>
+              {busy ? "Fikirler henüz çıkarılmadı; araştırma sürüyor." : "Bu turda fikir bulunamadı."}
+            </div>
+          ) : null}
+          {promoted.length > 0 ? <h3 className={styles.group}>İçerik fırsatına dönüşenler</h3> : null}
+          {promoted.map((candidate) => (
+            <CandidateCard candidate={candidate} key={candidate.id} />
+          ))}
+          {strong.length > 0 ? <h3 className={styles.group}>Güçlü adaylar</h3> : null}
+          {strong.map((candidate) => (
+            <CandidateCard candidate={candidate} key={candidate.id} />
+          ))}
+          {continued.length > 0 ? <h3 className={styles.group}>Araştırmaya devam</h3> : null}
+          {continued.map((candidate) => (
+            <CandidateCard candidate={candidate} key={candidate.id} />
+          ))}
+          {eliminated.length > 0 ? (
+            <details className={styles.details}>
+              <summary>Elenen ve birleştirilen adaylar ({eliminated.length})</summary>
+              {eliminated.map((candidate) => (
+                <CandidateCard candidate={candidate} key={candidate.id} />
+              ))}
+            </details>
+          ) : null}
+        </section>
+
+        <aside className={styles.flow}>
+          <h2>Araştırma kapsamı</h2>
+          <p>
+            Hedef kitle: <b>{mission.audience}</b>
+          </p>
+          <p>
+            Odak kelime: <b>{mission.seed_keyword ?? "Sistem eşleştirdi"}</b>
+          </p>
+          {typeof mission.plan.intent_summary === "string" ? (
+            <p>
+              Okur niyeti: <b>{mission.plan.intent_summary}</b>
+            </p>
+          ) : null}
+          <p>
+            Faktüel kanıt:{" "}
+            <b>
+              {summary.factual_evidence === "not_evaluated"
+                ? "Fikir aşamasında değerlendirilmez"
+                : String(summary.factual_evidence ?? "Bilinmiyor")}
+            </b>
+          </p>
+
+          <h2>Bulunan yüzeyler</h2>
+          {Object.entries(counts).map(([key, value]) => (
+            <div className={styles.step} key={key}>
+              <b>{value}</b>
+              <span>{stateLabel(SURFACE_LABELS, key)}</span>
+            </div>
+          ))}
+          {unavailable.map((note) => (
+            <p className={styles.note} key={note}>
+              {note}
+            </p>
+          ))}
+
+          <h2>Anahtar kelimeler</h2>
+          {mission.keyword_plan.length === 0 ? (
+            <p className={styles.note}>Henüz genişletilmedi.</p>
+          ) : (
+            <table className={styles.keywords}>
+              <thead>
+                <tr>
+                  <th>Kelime</th>
+                  <th>Arama verisi</th>
+                  <th>Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mission.keyword_plan.map((entry) => (
+                  <tr key={String(entry.keyword)}>
+                    <td>{String(entry.keyword)}</td>
+                    <td>{demandText(entry)}</td>
+                    <td>{trendText(entry)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {Array.isArray(mission.plan.cliche_patterns) && mission.plan.cliche_patterns.length > 0 ? (
+            <>
+              <h2>Klişe kalıpları</h2>
+              <p className={styles.note}>{(mission.plan.cliche_patterns as string[]).join(" · ")}</p>
+            </>
+          ) : null}
+        </aside>
+      </section>
+
+      <section className={styles.list}>
+        <div className={styles.listHead}>
+          <div>
+            <h2>İlham izi</h2>
+            <p>Bunlar ilham sinyalidir; hiçbiri olgu kanıtı değildir.</p>
+          </div>
+        </div>
+        {signals.length === 0 ? <div className={styles.empty}>Henüz sinyal toplanmadı.</div> : null}
+        {signals.slice(0, 40).map((signal) => (
+          <div className={styles.mission} key={signal.id}>
+            <div className={styles.missionIcon}>↗</div>
+            <div className={styles.missionBody}>
+              <h3>{signal.title}</h3>
+              <p>{signal.snippet ?? ""}</p>
+              <span>
+                {stateLabel(SURFACE_LABELS, signal.surface_kind)} ·{" "}
+                {String(signal.provenance.source_name ?? signal.provenance.method ?? "Kaynak")}
+                {signal.normalized_document_id ? " · belge getirildi" : ""}
+              </span>
+            </div>
+            {signal.reference_url ? (
+              <a href={signal.reference_url} target="_blank" rel="noreferrer">
+                Aç
+              </a>
+            ) : null}
+          </div>
+        ))}
+      </section>
+    </main>
   );
 }

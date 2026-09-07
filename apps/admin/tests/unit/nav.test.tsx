@@ -31,6 +31,7 @@ describe("AppNav", () => {
       "Kontrol Merkezi",
       "Kaynaklar",
       "Araştırmalar",
+      "Çalışmalar",
       "Fikirler",
       "Fırsatlar",
       "İçerikler",
@@ -42,7 +43,7 @@ describe("AppNav", () => {
       "Sistem",
     ]);
     expect(
-      screen.getByRole("link", { name: /Araştırmalar/ }).textContent,
+      screen.getByRole("link", { name: /Çalışmalar/ }).textContent,
     ).toContain("2");
     expect(screen.getByRole("link", { name: /Onaylar/ }).textContent).toContain(
       "3",
@@ -96,14 +97,14 @@ describe("AppNav", () => {
     ).toBeNull();
   });
 
-  it("keeps Araştırmalar current on run details", () => {
+  it("keeps Çalışmalar current on run details", () => {
     usePathnameMock.mockReturnValue(
       "/calisma/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
     );
     render(<AppNav />);
     expect(
       screen
-        .getByRole("link", { name: "Araştırmalar" })
+        .getByRole("link", { name: "Çalışmalar" })
         .getAttribute("aria-current"),
     ).toBe("page");
   });

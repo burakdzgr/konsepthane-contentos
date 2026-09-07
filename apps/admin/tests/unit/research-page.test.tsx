@@ -9,7 +9,7 @@ vi.mock("@/lib/research-api", async () => {
   return { ...actual, fetchPipelineItems: vi.fn() };
 });
 
-import ResearchPage from "@/app/research/page";
+import ResearchPage from "@/app/research/hat/page";
 import { fetchPipelineItems } from "@/lib/research-api";
 import {
   ITEM_ID,
@@ -59,7 +59,7 @@ describe("Research Pipeline page", () => {
     const link = screen.getByRole("link", {
       name: "https://ornek.example.test/haber/uzun-baslik",
     });
-    expect(link.getAttribute("href")).toBe(`/research/${ITEM_ID}`);
+    expect(link.getAttribute("href")).toBe(`/research/hat/${ITEM_ID}`);
   });
 
   it("shows truthful per-stage placeholders and failure detail", async () => {
@@ -171,7 +171,7 @@ describe("Research Pipeline page", () => {
     expect(screen.getByText("80 kayıttan 51–51 gösteriliyor")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Önceki" }).getAttribute("href"),
-    ).toBe("/research?state=fetched");
+    ).toBe("/research/hat?state=fetched");
   });
 
   it("renders empty, unreachable, and malformed states", async () => {

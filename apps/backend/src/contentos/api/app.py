@@ -16,6 +16,7 @@ from contentos.api.routes.health import router as health_router
 from contentos.api.routes.intake import router as intake_router
 from contentos.api.routes.integrations import router as integrations_router
 from contentos.api.routes.intelligence import router as intelligence_router
+from contentos.api.routes.missions import router as missions_router
 from contentos.api.routes.operations import router as operations_router
 from contentos.api.routes.performance import router as performance_router
 from contentos.api.routes.research import router as research_router
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(performance_router, dependencies=operator_guard)
     app.include_router(integrations_router, dependencies=operator_guard)
     app.include_router(intelligence_router, dependencies=operator_guard)
+    app.include_router(missions_router, dependencies=operator_guard)
     app.include_router(strategy_router, dependencies=operator_guard)
     # Human decisions require the REVIEWER role (ADR 0004): a pure reviewer
     # may decide without being able to drive the pipeline, and vice versa.

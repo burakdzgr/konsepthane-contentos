@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from contentos.discovery.models import DiscoveryItem
 from contentos.duplicates.models import DuplicateDecision
 from contentos.fetching.snapshots import FetchSnapshot
+from contentos.missions.models import MissionIdeaCandidate
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.enums import ComponentAvailability
 from contentos.opportunities.errors import (
@@ -43,8 +44,7 @@ from contentos.opportunities.repository import OpportunityRepository
 from contentos.opportunities.scoring import (
     DERIVED_PROVIDER,
     INPUT_SNAPSHOT_SCHEMA_VERSION,
-    OPPORTUNITY_ENGINE_NAME,
-    OPPORTUNITY_ENGINE_VERSION,
+    IdeaLedScoringEngine,
     OpportunityScoringEngine,
     ScoringInputDocument,
     ScoringInputs,
@@ -67,7 +67,14 @@ class OpportunityScoringService:
     def __init__(self, session: Session, engine: OpportunityScoringEngine | None = None) -> None:
         self._session = session
         self._repository = OpportunityRepository(session)
-        self._engine = engine if engine is not None else OpportunityScoringEngine()
+        self._engine_override = engine
+
+    def _engine_for(self, opportunity: EditorialOpportunity) -> OpportunityScoringEngine:
+        if self._engine_override is not None:
+            return self._engine_override
+        if opportunity.mission_candidate_id is not None:
+            return IdeaLedScoringEngine()
+        return OpportunityScoringEngine()
 
     def evaluate_opportunity(
         self, opportunity_id: uuid.UUID, *, evaluated_at: datetime | None = None
@@ -78,26 +85,27 @@ class OpportunityScoringService:
         if opportunity is None:
             raise OpportunityNotFoundError(f"no opportunity with id {opportunity_id}")
 
-        inputs, snapshot = self._load_inputs(opportunity, evaluation_time)
+        engine = self._engine_for(opportunity)
+        inputs, snapshot = self._load_inputs(opportunity, evaluation_time, engine)
         snapshot_hash = compute_snapshot_hash(snapshot)
 
         existing = self._repository.get_score_by_identity(
             opportunity.id,
-            OPPORTUNITY_ENGINE_NAME,
-            OPPORTUNITY_ENGINE_VERSION,
+            engine.name,
+            engine.version,
             snapshot_hash,
         )
         if existing is not None:
             return ScoreEvaluation(score=existing, created=False)
 
-        result = self._engine.evaluate(inputs)
+        result = engine.evaluate(inputs)
         try:
             with self._session.begin_nested():
                 score = self._repository.insert_score(
                     OpportunityScore(
                         opportunity_id=opportunity.id,
-                        engine_name=OPPORTUNITY_ENGINE_NAME,
-                        engine_version=OPPORTUNITY_ENGINE_VERSION,
+                        engine_name=engine.name,
+                        engine_version=engine.version,
                         overall_band=result.overall_band,
                         overall_value=result.overall_value,
                         eligibility=result.eligibility,
@@ -127,8 +135,8 @@ class OpportunityScoringService:
         except IntegrityError:
             winner = self._repository.get_score_by_identity(
                 opportunity.id,
-                OPPORTUNITY_ENGINE_NAME,
-                OPPORTUNITY_ENGINE_VERSION,
+                engine.name,
+                engine.version,
                 snapshot_hash,
             )
             if winner is not None:
@@ -139,8 +147,17 @@ class OpportunityScoringService:
         return ScoreEvaluation(score=score, created=True)
 
     def _load_inputs(
-        self, opportunity: EditorialOpportunity, evaluation_time: datetime
+        self,
+        opportunity: EditorialOpportunity,
+        evaluation_time: datetime,
+        engine: OpportunityScoringEngine | None = None,
     ) -> tuple[ScoringInputs, dict[str, Any]]:
+        engine = engine if engine is not None else self._engine_for(opportunity)
+        idea_quality: float | None = None
+        if opportunity.mission_candidate_id is not None:
+            candidate = self._session.get(MissionIdeaCandidate, opportunity.mission_candidate_id)
+            if candidate is not None:
+                idea_quality = candidate.idea_quality / 100.0
         research_inputs = self._repository.list_research_inputs(opportunity.id)
         if not research_inputs:
             raise InvalidScoringStateError("the opportunity has no research inputs to evaluate")
@@ -216,11 +233,19 @@ class OpportunityScoringService:
             documents_with_evidence=len(documents_with_evidence),
             sources_with_evidence=len(sources_with_evidence),
             evaluated_at=evaluation_time,
+            idea_quality=idea_quality,
+            mission_candidate_id=opportunity.mission_candidate_id,
         )
         snapshot: dict[str, Any] = {
             "snapshot_schema": INPUT_SNAPSHOT_SCHEMA_VERSION,
-            "engine": OPPORTUNITY_ENGINE_NAME,
-            "engine_version": OPPORTUNITY_ENGINE_VERSION,
+            "engine": engine.name,
+            "engine_version": engine.version,
+            "idea_quality": idea_quality,
+            "mission_candidate_id": (
+                str(opportunity.mission_candidate_id)
+                if opportunity.mission_candidate_id is not None
+                else None
+            ),
             "opportunity_id": str(opportunity.id),
             "work_item_id": str(opportunity.work_item_id),
             # Day granularity: recency is time-relative, so a later-day

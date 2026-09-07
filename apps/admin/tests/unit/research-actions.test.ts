@@ -25,7 +25,7 @@ import {
   rejectDiscoveryItemAction,
   requeueDiscoveryItemAction,
   startDiscoveryItemFetchAction,
-} from "@/app/research/[id]/actions";
+} from "@/app/research/hat/[id]/actions";
 import {
   acceptDiscoveryItem,
   rejectDiscoveryItem,
@@ -76,7 +76,7 @@ describe("acceptDiscoveryItemAction", () => {
 
     await expectRedirect(
       acceptDiscoveryItemAction(form({ discovery_item_id: ITEM_ID })),
-      `/research/${ITEM_ID}?notice=accepted`,
+      `/research/hat/${ITEM_ID}?notice=accepted`,
     );
     expect(acceptMock).toHaveBeenCalledWith(ITEM_ID);
   });
@@ -86,14 +86,14 @@ describe("acceptDiscoveryItemAction", () => {
 
     await expectRedirect(
       acceptDiscoveryItemAction(form({ discovery_item_id: ITEM_ID })),
-      `/research/${ITEM_ID}?error=conflict`,
+      `/research/hat/${ITEM_ID}?error=conflict`,
     );
   });
 
   it("refuses a junk item id without calling the backend", async () => {
     await expectRedirect(
       acceptDiscoveryItemAction(form({ discovery_item_id: "junk" })),
-      "/research?error=invalid",
+      "/research/hat?error=invalid",
     );
     expect(acceptMock).not.toHaveBeenCalled();
   });
@@ -111,7 +111,7 @@ describe("rejectDiscoveryItemAction", () => {
           note: "kapsam dışı",
         }),
       ),
-      `/research/${ITEM_ID}?notice=rejected`,
+      `/research/hat/${ITEM_ID}?notice=rejected`,
     );
     expect(rejectMock).toHaveBeenCalledWith(
       ITEM_ID,
@@ -125,7 +125,7 @@ describe("rejectDiscoveryItemAction", () => {
       rejectDiscoveryItemAction(
         form({ discovery_item_id: ITEM_ID, reason: "made_up" }),
       ),
-      `/research/${ITEM_ID}?error=invalid`,
+      `/research/hat/${ITEM_ID}?error=invalid`,
     );
     expect(rejectMock).not.toHaveBeenCalled();
   });
@@ -139,7 +139,7 @@ describe("requeueDiscoveryItemAction", () => {
       requeueDiscoveryItemAction(
         form({ discovery_item_id: ITEM_ID, reason: "kaynak düzeldi" }),
       ),
-      `/research/${ITEM_ID}?notice=requeued`,
+      `/research/hat/${ITEM_ID}?notice=requeued`,
     );
     expect(requeueMock).toHaveBeenCalledWith(ITEM_ID, "kaynak düzeldi");
   });
@@ -149,7 +149,7 @@ describe("requeueDiscoveryItemAction", () => {
       requeueDiscoveryItemAction(
         form({ discovery_item_id: ITEM_ID, reason: "   " }),
       ),
-      `/research/${ITEM_ID}?error=invalid`,
+      `/research/hat/${ITEM_ID}?error=invalid`,
     );
     expect(requeueMock).not.toHaveBeenCalled();
   });
@@ -168,7 +168,7 @@ describe("startDiscoveryItemFetchAction", () => {
 
     await expectRedirect(
       startDiscoveryItemFetchAction(form({ discovery_item_id: ITEM_ID })),
-      `/research/${ITEM_ID}?notice=fetch-queued`,
+      `/research/hat/${ITEM_ID}?notice=fetch-queued`,
     );
   });
 
@@ -177,7 +177,7 @@ describe("startDiscoveryItemFetchAction", () => {
 
     await expectRedirect(
       startDiscoveryItemFetchAction(form({ discovery_item_id: ITEM_ID })),
-      `/research/${ITEM_ID}?error=queue-failed`,
+      `/research/hat/${ITEM_ID}?error=queue-failed`,
     );
   });
 });

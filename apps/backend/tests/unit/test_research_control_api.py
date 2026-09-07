@@ -698,7 +698,7 @@ class TestApiSurface:
         research_paths = {
             path: set(operations)
             for path, operations in schema["paths"].items()
-            if path.startswith("/internal/research")
+            if path.startswith("/internal/research/")  # missions live under /research-missions
         }
 
         assert research_paths == {

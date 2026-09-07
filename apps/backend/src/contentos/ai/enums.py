@@ -14,6 +14,11 @@ class GenerationPurpose(StrEnum):
     EDITOR_REVIEW = "editor_review"
     MEDIA_IMAGE = "media_image"
     EVIDENCE_EXTRACTION = "evidence_extraction"
+    # Research-driven idea engine (missions): planning, open-web research,
+    # idea synthesis. Their outputs are inspiration, never factual evidence.
+    MISSION_PLANNING = "mission_planning"
+    WEB_RESEARCH = "web_research"
+    IDEA_SYNTHESIS = "idea_synthesis"
 
 
 class GenerationStatus(StrEnum):

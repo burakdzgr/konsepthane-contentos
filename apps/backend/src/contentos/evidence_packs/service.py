@@ -62,6 +62,7 @@ from contentos.evidence_packs.models import (
 )
 from contentos.evidence_packs.policy import (
     DEFAULT_EVIDENCE_POLICY,
+    IDEA_LED_EVIDENCE_POLICY,
     EvidenceSufficiencyPolicy,
 )
 from contentos.evidence_packs.repository import EvidencePackRepository
@@ -69,6 +70,7 @@ from contentos.fetching.snapshots import FetchSnapshot
 from contentos.ideas.models import Idea
 from contentos.normalization.models import NormalizedDocument
 from contentos.opportunities.errors import OpportunityNotFoundError
+from contentos.opportunities.models import EditorialOpportunity
 from contentos.opportunities.repository import OpportunityRepository
 from contentos.research.models import ResearchEvidence
 from contentos.sources.models import Source
@@ -176,6 +178,7 @@ class EvidencePackService:
         different pinned idea is a different pack.
         """
         self._validate_idea(opportunity_id, idea_id)
+        policy = self._policy_for(opportunity_id, policy)
         cleaned = _validate_selections(selections)
         selected_ids = {selection.research_evidence_id for selection in cleaned}
         states = _states_from_declarations(contradictions or [], selected_ids)
@@ -195,6 +198,19 @@ class EvidencePackService:
             evidence_rows[evidence.id] = evidence
 
         return self._persist_pack(opportunity_id, cleaned, states, policy, evidence_rows, idea_id)
+
+    def _policy_for(
+        self, opportunity_id: uuid.UUID, requested: EvidenceSufficiencyPolicy
+    ) -> EvidenceSufficiencyPolicy:
+        """The default policy is the intake policy; an idea-led opportunity
+        (promoted by a research mission) takes the idea-led one unless the
+        caller named a policy explicitly."""
+        if requested is not DEFAULT_EVIDENCE_POLICY:
+            return requested
+        opportunity = self._session.get(EditorialOpportunity, opportunity_id)
+        if opportunity is not None and opportunity.mission_candidate_id is not None:
+            return IDEA_LED_EVIDENCE_POLICY
+        return requested
 
     def reassemble_pack(
         self,

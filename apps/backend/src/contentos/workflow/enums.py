@@ -46,6 +46,7 @@ class WorkItemOrigin(StrEnum):
 
     RESEARCH_INTAKE = "research_intake"
     OPERATOR = "operator"
+    RESEARCH_MISSION = "research_mission"
 
 
 class WorkflowActorOrigin(StrEnum):

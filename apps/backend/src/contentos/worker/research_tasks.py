@@ -464,7 +464,11 @@ def _yields_model_evidence(session: Session, document_id: uuid.UUID) -> bool:
     provenance = ResearchProvenanceRepository(session).get_provenance(document_id)
     if provenance is None:
         return False
-    return role_yields_opportunities(provenance.source.primary_role)
+    # Open-web grounding sources (SEARCH role, registered by a research
+    # mission) may yield facts for the idea they ground; they never promote.
+    return role_yields_opportunities(provenance.source.primary_role) or bool(
+        (provenance.source.metadata_json or {}).get("open_web_grounding")
+    )
 
 
 def _extract_intelligence_signals(session: Session, document_id: uuid.UUID) -> None:

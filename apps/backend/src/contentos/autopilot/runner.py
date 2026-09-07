@@ -281,6 +281,7 @@ class AutopilotRunner:
             best_idea_id=best_idea_id,
             ideas_predate_research_inputs=ideas_predate_inputs,
             distinct_input_sources=distinct_input_sources,
+            idea_led=opportunity is not None and opportunity.mission_candidate_id is not None,
             selected_idea_passed=selected_idea_passed,
             latest_pack_id=latest_pack_id,
             latest_pack_sufficiency=latest_pack_sufficiency,
